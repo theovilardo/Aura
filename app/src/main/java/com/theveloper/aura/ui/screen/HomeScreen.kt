@@ -46,6 +46,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,8 +56,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskType
-import com.theveloper.aura.ui.components.SuggestionCard
 import com.theveloper.aura.ui.components.DayRescueBottomSheet
+import com.theveloper.aura.ui.components.SuggestionCard
+import java.time.LocalDate
 import java.time.LocalTime
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -70,11 +73,13 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     var selectedCategory by rememberSaveable { mutableStateOf("Insights") }
     var showDayRescue by remember { mutableStateOf(false) }
+    val habitCount = remember(uiState.tasks) { uiState.tasks.count { it.type == TaskType.HABIT } }
+    val signalCount = remember(uiState.suggestions) { uiState.suggestions.size }
 
     if (showDayRescue) {
         DayRescueBottomSheet(
             tasks = uiState.tasks,
-            suggestions = uiState.suggestions.filter { it.type.name == "RESCHEDULE_REMINDER" }, // Day rescue spawns these
+            suggestions = uiState.suggestions.filter { it.type.name == "RESCHEDULE_REMINDER" },
             onApply = { selected ->
                 selected.forEach { viewModel.applySuggestion(it) }
                 showDayRescue = false
@@ -85,22 +90,19 @@ fun HomeScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            HomeTopBar(
-                taskCount = uiState.tasks.size,
-                onOpenBoard = onNavigateToTasks
-            )
-        },
         floatingActionButton = {
             if (LocalTime.now().hour >= 12 && uiState.tasks.isNotEmpty()) {
                 FloatingActionButton(
-                    onClick = { 
-                        viewModel.runDayRescue() // Run the engine
-                        showDayRescue = true 
+                    onClick = {
+                        viewModel.runDayRescue()
+                        showDayRescue = true
                     },
                     containerColor = MaterialTheme.colorScheme.tertiaryContainer
                 ) {
-                    Icon(imageVector = Icons.Rounded.Warning, contentDescription = "¿Día descarrilado?")
+                    Icon(
+                        imageVector = Icons.Rounded.Warning,
+                        contentDescription = "Day rescue"
+                    )
                 }
             }
         }
@@ -118,74 +120,162 @@ fun HomeScreen(
             return@Scaffold
         }
 
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(
-                start = 20.dp,
-                top = innerPadding.calculateTopPadding() + 12.dp,
-                end = 20.dp,
-                bottom = innerPadding.calculateBottomPadding() + 216.dp
-            )
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            item {
-                HomeHero(
-                    taskCount = uiState.tasks.size,
-                    category = selectedCategory
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(
+                    start = 20.dp,
+                    top = innerPadding.calculateTopPadding() + 108.dp,
+                    end = 20.dp,
+                    bottom = innerPadding.calculateBottomPadding() + 216.dp
                 )
-            }
-            item {
-                QuickCategories(
-                    selected = selectedCategory,
-                    onSelect = { selectedCategory = it }
-                )
-            }
-            item {
-                SectionLabel(
-                    text = if (uiState.tasks.isEmpty()) "READY FOR YOU" else "YOUR TASKS",
-                    actionLabel = if (uiState.tasks.size > 3) "Open board" else null,
-                    onClick = if (uiState.tasks.size > 3) onNavigateToTasks else null
-                )
-            }
-
-            if (uiState.suggestions.isNotEmpty()) {
-                val directSuggestions = uiState.suggestions // MVP display all as cards
-                items(directSuggestions, key = { it.id }) { suggestion ->
-                    SuggestionCard(
-                        suggestion = suggestion,
-                        onApprove = { viewModel.applySuggestion(it) },
-                        onReject = { viewModel.rejectSuggestion(it) }
+            ) {
+                item {
+                    HomeHero(
+                        taskCount = uiState.tasks.size,
+                        habitCount = habitCount,
+                        signalCount = signalCount
                     )
                 }
+
+                item {
+                    HabitTrackerOverview(uiState.tasks)
+                }
+
+                item {
+                    QuickCategories(
+                        selected = selectedCategory,
+                        onSelect = { selectedCategory = it }
+                    )
+                }
+
+                if (uiState.suggestions.isNotEmpty()) {
+                    item {
+                        SectionLabel(
+                            text = "NOW",
+                            actionLabel = null,
+                            onClick = null
+                        )
+                    }
+
+                    items(uiState.suggestions, key = { it.id }) { suggestion ->
+                        SuggestionCard(
+                            suggestion = suggestion,
+                            onApprove = { viewModel.applySuggestion(it) },
+                            onReject = { viewModel.rejectSuggestion(it) }
+                        )
+                    }
+                }
+
+                item {
+                    SectionLabel(
+                        text = if (uiState.tasks.isEmpty()) "READY FOR YOU" else "YOUR TASKS",
+                        actionLabel = if (uiState.tasks.size > 3) "Open board" else null,
+                        onClick = if (uiState.tasks.size > 3) onNavigateToTasks else null
+                    )
+                }
+
+                when {
+                    uiState.errorMessage != null && uiState.tasks.isEmpty() -> {
+                        item {
+                            HomeInfoCard(
+                                title = "Something went wrong",
+                                body = uiState.errorMessage.orEmpty()
+                            )
+                        }
+                    }
+
+                    uiState.tasks.isEmpty() -> {
+                        item {
+                            HomeInfoCard(
+                                title = "No tasks yet",
+                                body = "Use the floating prompt bar below to create one instantly, or tap the plus circle to build it manually."
+                            )
+                        }
+                    }
+
+                    else -> {
+                        items(uiState.tasks, key = { it.id }) { task ->
+                            HomeTaskCard(
+                                task = task,
+                                onClick = { onNavigateToTaskDetail(task.id) }
+                            )
+                        }
+                    }
+                }
             }
+        
 
-            when {
-                uiState.errorMessage != null && uiState.tasks.isEmpty() -> {
-                    item {
-                        HomeInfoCard(
-                            title = "Something went wrong",
-                            body = uiState.errorMessage.orEmpty()
-                        )
-                    }
-                }
+            HomeTopBar(
+                taskCount = uiState.tasks.size,
+                habitCount = habitCount,
+                signalCount = signalCount,
+                onOpenBoard = onNavigateToTasks,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+        }
+    }
+}
 
-                uiState.tasks.isEmpty() -> {
-                    item {
-                        HomeInfoCard(
-                            title = "No tasks yet",
-                            body = "Use the floating prompt bar below to create one instantly, or tap the plus circle to build it manually."
-                        )
-                    }
-                }
+@Composable
+private fun HabitTrackerOverview(tasks: List<Task>) {
+    val habitTasks = tasks.filter { it.type == TaskType.HABIT }
+    if (habitTasks.isEmpty()) return
+    val currentWeekdayIndex = LocalDate.now().dayOfWeek.ordinal
 
-                else -> {
-                    items(uiState.tasks, key = { it.id }) { task ->
-                        HomeTaskCard(
-                            task = task,
-                            onClick = { onNavigateToTaskDetail(task.id) }
-                        )
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionLabel(text = "HABIT TRACKER", actionLabel = null, onClick = null)
+        
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val days = listOf("M", "T", "W", "T", "F", "S", "S")
+                days.forEachIndexed { index, day ->
+                    val isActive = index == currentWeekdayIndex
+                    val hasCompleted = index < currentWeekdayIndex
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (hasCompleted) MaterialTheme.colorScheme.primaryContainer else if (isActive) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, if (isActive) MaterialTheme.colorScheme.primary else Color.Transparent)
+                        ) {
+                            Box(modifier = Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+                                if (hasCompleted) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.TaskAlt,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                } else {
+                                    Text(
+                                        text = day,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = if (isActive) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -196,20 +286,41 @@ fun HomeScreen(
 @Composable
 private fun HomeTopBar(
     taskCount: Int,
-    onOpenBoard: () -> Unit
+    habitCount: Int,
+    signalCount: Int,
+    onOpenBoard: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.background
+    val subtitle = when {
+        signalCount > 0 && habitCount > 0 -> "$signalCount signals ready · $habitCount habits active"
+        signalCount > 0 -> "$signalCount signals ready · $taskCount tasks live"
+        habitCount > 0 -> "$habitCount habits active · $taskCount tasks live"
+        else -> "$taskCount active tasks"
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.background.copy(alpha = 0.95f),
+                        MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
+                        Color.Transparent
+                    )
+                )
+            )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = 20.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
+                modifier = Modifier.weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -217,7 +328,7 @@ private fun HomeTopBar(
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
-                    androidx.compose.material3.Icon(
+                    Icon(
                         imageVector = Icons.Rounded.AutoAwesome,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
@@ -230,15 +341,17 @@ private fun HomeTopBar(
                     Text(
                         text = "Aura",
                         style = MaterialTheme.typography.titleLarge.copy(
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = (-0.5).sp
                         ),
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        text = "$taskCount active tasks",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -259,7 +372,7 @@ private fun HomeTopBar(
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    androidx.compose.material3.Icon(
+                    Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -274,7 +387,8 @@ private fun HomeTopBar(
 @Composable
 private fun HomeHero(
     taskCount: Int,
-    category: String
+    habitCount: Int,
+    signalCount: Int
 ) {
     val greeting = when (LocalTime.now().hour) {
         in 5..11 -> "Good morning."
@@ -303,7 +417,7 @@ private fun HomeHero(
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    text = "Your home should stay readable, reliable and ready for action.",
+                    text = "Habits, rescue signals and your next tasks should stay visible at a glance.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -315,8 +429,12 @@ private fun HomeHero(
                     value = taskCount.toString()
                 )
                 HomeHeroMetric(
-                    label = "Focus",
-                    value = category
+                    label = "Habits",
+                    value = habitCount.toString()
+                )
+                HomeHeroMetric(
+                    label = "Now",
+                    value = signalCount.toString()
                 )
             }
         }
@@ -393,7 +511,7 @@ private fun QuickCategories(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    androidx.compose.material3.Icon(
+                    Icon(
                         imageVector = category.icon,
                         contentDescription = null,
                         tint = if (isSelected) {
@@ -507,7 +625,7 @@ private fun HomeTaskCard(
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.surfaceContainerLow
                     ) {
-                        androidx.compose.material3.Icon(
+                        Icon(
                             imageVector = icon,
                             contentDescription = null,
                             tint = if (task.type == TaskType.TRAVEL || task.type == TaskType.HEALTH) {
@@ -539,7 +657,7 @@ private fun HomeTaskCard(
                     }
                 }
 
-                androidx.compose.material3.Icon(
+                Icon(
                     imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
