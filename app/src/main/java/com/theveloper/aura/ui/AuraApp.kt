@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -95,6 +96,7 @@ fun AuraApp() {
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             AuraBottomBar(
                 navController = navController,
@@ -219,12 +221,12 @@ fun AuraBottomBar(
             .padding(horizontal = 12.dp, vertical = 0.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        QuickPromptBar(
-            prompt = quickPrompt,
-            onPromptChange = onQuickPromptChange,
-            onSubmit = onQuickPromptSubmit,
-            colors = colors
-        )
+//        QuickPromptBar(
+//            prompt = quickPrompt,
+//            onPromptChange = onQuickPromptChange,
+//            onSubmit = onQuickPromptSubmit,
+//            colors = colors
+//        )
 
         Surface(
             modifier = Modifier.fillMaxWidth(),

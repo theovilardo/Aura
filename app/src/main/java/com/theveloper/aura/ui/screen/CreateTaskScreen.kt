@@ -5,8 +5,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,16 +16,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,19 +32,22 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -59,6 +63,7 @@ fun CreateTaskScreen(
     viewModel: CreateTaskViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     LaunchedEffect(viewModel) {
         viewModel.effects.collectLatest { effect ->
@@ -69,94 +74,76 @@ fun CreateTaskScreen(
     }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = { Text("Create with Aura") },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Volver"
-                        )
-                    }
-                }
+            CreateTaskTopBar(
+                mode = uiState.mode,
+                onNavigateBack = onNavigateBack,
+                scrollBehavior = scrollBehavior
+            )
+        },
+        floatingActionButton = {
+            BuildTaskFab(
+                mode = uiState.mode,
+                isBusy = uiState.isClassifying || uiState.isSaving,
+                onClick = viewModel::submit
             )
         }
     ) { paddingValues ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .verticalScroll(rememberScrollState())
                 .padding(paddingValues)
-                .padding(horizontal = 24.dp, vertical = 20.dp),
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(top = 6.dp, bottom = 128.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            CreateHero(mode = uiState.mode)
-
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ModePill(
-                    label = "Prompt",
-                    selected = uiState.mode == TaskCreationMode.PROMPT,
-                    onClick = { viewModel.selectMode(TaskCreationMode.PROMPT) }
-                )
-                ModePill(
-                    label = "Manual",
-                    selected = uiState.mode == TaskCreationMode.MANUAL,
-                    onClick = { viewModel.selectMode(TaskCreationMode.MANUAL) }
-                )
+            item {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ModePill(
+                        label = "Prompt",
+                        selected = uiState.mode == TaskCreationMode.PROMPT,
+                        onClick = { viewModel.selectMode(TaskCreationMode.PROMPT) }
+                    )
+                    ModePill(
+                        label = "Manual",
+                        selected = uiState.mode == TaskCreationMode.MANUAL,
+                        onClick = { viewModel.selectMode(TaskCreationMode.MANUAL) }
+                    )
+                }
             }
 
-            if (uiState.mode == TaskCreationMode.PROMPT) {
-                PromptBuilder(
-                    input = uiState.input,
-                    isWorking = uiState.isClassifying,
-                    onValueChange = viewModel::updateInput
-                )
-            } else {
-                ManualBuilder(
-                    uiState = uiState,
-                    onTitleChange = viewModel::updateManualTitle,
-                    onTaskTypeSelected = viewModel::selectManualTaskType,
-                    onTemplateToggle = viewModel::toggleTemplate
-                )
+            item {
+                if (uiState.mode == TaskCreationMode.PROMPT) {
+                    PromptBuilder(
+                        input = uiState.input,
+                        isWorking = uiState.isClassifying,
+                        onValueChange = viewModel::updateInput
+                    )
+                } else {
+                    ManualBuilder(
+                        uiState = uiState,
+                        onTitleChange = viewModel::updateManualTitle,
+                        onTaskTypeSelected = viewModel::selectManualTaskType,
+                        onTemplateToggle = viewModel::toggleTemplate
+                    )
+                }
             }
 
             uiState.errorMessage?.let { errorMessage ->
-                Text(
-                    text = errorMessage,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-
-            Button(
-                onClick = viewModel::submit,
-                enabled = !uiState.isClassifying && !uiState.isSaving,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ),
-                shape = CircleShape,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (uiState.isClassifying || uiState.isSaving) {
-                    CircularProgressIndicator(
-                        modifier = Modifier
-                            .padding(end = 12.dp)
-                            .size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
+                item {
+                    Text(
+                        text = errorMessage,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
-                Text(
-                    if (uiState.mode == TaskCreationMode.PROMPT) {
-                        "Generate Preview"
-                    } else {
-                        "Build Manual Preview"
-                    }
-                )
             }
         }
 
@@ -173,36 +160,89 @@ fun CreateTaskScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CreateHero() {
-    CreateHero(mode = TaskCreationMode.PROMPT)
+private fun CreateTaskTopBar(
+    mode: TaskCreationMode,
+    onNavigateBack: () -> Unit,
+    scrollBehavior: androidx.compose.material3.TopAppBarScrollBehavior
+) {
+    val title = if (mode == TaskCreationMode.MANUAL) {
+        "Create task"
+    } else {
+        "Prompt task"
+    }
+
+    MediumTopAppBar(
+        title = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            )
+        },
+        navigationIcon = {
+            IconButton(onClick = onNavigateBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Volver"
+                )
+            }
+        },
+        colors = TopAppBarDefaults.mediumTopAppBarColors(
+            containerColor = MaterialTheme.colorScheme.background,
+            scrolledContainerColor = MaterialTheme.colorScheme.background
+        ),
+        scrollBehavior = scrollBehavior,
+        windowInsets = TopAppBarDefaults.windowInsets
+    )
 }
 
 @Composable
-private fun CreateHero(mode: TaskCreationMode) {
-    val title = if (mode == TaskCreationMode.MANUAL) {
-        "Build your task"
-    } else {
-        "Design your next task"
-    }
-    val subtitle = if (mode == TaskCreationMode.MANUAL) {
-        "Keep it direct: title, type and the modules you actually need."
-    } else {
-        "Use a prompt to let Aura infer the structure, or build it manually from dynamic component variants."
-    }
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineMedium.copy(fontSize = 34.sp),
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
+private fun BuildTaskFab(
+    mode: TaskCreationMode,
+    isBusy: Boolean,
+    onClick: () -> Unit
+) {
+    ExtendedFloatingActionButton(
+        onClick = {
+            if (!isBusy) {
+                onClick()
+            }
+        },
+        containerColor = if (isBusy) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+        } else {
+            MaterialTheme.colorScheme.primary
+        },
+        contentColor = MaterialTheme.colorScheme.onPrimary,
+        shape = CircleShape,
+        icon = {
+            if (isBusy) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = null
+                )
+            }
+        },
+        text = {
+            Text(
+                if (mode == TaskCreationMode.PROMPT) {
+                    "Generate preview"
+                } else {
+                    "Build preview"
+                }
+            )
+        }
+    )
 }
 
 @Composable
@@ -240,18 +280,8 @@ private fun PromptBuilder(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = "Prompt generation",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Text(
-                text = "Describe the outcome, intent and context. Aura will assemble the right components for the task.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
             OutlinedTextField(
                 value = input,
                 onValueChange = onValueChange,
@@ -287,8 +317,7 @@ private fun ManualBuilder(
         verticalArrangement = Arrangement.spacedBy(22.dp)
     ) {
         ManualSection(
-            title = "Task title",
-            body = "Start with the one-line name you want to see on the board."
+            title = "Task title"
         ) {
             OutlinedTextField(
                 value = uiState.manual.title,
@@ -300,8 +329,7 @@ private fun ManualBuilder(
         }
 
         ManualSection(
-            title = "Task type",
-            body = "This shapes the recommended modules."
+            title = "Task type"
         ) {
             Row(
                 modifier = Modifier
@@ -321,11 +349,7 @@ private fun ManualBuilder(
 
         ManualSection(
             title = "Modules",
-            body = if (selectedTemplates.isEmpty()) {
-                "Choose the building blocks for this task."
-            } else {
-                "${selectedTemplates.size} module(s) selected."
-            }
+            body = if (selectedTemplates.isEmpty()) null else "${selectedTemplates.size} selected"
         ) {
             if (selectedTemplates.isNotEmpty()) {
                 Row(
@@ -368,18 +392,18 @@ private fun ManualBuilder(
 @Composable
 private fun ManualSection(
     title: String,
-    body: String,
+    body: String? = null,
     content: @Composable () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        body?.let {
             Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Text(
-                text = body,
+                text = it,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
