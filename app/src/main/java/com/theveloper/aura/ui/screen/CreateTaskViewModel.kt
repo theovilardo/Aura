@@ -7,7 +7,10 @@ import com.theveloper.aura.domain.model.TaskType
 import com.theveloper.aura.engine.capability.CapabilityRegistry
 import com.theveloper.aura.engine.capability.CapabilityRequest
 import com.theveloper.aura.engine.capability.CapabilityResponse
+import com.theveloper.aura.engine.classifier.AiExecutionMode
 import com.theveloper.aura.engine.classifier.TaskClassifier
+import com.theveloper.aura.engine.classifier.TaskGenerationResult
+import com.theveloper.aura.engine.classifier.TaskGenerationSource
 import com.theveloper.aura.engine.dsl.TaskComponentCatalog
 import com.theveloper.aura.engine.dsl.TaskComponentContext
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
@@ -146,9 +149,9 @@ class CreateTaskViewModel @Inject constructor(
             }
 
             runCatching { taskClassifier.classify(classifierInput) }
-                .onSuccess { preview ->
+                .onSuccess { result ->
                     val mergedPreview = mergeManualSelections(
-                        preview = preview,
+                        result = result,
                         manual = manual,
                         rawInput = input
                     )
@@ -197,13 +200,19 @@ class CreateTaskViewModel @Inject constructor(
 
         _uiState.update {
             it.copy(
-                preview = TaskDSLOutput(
-                    title = draft.title.trim(),
-                    type = draft.taskType,
-                    priority = 1,
-                    targetDateMs = targetDateMs,
-                    components = components,
-                    reminders = reminders
+                preview = TaskGenerationResult(
+                    dsl = TaskDSLOutput(
+                        title = draft.title.trim(),
+                        type = draft.taskType,
+                        priority = 1,
+                        targetDateMs = targetDateMs,
+                        components = components,
+                        reminders = reminders
+                    ),
+                    source = TaskGenerationSource.MANUAL,
+                    executionMode = AiExecutionMode.LOCAL_ONLY,
+                    intentConfidence = 1f,
+                    localConfidence = 1f
                 ),
                 errorMessage = null
             )
@@ -240,10 +249,11 @@ class CreateTaskViewModel @Inject constructor(
     }
 
     private fun mergeManualSelections(
-        preview: TaskDSLOutput,
+        result: TaskGenerationResult,
         manual: ManualTaskDraft,
         rawInput: String
-    ): TaskDSLOutput {
+    ): TaskGenerationResult {
+        val preview = result.dsl
         val resolvedTitle = manual.title.trim().ifBlank { preview.title }
         val resolvedType = if (manual.taskType != TaskType.GENERAL) {
             manual.taskType
@@ -252,9 +262,11 @@ class CreateTaskViewModel @Inject constructor(
         }
 
         if (manual.selectedTemplateIds.isEmpty()) {
-            return preview.copy(
-                title = resolvedTitle,
-                type = resolvedType
+            return result.copy(
+                dsl = preview.copy(
+                    title = resolvedTitle,
+                    type = resolvedType
+                )
             )
         }
 
@@ -269,8 +281,12 @@ class CreateTaskViewModel @Inject constructor(
                 targetDateMs = preview.targetDateMs
             )
         )
-        val existingTypes = preview.components.map { it.type }.toSet()
-        val appendedComponents = manualComponents.filter { it.type !in existingTypes }
+        val existingSignatures = preview.components.map { component ->
+            component.type to component.config.toString()
+        }.toSet()
+        val appendedComponents = manualComponents.filter { component ->
+            (component.type to component.config.toString()) !in existingSignatures
+        }
         val mergedComponents = (preview.components + appendedComponents)
             .mapIndexed { index, component ->
                 component.copy(sortOrder = index)
@@ -278,11 +294,13 @@ class CreateTaskViewModel @Inject constructor(
         val mergedReminders = (preview.reminders + manualReminders)
             .distinctBy { it.scheduledAtMs to it.intervalDays }
 
-        return preview.copy(
-            title = resolvedTitle,
-            type = resolvedType,
-            components = mergedComponents,
-            reminders = mergedReminders
+        return result.copy(
+            dsl = preview.copy(
+                title = resolvedTitle,
+                type = resolvedType,
+                components = mergedComponents,
+                reminders = mergedReminders
+            )
         )
     }
 
@@ -295,7 +313,7 @@ class CreateTaskViewModel @Inject constructor(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true, errorMessage = null) }
-            val result = capabilityRegistry.execute(CapabilityRequest.CreateTask(preview))
+            val result = capabilityRegistry.execute(CapabilityRequest.CreateTask(preview.dsl))
             when (val response = result.response) {
                 is CapabilityResponse.TaskCreated -> {
                     _uiState.value = CreateTaskUiState(
@@ -325,7 +343,7 @@ data class CreateTaskUiState(
     val isClassifying: Boolean = false,
     val isSaving: Boolean = false,
     val errorMessage: String? = null,
-    val preview: TaskDSLOutput? = null
+    val preview: TaskGenerationResult? = null
 )
 
 data class ManualTaskDraft(

@@ -82,6 +82,24 @@ object TaskComponentCatalog {
             }
         ),
         TaskComponentTemplate(
+            id = "payment_countdown",
+            title = "Countdown",
+            variantLabel = "Payment",
+            subtitle = "Due date for invoices, rent and other payments.",
+            type = ComponentType.COUNTDOWN,
+            supportedTaskTypes = setOf(TaskType.FINANCE, TaskType.GENERAL),
+            build = { sortOrder, now, context ->
+                builtComponent(
+                    type = ComponentType.COUNTDOWN,
+                    sortOrder = sortOrder,
+                    config = CountdownConfig(
+                        targetDate = context.targetDateMs ?: now + DAY_IN_MILLIS * 3,
+                        label = "Payment due"
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
             id = "packing_checklist",
             title = "Checklist",
             variantLabel = "Packing",
@@ -103,6 +121,27 @@ object TaskComponentCatalog {
             }
         ),
         TaskComponentTemplate(
+            id = "travel_documents_checklist",
+            title = "Checklist",
+            variantLabel = "Documents",
+            subtitle = "Passport, tickets and travel papers in one place.",
+            type = ComponentType.CHECKLIST,
+            supportedTaskTypes = setOf(TaskType.TRAVEL, TaskType.GENERAL),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.CHECKLIST,
+                    sortOrder = sortOrder,
+                    config = ChecklistConfig(
+                        label = "Travel documents",
+                        allowAddItems = true
+                    ),
+                    extras = mapOf(
+                        "items" to jsonArrayOf("Passport", "Boarding pass", "Insurance", "Local reservations")
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
             id = "action_checklist",
             title = "Checklist",
             variantLabel = "Execution",
@@ -119,6 +158,48 @@ object TaskComponentCatalog {
                     ),
                     extras = mapOf(
                         "items" to jsonArrayOf("Define next step", "Execute", "Review result")
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "finance_payment_checklist",
+            title = "Checklist",
+            variantLabel = "Payment",
+            subtitle = "Payment verification, transfer and receipt follow-up.",
+            type = ComponentType.CHECKLIST,
+            supportedTaskTypes = setOf(TaskType.FINANCE, TaskType.GENERAL),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.CHECKLIST,
+                    sortOrder = sortOrder,
+                    config = ChecklistConfig(
+                        label = "Payment steps",
+                        allowAddItems = true
+                    ),
+                    extras = mapOf(
+                        "items" to jsonArrayOf("Verify amount", "Schedule transfer", "Save receipt")
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "medication_checklist",
+            title = "Checklist",
+            variantLabel = "Medication",
+            subtitle = "Medication cycle, dose and side-effect follow-up.",
+            type = ComponentType.CHECKLIST,
+            supportedTaskTypes = setOf(TaskType.HEALTH, TaskType.HABIT),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.CHECKLIST,
+                    sortOrder = sortOrder,
+                    config = ChecklistConfig(
+                        label = "Medication cycle",
+                        allowAddItems = true
+                    ),
+                    extras = mapOf(
+                        "items" to jsonArrayOf("Take dose", "Drink water", "Track side effects", "Schedule follow-up")
                     )
                 )
             }
@@ -210,6 +291,44 @@ object TaskComponentCatalog {
             }
         ),
         TaskComponentTemplate(
+            id = "progress_budget",
+            title = "Progress Bar",
+            variantLabel = "Budget",
+            subtitle = "Savings or budget target tracked as a percentage.",
+            type = ComponentType.PROGRESS_BAR,
+            supportedTaskTypes = setOf(TaskType.FINANCE, TaskType.TRAVEL, TaskType.PROJECT, TaskType.GENERAL),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.PROGRESS_BAR,
+                    sortOrder = sortOrder,
+                    config = ProgressBarConfig(
+                        source = "MANUAL",
+                        label = "Budget target",
+                        manualProgress = 0.25f
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "progress_sprint",
+            title = "Progress Bar",
+            variantLabel = "Sprint",
+            subtitle = "Fast-moving execution progress for launches and studies.",
+            type = ComponentType.PROGRESS_BAR,
+            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.GENERAL, TaskType.HABIT),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.PROGRESS_BAR,
+                    sortOrder = sortOrder,
+                    config = ProgressBarConfig(
+                        source = "MANUAL",
+                        label = "Execution sprint",
+                        manualProgress = 0.2f
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
             id = "notes_brain_dump",
             title = "Notes",
             variantLabel = "Brain dump",
@@ -240,6 +359,97 @@ object TaskComponentCatalog {
                     sortOrder = sortOrder,
                     config = NotesConfig(
                         text = "### Summary\n- Decision\n- Owner\n- Next checkpoint",
+                        isMarkdown = true
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "travel_itinerary_notes",
+            title = "Notes",
+            variantLabel = "Itinerary",
+            subtitle = "Flights, stays, transfers and local contacts.",
+            type = ComponentType.NOTES,
+            supportedTaskTypes = setOf(TaskType.TRAVEL, TaskType.GENERAL),
+            build = { sortOrder, _, context ->
+                val place = context.locations.firstOrNull()?.let { " - $it" }.orEmpty()
+                builtComponent(
+                    type = ComponentType.NOTES,
+                    sortOrder = sortOrder,
+                    config = NotesConfig(
+                        text = "### Itinerary$place\n- Flight / route\n- Stay\n- Transfers\n- Must-have contacts",
+                        isMarkdown = true
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "study_plan_notes",
+            title = "Notes",
+            variantLabel = "Study",
+            subtitle = "Structured note for learning plans or research.",
+            type = ComponentType.NOTES,
+            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.GENERAL),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.NOTES,
+                    sortOrder = sortOrder,
+                    config = NotesConfig(
+                        text = "### Study plan\n- Goal\n- Topics\n- Practice block\n- Open questions",
+                        isMarkdown = true
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "budget_snapshot_notes",
+            title = "Notes",
+            variantLabel = "Budget",
+            subtitle = "Money snapshot, risks and next payment checkpoint.",
+            type = ComponentType.NOTES,
+            supportedTaskTypes = setOf(TaskType.FINANCE, TaskType.TRAVEL, TaskType.GENERAL),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.NOTES,
+                    sortOrder = sortOrder,
+                    config = NotesConfig(
+                        text = "### Budget snapshot\n- Fixed costs\n- Variable costs\n- Risks\n- Next checkpoint",
+                        isMarkdown = true
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "journal_reflection",
+            title = "Notes",
+            variantLabel = "Journal",
+            subtitle = "Quick reflection for routines, wellbeing and progress.",
+            type = ComponentType.NOTES,
+            supportedTaskTypes = setOf(TaskType.HABIT, TaskType.HEALTH, TaskType.GENERAL),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.NOTES,
+                    sortOrder = sortOrder,
+                    config = NotesConfig(
+                        text = "### Reflection\n- Win of the day\n- Friction\n- Next adjustment",
+                        isMarkdown = true
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "notes_clinic",
+            title = "Notes",
+            variantLabel = "Clinical",
+            subtitle = "Symptoms, medication response and doctor follow-up.",
+            type = ComponentType.NOTES,
+            supportedTaskTypes = setOf(TaskType.HEALTH, TaskType.GENERAL),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.NOTES,
+                    sortOrder = sortOrder,
+                    config = NotesConfig(
+                        text = "### Health follow-up\n- Symptoms\n- Medication response\n- Questions for doctor",
                         isMarkdown = true
                     )
                 )
@@ -298,6 +508,25 @@ object TaskComponentCatalog {
                         unit = "steps",
                         label = "Daily activity",
                         history = listOf(4200f, 6100f, 7800f, 8600f, 10200f)
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "metric_sleep",
+            title = "Metric Tracker",
+            variantLabel = "Sleep",
+            subtitle = "Sleep duration trend to support recovery routines.",
+            type = ComponentType.METRIC_TRACKER,
+            supportedTaskTypes = setOf(TaskType.HEALTH, TaskType.HABIT, TaskType.GENERAL),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.METRIC_TRACKER,
+                    sortOrder = sortOrder,
+                    config = MetricTrackerConfig(
+                        unit = "h",
+                        label = "Sleep trend",
+                        history = listOf(6.2f, 6.8f, 7.1f, 7.4f, 7.0f)
                     )
                 )
             }

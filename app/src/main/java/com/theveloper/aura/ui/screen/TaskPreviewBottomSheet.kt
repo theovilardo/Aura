@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.DonutLarge
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -42,7 +43,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.theveloper.aura.domain.model.ComponentType
 import com.theveloper.aura.engine.dsl.ComponentDSL
-import com.theveloper.aura.engine.dsl.TaskDSLOutput
+import com.theveloper.aura.engine.classifier.TaskGenerationResult
+import com.theveloper.aura.engine.classifier.TaskGenerationSource
 import com.theveloper.aura.ui.components.ComponentPill
 import java.time.Instant
 import java.time.ZoneId
@@ -50,11 +52,12 @@ import java.time.format.DateTimeFormatter
 
 @Composable
 fun TaskPreviewBottomSheet(
-    preview: TaskDSLOutput,
+    preview: TaskGenerationResult,
     isSaving: Boolean,
     onConfirm: () -> Unit,
     onCancel: () -> Unit
 ) {
+    val dsl = preview.dsl
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -98,7 +101,13 @@ fun TaskPreviewBottomSheet(
                 PreviewSummaryCard(preview = preview)
             }
 
-            if (preview.components.isNotEmpty()) {
+            if (preview.warnings.isNotEmpty()) {
+                item {
+                    GenerationWarningsCard(preview = preview)
+                }
+            }
+
+            if (dsl.components.isNotEmpty()) {
                 item {
                     Text(
                         text = "Components",
@@ -106,14 +115,14 @@ fun TaskPreviewBottomSheet(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
-                itemsIndexed(preview.components, key = { index, component ->
+                itemsIndexed(dsl.components, key = { index, component ->
                     "${component.type}-${component.sortOrder}-$index"
                 }) { _, component ->
                     PreviewComponentRow(component = component)
                 }
             }
 
-            if (preview.reminders.isNotEmpty()) {
+            if (dsl.reminders.isNotEmpty()) {
                 item {
                     Surface(
                         shape = RoundedCornerShape(26.dp),
@@ -140,11 +149,11 @@ fun TaskPreviewBottomSheet(
                             }
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(
-                                    text = "${preview.reminders.size} reminder${if (preview.reminders.size == 1) "" else "s"}",
+                                    text = "${dsl.reminders.size} reminder${if (dsl.reminders.size == 1) "" else "s"}",
                                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
                                 )
                                 Text(
-                                    text = preview.reminders.minByOrNull { it.scheduledAtMs }?.scheduledAtMs
+                                    text = dsl.reminders.minByOrNull { it.scheduledAtMs }?.scheduledAtMs
                                         ?.let { "First at ${formatDateTime(it)}" }
                                         ?: "Schedule pending",
                                     style = MaterialTheme.typography.bodySmall,
@@ -191,7 +200,8 @@ fun TaskPreviewBottomSheet(
 }
 
 @Composable
-private fun PreviewSummaryCard(preview: TaskDSLOutput) {
+private fun PreviewSummaryCard(preview: TaskGenerationResult) {
+    val dsl = preview.dsl
     Surface(
         shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -203,23 +213,63 @@ private fun PreviewSummaryCard(preview: TaskDSLOutput) {
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text = preview.title,
+                    text = dsl.title,
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "The engine will build a ${preview.type.name.lowercase()} task with ${preview.components.size} component${if (preview.components.size == 1) "" else "s"}.",
+                    text = preview.summaryLine(),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ComponentPill(preview.type.name.lowercase().replaceFirstChar { it.titlecase() })
-                ComponentPill("P${preview.priority}")
-                preview.targetDateMs?.let {
+                ComponentPill(dsl.type.name.lowercase().replaceFirstChar { it.titlecase() })
+                ComponentPill(preview.sourceLabel())
+                ComponentPill(preview.executionMode.title)
+                ComponentPill("P${dsl.priority}")
+                dsl.targetDateMs?.let {
                     ComponentPill(formatDate(it))
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GenerationWarningsCard(preview: TaskGenerationResult) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.55f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.28f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.WarningAmber,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary
+                )
+                Text(
+                    text = "Generation notes",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+                )
+            }
+            preview.warnings.forEach { warning ->
+                Text(
+                    text = warning,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -278,6 +328,24 @@ private fun previewComponentIcon(type: ComponentType): ImageVector = when (type)
     ComponentType.NOTES -> Icons.AutoMirrored.Rounded.Notes
     ComponentType.METRIC_TRACKER -> Icons.AutoMirrored.Rounded.ShowChart
     ComponentType.DATA_FEED -> Icons.Rounded.Sync
+}
+
+private fun TaskGenerationResult.sourceLabel(): String = when (source) {
+    TaskGenerationSource.MANUAL -> "Manual"
+    TaskGenerationSource.RULES -> "Rules"
+    TaskGenerationSource.LOCAL_AI -> "On-device"
+    TaskGenerationSource.GROQ_API -> "Groq"
+}
+
+private fun TaskGenerationResult.summaryLine(): String {
+    val taskDsl = dsl
+    val sourceSummary = when (source) {
+        TaskGenerationSource.MANUAL -> "Built manually"
+        TaskGenerationSource.RULES -> "Built from local rules"
+        TaskGenerationSource.LOCAL_AI -> "Built with the local AI composer"
+        TaskGenerationSource.GROQ_API -> "Built with Groq after local analysis"
+    }
+    return "$sourceSummary. ${taskDsl.type.name.lowercase().replaceFirstChar { it.titlecase() }} task with ${taskDsl.components.size} component${if (taskDsl.components.size == 1) "" else "s"}."
 }
 
 private fun ComponentType.displayName(): String = when (this) {

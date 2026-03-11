@@ -3,6 +3,7 @@ package com.theveloper.aura.engine.classifier
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
 
 interface LLMService {
+    fun isAvailable(): Boolean
     suspend fun classify(input: String, context: LLMClassificationContext): TaskDSLOutput
     suspend fun getDayRescuePlan(tasksJson: String, patternsJson: String, currentTime: String): String
 }
