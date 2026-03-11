@@ -183,23 +183,13 @@ fun CreateTaskScreen(
                         modifier = Modifier.padding(top = if (selectedTemplates.isEmpty()) 0.dp else 12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        recommendedTemplates.chunked(2).forEach { rowTemplates ->
-                            Row(
+                        recommendedTemplates.forEach { template ->
+                            ManualTemplateCard(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                rowTemplates.forEach { template ->
-                                    ManualTemplateCard(
-                                        modifier = Modifier.weight(1f),
-                                        template = template,
-                                        selected = template.id in uiState.manual.selectedTemplateIds,
-                                        onToggle = { viewModel.toggleTemplate(template.id) }
-                                    )
-                                }
-                                if (rowTemplates.size == 1) {
-                                    Spacer(modifier = Modifier.weight(1f))
-                                }
-                            }
+                                template = template,
+                                selected = template.id in uiState.manual.selectedTemplateIds,
+                                onToggle = { viewModel.toggleTemplate(template.id) }
+                            )
                         }
                     }
                 }
@@ -517,38 +507,40 @@ private fun ManualTemplateCard(
             }
         )
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(horizontal = 14.dp, vertical = 13.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    modifier = Modifier.size(36.dp),
-                    shape = CircleShape,
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainerLow
-                    }
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = if (selected) {
-                                MaterialTheme.colorScheme.onPrimary
-                            } else {
-                                MaterialTheme.colorScheme.primary
-                            },
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+            Surface(
+                modifier = Modifier.size(42.dp),
+                shape = CircleShape,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerLow
                 }
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = if (selected) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        },
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         text = template.title,
@@ -565,14 +557,34 @@ private fun ManualTemplateCard(
                         }
                     )
                 }
+
+                Text(
+                    text = template.subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2
+                )
             }
 
-            Text(
-                text = template.subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2
-            )
+            Surface(
+                shape = CircleShape,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerLow
+                }
+            ) {
+                Text(
+                    text = if (selected) "Added" else "Add",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
         }
     }
 }
