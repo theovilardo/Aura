@@ -580,14 +580,14 @@ private fun SectionLabel(
             ),
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        if (actionLabel != null && onClick != null) {
-            Text(
-                text = actionLabel,
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clickable(onClick = onClick)
-            )
-        }
+//        if (actionLabel != null && onClick != null) {
+//            Text(
+//                text = actionLabel,
+//                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+//                color = MaterialTheme.colorScheme.primary,
+//                modifier = Modifier.clickable(onClick = onClick)
+//            )
+//        }
     }
 }
 

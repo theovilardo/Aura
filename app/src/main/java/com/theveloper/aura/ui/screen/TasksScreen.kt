@@ -9,15 +9,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -27,31 +23,44 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.TaskAlt
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.ExperimentalTextApi
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontLoadingStrategy
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.theveloper.aura.R
 import com.theveloper.aura.domain.model.ComponentType
 import com.theveloper.aura.domain.model.ProgressBarConfig
 import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskType
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TasksScreen(
     onNavigateToTaskDetail: (String) -> Unit,
@@ -67,180 +76,192 @@ fun TasksScreen(
         uiState.tasks.count { it.type == TaskType.HABIT || it.type == TaskType.HEALTH }
     }
     val systemCount = remember(uiState.tasks) {
-        uiState.tasks.count { it.type == TaskType.PROJECT || it.type == TaskType.FINANCE || it.type == TaskType.TRAVEL }
+        uiState.tasks.count {
+            it.type == TaskType.PROJECT || it.type == TaskType.FINANCE || it.type == TaskType.TRAVEL
+        }
     }
 
-    if (uiState.isLoading) {
-        Box(
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = { TasksTopBar() }
+    ) { innerPadding ->
+        if (uiState.isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(innerPadding),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
+            return@Scaffold
+        }
+
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
-            contentAlignment = Alignment.Center
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = innerPadding.calculateTopPadding() + 10.dp,
+                end = 16.dp,
+                bottom = innerPadding.calculateBottomPadding() + 216.dp
+            )
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                Text(
-                    text = "Building your task board...",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        return
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .background(MaterialTheme.colorScheme.background),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(start = 20.dp, top = 24.dp, end = 20.dp, bottom = 216.dp)
-    ) {
-        item {
-            TasksHero(
-                taskCount = uiState.tasks.size,
-                dueSoonCount = dueSoonCount,
-                ritualCount = ritualCount,
-                systemCount = systemCount
-            )
-        }
-        item {
-            TaskFilterRow(
-                selected = selectedFilter,
-                onSelect = { selectedFilterKey = it.key }
-            )
-        }
-
-        if (uiState.errorMessage != null && uiState.tasks.isNotEmpty()) {
             item {
-                TasksStatePanel(
-                    title = "Sync needs attention",
-                    body = uiState.errorMessage.orEmpty()
+                TasksOverviewRow(
+                    taskCount = uiState.tasks.size,
+                    dueSoonCount = dueSoonCount,
+                    ritualCount = ritualCount,
+                    systemCount = systemCount
                 )
             }
-        }
 
-        when {
-            uiState.errorMessage != null && uiState.tasks.isEmpty() -> {
-                item {
-                    TasksStatePanel(
-                        title = "We couldn't load your tasks",
-                        body = uiState.errorMessage.orEmpty()
-                    )
-                }
+            item {
+                TaskFilterRow(
+                    selected = selectedFilter,
+                    onSelect = { selectedFilterKey = it.key }
+                )
             }
 
-            uiState.tasks.isEmpty() -> {
-                item {
-                    TasksStatePanel(
-                        title = "No tasks yet",
-                        body = "Use the floating prompt bar or the plus circle in the bottom bar to create your first task."
-                    )
+            when {
+                uiState.errorMessage != null && uiState.tasks.isEmpty() -> {
+                    item {
+                        TasksStatePanel(
+                            title = "Couldn’t load tasks",
+                            body = uiState.errorMessage.orEmpty()
+                        )
+                    }
                 }
-            }
 
-            visibleTasks.isEmpty() -> {
-                item {
-                    TasksStatePanel(
-                        title = "Nothing in ${selectedFilter.label.lowercase()}",
-                        body = "Try another filter or let the quick prompt create a fresh task for this board."
-                    )
+                uiState.tasks.isEmpty() -> {
+                    item {
+                        TasksStatePanel(
+                            title = "No tasks yet",
+                            body = "Use the quick prompt or the add circle below to make the first one."
+                        )
+                    }
                 }
-            }
 
-            else -> {
-                items(visibleTasks, key = { it.id }) { task ->
-                    TaskBoardCard(
-                        task = task,
-                        onClick = { onNavigateToTaskDetail(task.id) }
-                    )
+                visibleTasks.isEmpty() -> {
+                    item {
+                        TasksStatePanel(
+                            title = "No matches",
+                            body = "Try a different filter or create a fresh task from the prompt bar."
+                        )
+                    }
+                }
+
+                else -> {
+                    if (uiState.errorMessage != null) {
+                        item {
+                            TasksStatePanel(
+                                title = "Sync needs attention",
+                                body = uiState.errorMessage.orEmpty()
+                            )
+                        }
+                    }
+
+                    items(visibleTasks, key = { it.id }) { task ->
+                        CompactTaskBoardCard(
+                            task = task,
+                            onClick = { onNavigateToTaskDetail(task.id) }
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TasksHero(
+private fun TasksTopBar() {
+    val titleStyle = rememberTasksTitleStyle()
+
+    CenterAlignedTopAppBar(
+        title = {
+            Text(
+                text = "Tasks",
+                style = titleStyle,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+        },
+        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+            containerColor = MaterialTheme.colorScheme.background,
+            scrolledContainerColor = MaterialTheme.colorScheme.background
+        ),
+        windowInsets = TopAppBarDefaults.windowInsets
+    )
+}
+
+@OptIn(ExperimentalTextApi::class)
+@Composable
+private fun rememberTasksTitleStyle(): TextStyle {
+    return remember {
+        TextStyle(
+            fontFamily = FontFamily(
+                Font(
+                    resId = R.font.google_sans_flex_variable_local,
+                    weight = FontWeight(720),
+                    style = FontStyle.Normal,
+                    loadingStrategy = FontLoadingStrategy.Blocking,
+                    variationSettings = FontVariation.Settings(
+                        FontVariation.weight(688),
+                        FontVariation.width(134f),
+                        FontVariation.opticalSizing(32.sp),
+                        FontVariation.grade(26),
+                        FontVariation.Setting("ROND", 22f)
+                    )
+                )
+            ),
+            fontWeight = FontWeight(720),
+            fontSize = 32.sp,
+            lineHeight = 32.sp
+        )
+    }
+}
+
+@Composable
+private fun TasksOverviewRow(
     taskCount: Int,
     dueSoonCount: Int,
     ritualCount: Int,
     systemCount: Int
 ) {
-    Surface(
-        shape = RoundedCornerShape(34.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
-        shadowElevation = 6.dp
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(22.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            Text(
-                text = "TASK BOARD",
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.primary
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = "Everything you're running.",
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontSize = 31.sp,
-                        lineHeight = 35.sp,
-                        fontWeight = FontWeight.SemiBold
-                    ),
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    text = "This is your scan view: active work, near-term pressure, and the systems that keep moving. Creation now lives in the floating prompt below.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TasksMetricCard(
-                    label = "Active",
-                    value = taskCount.toString()
-                )
-                TasksMetricCard(
-                    label = "Due soon",
-                    value = dueSoonCount.toString()
-                )
-                TasksMetricCard(
-                    label = "Systems",
-                    value = maxOf(ritualCount, systemCount).toString()
-                )
-            }
-        }
+        CompactMetricPill(label = "Active", value = taskCount.toString())
+        CompactMetricPill(label = "Due", value = dueSoonCount.toString())
+        CompactMetricPill(label = "Rituals", value = ritualCount.toString())
+        CompactMetricPill(label = "Systems", value = systemCount.toString())
     }
 }
 
 @Composable
-private fun RowScope.TasksMetricCard(
+private fun CompactMetricPill(
     label: String,
     value: String
 ) {
     Surface(
-        modifier = Modifier.weight(1f),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.58f))
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = value,
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.SemiBold
-                ),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
@@ -267,16 +288,24 @@ private fun TaskFilterRow(
             val active = filter == selected
             Surface(
                 shape = CircleShape,
-                color = if (active) MaterialTheme.colorScheme.inverseSurface else MaterialTheme.colorScheme.surfaceContainer,
+                color = if (active) {
+                    MaterialTheme.colorScheme.inverseSurface
+                } else {
+                    MaterialTheme.colorScheme.surface
+                },
                 border = BorderStroke(
                     width = 1.dp,
-                    color = if (active) MaterialTheme.colorScheme.inverseSurface else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
+                    color = if (active) {
+                        MaterialTheme.colorScheme.inverseSurface
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
+                    }
                 ),
                 modifier = Modifier.clickable { onSelect(filter) }
             ) {
                 Text(
                     text = filter.label,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = if (active) {
                         MaterialTheme.colorScheme.inverseOnSurface
@@ -290,7 +319,7 @@ private fun TaskFilterRow(
 }
 
 @Composable
-private fun TaskBoardCard(
+private fun CompactTaskBoardCard(
     task: Task,
     onClick: () -> Unit
 ) {
@@ -302,94 +331,77 @@ private fun TaskBoardCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(32.dp),
+        shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-        shadowElevation = 5.dp
+        shadowElevation = 3.dp
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Top
             ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = task.title,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontSize = 21.sp,
+                            lineHeight = 25.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = task.summaryLine(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
                 Surface(
                     shape = CircleShape,
                     color = tone.container
                 ) {
                     Text(
                         text = task.type.label(),
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                         color = tone.content
                     )
                 }
-
-                nextReminder?.let { timestamp ->
-                    MetaPill(
-                        icon = {
-                            Icon(
-                                imageVector = Icons.Rounded.Schedule,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(15.dp)
-                            )
-                        },
-                        text = tasksRelativeReminder(timestamp)
-                    )
-                }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = task.title,
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontSize = 24.sp,
-                        lineHeight = 30.sp,
-                        fontWeight = FontWeight.SemiBold
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = task.summaryLine(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
 
             progress?.let {
-                TaskProgressTrack(progress = it)
+                CompactTaskProgress(progress = it)
             }
 
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                MetaPill(
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Rounded.TaskAlt,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(15.dp)
-                        )
-                    },
-                    text = "${task.components.size} modules"
+                nextReminder?.let { timestamp ->
+                    CompactMetaChip(
+                        icon = Icons.Rounded.Schedule,
+                        text = tasksRelativeReminder(timestamp)
+                    )
+                }
+                CompactMetaChip(
+                    icon = Icons.Rounded.TaskAlt,
+                    text = "${task.components.size}"
                 )
-                MetaPill(
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Rounded.AutoAwesome,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(15.dp)
-                        )
-                    },
+                CompactMetaChip(
+                    icon = Icons.Rounded.AutoAwesome,
                     text = task.updatedLabel()
                 )
             }
@@ -398,8 +410,8 @@ private fun TaskBoardCard(
 }
 
 @Composable
-private fun MetaPill(
-    icon: @Composable () -> Unit,
+private fun CompactMetaChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     text: String
 ) {
     Surface(
@@ -408,11 +420,16 @@ private fun MetaPill(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            icon()
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(14.dp)
+            )
             Text(
                 text = text,
                 style = MaterialTheme.typography.labelMedium,
@@ -423,10 +440,10 @@ private fun MetaPill(
 }
 
 @Composable
-private fun TaskProgressTrack(progress: Float) {
+private fun CompactTaskProgress(progress: Float) {
     val safeProgress = progress.coerceIn(0f, 1f)
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -446,7 +463,7 @@ private fun TaskProgressTrack(progress: Float) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(8.dp)
+                .height(7.dp)
                 .background(
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
                     shape = CircleShape
@@ -455,7 +472,7 @@ private fun TaskProgressTrack(progress: Float) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth(safeProgress)
-                    .height(8.dp)
+                    .height(7.dp)
                     .background(
                         color = MaterialTheme.colorScheme.primary,
                         shape = CircleShape
@@ -471,28 +488,22 @@ private fun TasksStatePanel(
     body: String
 ) {
     Surface(
-        shape = RoundedCornerShape(32.dp),
+        shape = RoundedCornerShape(26.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
     ) {
         Column(
-            modifier = Modifier.padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(
-                imageVector = Icons.Rounded.AutoAwesome,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(22.dp)
-            )
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
                 text = body,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -602,9 +613,9 @@ private fun Task.progressRatio(): Float? {
 private fun Task.updatedLabel(): String {
     val diffHours = ((System.currentTimeMillis() - updatedAt) / 3_600_000L).coerceAtLeast(0L)
     return when {
-        diffHours < 1L -> "updated now"
-        diffHours < 24L -> "updated ${diffHours}h ago"
-        else -> "updated ${diffHours / 24L}d ago"
+        diffHours < 1L -> "now"
+        diffHours < 24L -> "${diffHours}h"
+        else -> "${diffHours / 24L}d"
     }
 }
 

@@ -48,8 +48,8 @@ class CreateTaskViewModel @Inject constructor(
     val effects: SharedFlow<CreateTaskEffect> = _effects.asSharedFlow()
 
     init {
-        if (autoSubmit && initialMode == TaskCreationMode.PROMPT && initialInput.isNotBlank()) {
-            submitPrompt()
+        if (autoSubmit && initialInput.isNotBlank()) {
+            submit()
         }
     }
 
@@ -117,18 +117,25 @@ class CreateTaskViewModel @Inject constructor(
         if (uiState.value.isClassifying || uiState.value.isSaving) {
             return
         }
-        when (uiState.value.mode) {
-            TaskCreationMode.PROMPT -> submitPrompt()
-            TaskCreationMode.MANUAL -> submitManual()
+        if (uiState.value.input.isNotBlank()) {
+            submitPrompt()
+        } else {
+            submitManual()
         }
     }
 
     private fun submitPrompt() {
-        val input = uiState.value.input.trim()
+        val state = uiState.value
+        val input = state.input.trim()
         if (input.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Escribí una tarea antes de clasificar.") }
             return
         }
+        val manual = state.manual
+        val classifierInput = buildClassifierInput(
+            input = input,
+            manual = manual
+        )
 
         viewModelScope.launch {
             _uiState.update {
@@ -138,12 +145,17 @@ class CreateTaskViewModel @Inject constructor(
                 )
             }
 
-            runCatching { taskClassifier.classify(input) }
+            runCatching { taskClassifier.classify(classifierInput) }
                 .onSuccess { preview ->
+                    val mergedPreview = mergeManualSelections(
+                        preview = preview,
+                        manual = manual,
+                        rawInput = input
+                    )
                     _uiState.update {
                         it.copy(
                             isClassifying = false,
-                            preview = preview
+                            preview = mergedPreview
                         )
                     }
                 }
@@ -196,6 +208,82 @@ class CreateTaskViewModel @Inject constructor(
                 errorMessage = null
             )
         }
+    }
+
+    private fun buildClassifierInput(
+        input: String,
+        manual: ManualTaskDraft
+    ): String {
+        val hints = buildList {
+            manual.title.trim()
+                .takeIf { it.isNotBlank() }
+                ?.let { add("Preferred title: $it") }
+            if (manual.taskType != TaskType.GENERAL) {
+                add("Task type hint: ${manual.taskType.name.lowercase()}")
+            }
+            manual.selectedTemplateIds
+                .mapNotNull(TaskComponentCatalog::find)
+                .takeIf { it.isNotEmpty() }
+                ?.joinToString { "${it.title} (${it.variantLabel})" }
+                ?.let { add("Useful modules to include: $it") }
+        }
+
+        return if (hints.isEmpty()) {
+            input
+        } else {
+            buildString {
+                appendLine(input)
+                appendLine()
+                hints.forEach(::appendLine)
+            }.trim()
+        }
+    }
+
+    private fun mergeManualSelections(
+        preview: TaskDSLOutput,
+        manual: ManualTaskDraft,
+        rawInput: String
+    ): TaskDSLOutput {
+        val resolvedTitle = manual.title.trim().ifBlank { preview.title }
+        val resolvedType = if (manual.taskType != TaskType.GENERAL) {
+            manual.taskType
+        } else {
+            preview.type
+        }
+
+        if (manual.selectedTemplateIds.isEmpty()) {
+            return preview.copy(
+                title = resolvedTitle,
+                type = resolvedType
+            )
+        }
+
+        val now = System.currentTimeMillis()
+        val (manualComponents, manualReminders) = TaskComponentCatalog.buildSelection(
+            templateIds = manual.selectedTemplateIds,
+            now = now,
+            context = TaskComponentContext(
+                input = rawInput,
+                title = resolvedTitle,
+                taskType = resolvedType,
+                targetDateMs = preview.targetDateMs
+            )
+        )
+        val existingTypes = preview.components.map { it.type }.toSet()
+        val appendedComponents = manualComponents.filter { it.type !in existingTypes }
+        val mergedComponents = (preview.components + appendedComponents)
+            .mapIndexed { index, component ->
+                component.copy(sortOrder = index)
+            }
+        val mergedReminders = (preview.reminders + manualReminders)
+            .distinctBy { it.scheduledAtMs to it.intervalDays }
+
+        return preview.copy(
+            title = resolvedTitle,
+            type = resolvedType,
+            components = mergedComponents,
+            reminders = mergedReminders
+        )
     }
 
     fun dismissPreview() {

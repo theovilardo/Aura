@@ -1,7 +1,9 @@
 package com.theveloper.aura.ui.screen
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,30 +11,32 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -43,13 +47,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.theveloper.aura.domain.model.TaskType
 import com.theveloper.aura.engine.dsl.TaskComponentCatalog
@@ -63,7 +68,14 @@ fun CreateTaskScreen(
     viewModel: CreateTaskViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val selectedTemplates = remember(uiState.manual.selectedTemplateIds) {
+        uiState.manual.selectedTemplateIds.mapNotNull(TaskComponentCatalog::find)
+    }
+    val recommendedTemplates = remember(uiState.manual.taskType) {
+        TaskComponentCatalog.recommended(uiState.manual.taskType)
+    }
+    val canSubmit = uiState.input.isNotBlank() || uiState.manual.title.isNotBlank()
 
     LaunchedEffect(viewModel) {
         viewModel.effects.collectLatest { effect ->
@@ -79,16 +91,17 @@ fun CreateTaskScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             CreateTaskTopBar(
-                mode = uiState.mode,
                 onNavigateBack = onNavigateBack,
                 scrollBehavior = scrollBehavior
             )
         },
-        floatingActionButton = {
-            BuildTaskFab(
-                mode = uiState.mode,
+        bottomBar = {
+            CreateTaskPromptBar(
+                prompt = uiState.input,
+                canSubmit = canSubmit,
                 isBusy = uiState.isClassifying || uiState.isSaving,
-                onClick = viewModel::submit
+                onPromptChange = viewModel::updateInput,
+                onSubmit = viewModel::submit
             )
         }
     ) { paddingValues ->
@@ -96,53 +109,119 @@ fun CreateTaskScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(top = 6.dp, bottom = 128.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+                .padding(paddingValues),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = 12.dp,
+                end = 16.dp,
+                bottom = 24.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             item {
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    ModePill(
-                        label = "Prompt",
-                        selected = uiState.mode == TaskCreationMode.PROMPT,
-                        onClick = { viewModel.selectMode(TaskCreationMode.PROMPT) }
-                    )
-                    ModePill(
-                        label = "Manual",
-                        selected = uiState.mode == TaskCreationMode.MANUAL,
-                        onClick = { viewModel.selectMode(TaskCreationMode.MANUAL) }
+                CreateTaskLeadIn(
+                    taskType = uiState.manual.taskType,
+                    selectedCount = selectedTemplates.size
+                )
+            }
+
+            item {
+                BuilderSection(title = "Title") {
+                    OutlinedTextField(
+                        value = uiState.manual.title,
+                        onValueChange = viewModel::updateManualTitle,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Optional title override") },
+                        placeholder = { Text("Launch summer habit reset") },
+                        singleLine = true
                     )
                 }
             }
 
             item {
-                if (uiState.mode == TaskCreationMode.PROMPT) {
-                    PromptBuilder(
-                        input = uiState.input,
-                        isWorking = uiState.isClassifying,
-                        onValueChange = viewModel::updateInput
-                    )
-                } else {
-                    ManualBuilder(
-                        uiState = uiState,
-                        onTitleChange = viewModel::updateManualTitle,
-                        onTaskTypeSelected = viewModel::selectManualTaskType,
-                        onTemplateToggle = viewModel::toggleTemplate
-                    )
+                BuilderSection(title = "Type") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        TaskType.entries.forEach { taskType ->
+                            BuilderPill(
+                                label = taskType.name.lowercase().replaceFirstChar { it.titlecase() },
+                                selected = taskType == uiState.manual.taskType,
+                                onClick = { viewModel.selectManualTaskType(taskType) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                BuilderSection(
+                    title = "Modules",
+                    body = if (selectedTemplates.isEmpty()) {
+                        "Pick the structure you want the engine to respect."
+                    } else {
+                        "${selectedTemplates.size} selected"
+                    }
+                ) {
+                    if (selectedTemplates.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            selectedTemplates.forEach { template ->
+                                SelectedTemplatePill(template = template)
+                            }
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.padding(top = if (selectedTemplates.isEmpty()) 0.dp else 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        recommendedTemplates.chunked(2).forEach { rowTemplates ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                rowTemplates.forEach { template ->
+                                    ManualTemplateCard(
+                                        modifier = Modifier.weight(1f),
+                                        template = template,
+                                        selected = template.id in uiState.manual.selectedTemplateIds,
+                                        onToggle = { viewModel.toggleTemplate(template.id) }
+                                    )
+                                }
+                                if (rowTemplates.size == 1) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
             uiState.errorMessage?.let { errorMessage ->
                 item {
-                    Text(
-                        text = errorMessage,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        border = BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.error.copy(alpha = 0.28f)
+                        )
+                    ) {
+                        Text(
+                            text = errorMessage,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
                 }
             }
         }
@@ -163,35 +242,25 @@ fun CreateTaskScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CreateTaskTopBar(
-    mode: TaskCreationMode,
     onNavigateBack: () -> Unit,
     scrollBehavior: androidx.compose.material3.TopAppBarScrollBehavior
 ) {
-    val title = if (mode == TaskCreationMode.MANUAL) {
-        "Create task"
-    } else {
-        "Prompt task"
-    }
-
-    MediumTopAppBar(
+    CenterAlignedTopAppBar(
         title = {
             Text(
-                text = title,
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                text = "Create",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
             )
         },
         navigationIcon = {
             IconButton(onClick = onNavigateBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Volver"
+                    contentDescription = "Back"
                 )
             }
         },
-        colors = TopAppBarDefaults.mediumTopAppBarColors(
+        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
             containerColor = MaterialTheme.colorScheme.background,
             scrolledContainerColor = MaterialTheme.colorScheme.background
         ),
@@ -201,187 +270,147 @@ private fun CreateTaskTopBar(
 }
 
 @Composable
-private fun BuildTaskFab(
-    mode: TaskCreationMode,
-    isBusy: Boolean,
-    onClick: () -> Unit
-) {
-    ExtendedFloatingActionButton(
-        onClick = {
-            if (!isBusy) {
-                onClick()
-            }
-        },
-        containerColor = if (isBusy) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-        } else {
-            MaterialTheme.colorScheme.primary
-        },
-        contentColor = MaterialTheme.colorScheme.onPrimary,
-        shape = CircleShape,
-        icon = {
-            if (isBusy) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Default.AutoAwesome,
-                    contentDescription = null
-                )
-            }
-        },
-        text = {
-            Text(
-                if (mode == TaskCreationMode.PROMPT) {
-                    "Generate preview"
-                } else {
-                    "Build preview"
-                }
-            )
-        }
-    )
-}
-
-@Composable
-private fun ModePill(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
+private fun CreateTaskLeadIn(
+    taskType: TaskType,
+    selectedCount: Int
 ) {
     Surface(
-        shape = CircleShape,
-        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
-        modifier = Modifier.clickable(onClick = onClick)
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-            style = MaterialTheme.typography.titleMedium,
-            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun PromptBuilder(
-    input: String,
-    isWorking: Boolean,
-    onValueChange: (String) -> Unit
-) {
-    Card(
         shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedTextField(
-                value = input,
-                onValueChange = onValueChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp),
-                label = { Text("Describí tu tarea...") },
-                placeholder = { Text("Quiero viajar a Madrid en agosto y seguir precios de vuelos") },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                supportingText = {
-                    Text(
-                        if (isWorking) "Clasificando..." else "Prompt example: recordatorio para tomar agua cada 2 horas"
-                    )
-                },
-                maxLines = 10
-            )
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .padding(10.dp)
+                        .size(18.dp)
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    text = "Prompt below, shape the structure here.",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "${taskType.name.lowercase().replaceFirstChar { it.titlecase() }} · $selectedCount modules selected",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun ManualBuilder(
-    uiState: CreateTaskUiState,
-    onTitleChange: (String) -> Unit,
-    onTaskTypeSelected: (TaskType) -> Unit,
-    onTemplateToggle: (String) -> Unit
+private fun CreateTaskPromptBar(
+    prompt: String,
+    canSubmit: Boolean,
+    isBusy: Boolean,
+    onPromptChange: (String) -> Unit,
+    onSubmit: () -> Unit
 ) {
-    val recommendedTemplates = TaskComponentCatalog.recommended(uiState.manual.taskType)
-    val selectedTemplates = recommendedTemplates.filter { it.id in uiState.manual.selectedTemplateIds }
-
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(22.dp)
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
     ) {
-        ManualSection(
-            title = "Task title"
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Bottom
         ) {
-            OutlinedTextField(
-                value = uiState.manual.title,
-                onValueChange = onTitleChange,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Task title") },
-                placeholder = { Text("Plan workout for tomorrow") }
-            )
-        }
-
-        ManualSection(
-            title = "Task type"
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            Surface(
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(26.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
             ) {
-                TaskType.entries.forEach { taskType ->
-                    ModePill(
-                        label = taskType.name.lowercase().replaceFirstChar { it.titlecase() },
-                        selected = taskType == uiState.manual.taskType,
-                        onClick = { onTaskTypeSelected(taskType) }
-                    )
-                }
-            }
-        }
-
-        ManualSection(
-            title = "Modules",
-            body = if (selectedTemplates.isEmpty()) null else "${selectedTemplates.size} selected"
-        ) {
-            if (selectedTemplates.isNotEmpty()) {
-                Row(
+                BasicTextField(
+                    value = prompt,
+                    onValueChange = onPromptChange,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    selectedTemplates.forEach { template ->
-                        SelectedTemplatePill(template = template)
+                        .defaultMinSize(minHeight = 64.dp)
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(
+                        onSend = {
+                            if (canSubmit && !isBusy) {
+                                onSubmit()
+                            }
+                        }
+                    ),
+                    minLines = 1,
+                    maxLines = 5,
+                    decorationBox = { innerTextField ->
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (prompt.isBlank()) {
+                                Text(
+                                    text = "Describe the task or add more context...",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            innerTextField()
+                        }
                     }
-                }
-                Spacer(modifier = Modifier.height(12.dp))
+                )
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                recommendedTemplates.chunked(2).forEach { rowTemplates ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        rowTemplates.forEach { template ->
-                            ManualTemplateCard(
-                                modifier = Modifier.weight(1f),
-                                template = template,
-                                selected = template.id in uiState.manual.selectedTemplateIds,
-                                onToggle = { onTemplateToggle(template.id) }
-                            )
-                        }
-                        if (rowTemplates.size == 1) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
+            Surface(
+                modifier = Modifier.size(56.dp),
+                shape = CircleShape,
+                color = if (canSubmit) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerHighest
+                }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(enabled = canSubmit && !isBusy, onClick = onSubmit),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isBusy) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.Send,
+                            contentDescription = "Build task",
+                            tint = if (canSubmit) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
                     }
                 }
             }
@@ -390,7 +419,7 @@ private fun ManualBuilder(
 }
 
 @Composable
-private fun ManualSection(
+private fun BuilderSection(
     title: String,
     body: String? = null,
     content: @Composable () -> Unit
@@ -413,6 +442,42 @@ private fun ManualSection(
 }
 
 @Composable
+private fun BuilderPill(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = CircleShape,
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = BorderStroke(
+            1.dp,
+            if (selected) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
+            }
+        ),
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = if (selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        )
+    }
+}
+
+@Composable
 private fun SelectedTemplatePill(template: TaskComponentTemplate) {
     Surface(
         shape = CircleShape,
@@ -421,7 +486,7 @@ private fun SelectedTemplatePill(template: TaskComponentTemplate) {
         Text(
             text = "${template.title} · ${template.variantLabel}",
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.primary
         )
     }
@@ -441,58 +506,73 @@ private fun ManualTemplateCard(
             containerColor = if (selected) {
                 MaterialTheme.colorScheme.primaryContainer
             } else {
-                MaterialTheme.colorScheme.secondaryContainer
+                MaterialTheme.colorScheme.surface
             }
         ),
-        border = if (selected) {
-            androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
-        } else {
-            null
-        }
+        border = BorderStroke(
+            1.dp,
+            if (selected) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.58f)
+            }
+        )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Surface(
-                modifier = Modifier.size(44.dp),
-                shape = CircleShape,
-                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
+                Surface(
+                    modifier = Modifier.size(36.dp),
+                    shape = CircleShape,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerLow
+                    }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = if (selected) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = template.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = template.variantLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
                     )
                 }
             }
-            Text(
-                text = template.title,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Surface(
-                shape = CircleShape,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                } else {
-                    MaterialTheme.colorScheme.surface
-                }
-            ) {
-                Text(
-                    text = template.variantLabel,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+
             Text(
                 text = template.subtitle,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2
             )
         }
     }
