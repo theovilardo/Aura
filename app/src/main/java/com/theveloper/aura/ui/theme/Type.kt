@@ -1,34 +1,42 @@
 package com.theveloper.aura.ui.theme
 
 import androidx.compose.material3.Typography
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontLoadingStrategy
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.googlefonts.Font
-import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.theveloper.aura.R
 
-val provider = GoogleFont.Provider(
-    providerAuthority = "com.google.android.gms.fonts",
-    providerPackage = "com.google.android.gms",
-    certificates = R.array.com_google_android_gms_fonts_certs
-)
+private val AuraLocalFontResId = R.font.google_sans_flex_variable_local
 
-val GoogleSansFlexFont = GoogleFont("Google Sans Flex")
-val RobotoFlexFont = GoogleFont("Roboto Flex")
+@OptIn(ExperimentalTextApi::class)
+private fun auraLocalFont(
+    weight: FontWeight,
+    style: FontStyle = FontStyle.Normal
+): Font {
+    return Font(
+        resId = AuraLocalFontResId,
+        weight = weight,
+        style = style,
+        loadingStrategy = FontLoadingStrategy.Blocking,
+        variationSettings = FontVariation.Settings(
+            weight = weight,
+            style = style
+        )
+    )
+}
 
 val AuraFontFamily = FontFamily(
-    Font(googleFont = GoogleSansFlexFont, fontProvider = provider, weight = FontWeight.Normal),
-    Font(googleFont = GoogleSansFlexFont, fontProvider = provider, weight = FontWeight.Medium),
-    Font(googleFont = GoogleSansFlexFont, fontProvider = provider, weight = FontWeight.SemiBold),
-    Font(googleFont = GoogleSansFlexFont, fontProvider = provider, weight = FontWeight.Bold),
-    // Fallback if Google Sans Flex isn't available
-    Font(googleFont = RobotoFlexFont, fontProvider = provider, weight = FontWeight.Normal),
-    Font(googleFont = RobotoFlexFont, fontProvider = provider, weight = FontWeight.Medium),
-    Font(googleFont = RobotoFlexFont, fontProvider = provider, weight = FontWeight.SemiBold),
-    Font(googleFont = RobotoFlexFont, fontProvider = provider, weight = FontWeight.Bold)
+    auraLocalFont(FontWeight.Normal),
+    auraLocalFont(FontWeight.Medium),
+    auraLocalFont(FontWeight.SemiBold),
+    auraLocalFont(FontWeight.Bold)
 )
 
 private val BaseTypography = Typography()

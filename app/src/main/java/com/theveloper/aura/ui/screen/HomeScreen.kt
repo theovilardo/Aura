@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -41,19 +42,28 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.ExperimentalTextApi
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontLoadingStrategy
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.theveloper.aura.R
 import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskType
 import com.theveloper.aura.ui.components.DayRescueBottomSheet
@@ -90,22 +100,23 @@ fun HomeScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        floatingActionButton = {
-            if (LocalTime.now().hour >= 12 && uiState.tasks.isNotEmpty()) {
-                FloatingActionButton(
-                    onClick = {
-                        viewModel.runDayRescue()
-                        showDayRescue = true
-                    },
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Warning,
-                        contentDescription = "Day rescue"
-                    )
-                }
-            }
-        }
+//        floatingActionButton = {
+//            if (LocalTime.now().hour >= 12 && uiState.tasks.isNotEmpty()) {
+//                FloatingActionButton(
+//                    modifier = Modifier.padding(bottom = 160.dp),
+//                    onClick = {
+//                        viewModel.runDayRescue()
+//                        showDayRescue = true
+//                    },
+//                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
+//                ) {
+//                    Icon(
+//                        imageVector = Icons.Rounded.Warning,
+//                        contentDescription = "Day rescue"
+//                    )
+//                }
+//            }
+//        }
     ) { innerPadding ->
         if (uiState.isLoading) {
             Box(
@@ -131,14 +142,15 @@ fun HomeScreen(
                     .background(MaterialTheme.colorScheme.background),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(
-                    start = 20.dp,
-                    top = innerPadding.calculateTopPadding() + 108.dp,
-                    end = 20.dp,
+                    start = 0.dp,
+                    top = innerPadding.calculateTopPadding() + 80.dp,
+                    end = 0.dp,
                     bottom = innerPadding.calculateBottomPadding() + 216.dp
                 )
             ) {
                 item {
                     HomeHero(
+                        modifier = Modifier.padding(horizontal = 20.dp),
                         taskCount = uiState.tasks.size,
                         habitCount = habitCount,
                         signalCount = signalCount
@@ -176,6 +188,7 @@ fun HomeScreen(
 
                 item {
                     SectionLabel(
+                        modifier = Modifier.padding(start = 22.dp),
                         text = if (uiState.tasks.isEmpty()) "READY FOR YOU" else "YOUR TASKS",
                         actionLabel = if (uiState.tasks.size > 3) "Open board" else null,
                         onClick = if (uiState.tasks.size > 3) onNavigateToTasks else null
@@ -204,6 +217,7 @@ fun HomeScreen(
                     else -> {
                         items(uiState.tasks, key = { it.id }) { task ->
                             HomeTaskCard(
+                                modifier = Modifier.padding(horizontal = 20.dp),
                                 task = task,
                                 onClick = { onNavigateToTaskDetail(task.id) }
                             )
@@ -211,7 +225,6 @@ fun HomeScreen(
                     }
                 }
             }
-        
 
             HomeTopBar(
                 taskCount = uiState.tasks.size,
@@ -292,91 +305,73 @@ private fun HomeTopBar(
     modifier: Modifier = Modifier
 ) {
     val subtitle = when {
-        signalCount > 0 && habitCount > 0 -> "$signalCount signals ready · $habitCount habits active"
-        signalCount > 0 -> "$signalCount signals ready · $taskCount tasks live"
-        habitCount > 0 -> "$habitCount habits active · $taskCount tasks live"
-        else -> "$taskCount active tasks"
+        signalCount > 0 && habitCount > 0 -> "$signalCount now · $habitCount habits"
+        signalCount > 0 -> "$signalCount signals ready"
+        habitCount > 0 -> "$habitCount habits active"
+        else -> "$taskCount tasks live"
     }
+    val backgroundColor = MaterialTheme.colorScheme.background
+    val topBarBrush = remember(backgroundColor) {
+        Brush.verticalGradient(
+            colorStops = arrayOf(
+                0.0f to backgroundColor,
+                0.56f to backgroundColor,
+                0.78f to backgroundColor.copy(alpha = 0.92f),
+                0.9f to backgroundColor.copy(alpha = 0.54f),
+                1f to Color.Transparent
+            )
+        )
+    }
+    val auraWordmarkStyle = rememberAuraWordmarkStyle()
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.background.copy(alpha = 0.95f),
-                        MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
-                        Color.Transparent
-                    )
-                )
-            )
+            .background(topBarBrush)
+            .padding(bottom = 30.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .padding(horizontal = 24.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
+            Column(
                 modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.AutoAwesome,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .padding(10.dp)
-                            .size(18.dp)
-                    )
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = "Aura",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = (-0.5).sp
-                        ),
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                Text(
+                    text = "Aura",
+                    style = auraWordmarkStyle,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
             }
 
             Surface(
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
-                modifier = Modifier.clickable(onClick = onOpenBoard)
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable(onClick = onOpenBoard)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Board",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+//                    Text(
+//                        text = "Board",
+//                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+//                        color = MaterialTheme.colorScheme.onSurface
+//                    )
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(26.dp)
                     )
                 }
             }
@@ -384,8 +379,36 @@ private fun HomeTopBar(
     }
 }
 
+@OptIn(ExperimentalTextApi::class)
+@Composable
+private fun rememberAuraWordmarkStyle(): TextStyle {
+    return remember {
+        TextStyle(
+            fontFamily = FontFamily(
+                Font(
+                    resId = R.font.google_sans_flex_variable_local,
+                    weight = FontWeight(760),
+                    style = FontStyle.Normal,
+                    loadingStrategy = FontLoadingStrategy.Blocking,
+                    variationSettings = FontVariation.Settings(
+                        FontVariation.weight(636),
+                        FontVariation.width(152f),
+                        FontVariation.opticalSizing(30.sp),
+                        FontVariation.grade(40),
+                        FontVariation.Setting("ROND", 50f),
+                    )
+                )
+            ),
+            fontWeight = FontWeight(760),
+            fontSize = 30.sp,
+            lineHeight = 30.sp
+        )
+    }
+}
+
 @Composable
 private fun HomeHero(
+    modifier: Modifier = Modifier,
     taskCount: Int,
     habitCount: Int,
     signalCount: Int
@@ -397,6 +420,7 @@ private fun HomeHero(
     }
 
     Surface(
+        modifier = modifier,
         shape = RoundedCornerShape(34.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
@@ -409,7 +433,7 @@ private fun HomeHero(
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     text = greeting,
-                    style = MaterialTheme.typography.headlineMedium.copy(
+                    style = MaterialTheme.typography.headlineSmall.copy(
                         fontSize = 30.sp,
                         lineHeight = 34.sp,
                         fontWeight = FontWeight.SemiBold
@@ -418,7 +442,7 @@ private fun HomeHero(
                 )
                 Text(
                     text = "Habits, rescue signals and your next tasks should stay visible at a glance.",
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -481,51 +505,55 @@ private fun QuickCategories(
         QuickCategory("Daily", Icons.Rounded.CalendarMonth)
     )
 
-    Row(
+    LazyRow(
         modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(horizontal = 20.dp)
     ) {
         categories.forEach { category ->
             val isSelected = category.label == selected
-            Surface(
-                shape = RoundedCornerShape(22.dp),
-                color = if (isSelected) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surface
-                },
-                border = BorderStroke(
-                    width = 1.dp,
+            item {
+                Surface(
+                    shape = CircleShape,
                     color = if (isSelected) {
                         MaterialTheme.colorScheme.primaryContainer
                     } else {
-                        MaterialTheme.colorScheme.outlineVariant
-                    }
-                ),
-                modifier = Modifier.clickable { onSelect(category.label) }
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = category.icon,
-                        contentDescription = null,
-                        tint = if (isSelected) {
-                            MaterialTheme.colorScheme.primary
+                        MaterialTheme.colorScheme.surface
+                    },
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primaryContainer
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = category.label,
-                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                            MaterialTheme.colorScheme.outlineVariant
+                        }
+                    ),
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { onSelect(category.label) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = category.icon,
+                            contentDescription = null,
+                            tint = if (isSelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = category.label,
+                            style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
         }
@@ -534,12 +562,13 @@ private fun QuickCategories(
 
 @Composable
 private fun SectionLabel(
+    modifier: Modifier = Modifier,
     text: String,
     actionLabel: String?,
     onClick: (() -> Unit)?
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -593,13 +622,14 @@ private fun HomeInfoCard(
 
 @Composable
 private fun HomeTaskCard(
+    modifier: Modifier = Modifier,
     task: Task,
     onClick: () -> Unit
 ) {
     val icon = task.icon()
 
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(28.dp),
