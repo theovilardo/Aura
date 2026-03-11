@@ -23,42 +23,38 @@ data class AuraFloatingBarColors(
     val assistantIcon: Color
 )
 
-private val LightAuraFloatingBarColors = AuraFloatingBarColors(
-    container = Color(0xFF2D2B2D),
-    outline = Color(0xFF232224),
-    activeOutline = Color(0xFF4A494C),
-    mutedCircle = Color(0xB08E8E8F),
-    selectedCircle = Color(0xFFF0EFF0),
-    accentCircle = Color(0xFFE67938),
-    promptText = Color(0xFFF3F3F3),
-    placeholder = Color(0xFFC9C7C8),
-    mutedIcon = Color(0xFFE6F0F7),
-    selectedIcon = Color(0xFF232224),
-    accentIcon = Color(0xFF6F2E0F),
-    assistantIcon = Color(0xFFCAC8CB)
-)
-
-private val DarkAuraFloatingBarColors = AuraFloatingBarColors(
-    container = Color(0xFF242224),
-    outline = Color(0xFF181719),
-    activeOutline = Color(0xFF5A565A),
-    mutedCircle = Color(0xB07F7E82),
-    selectedCircle = Color(0xFFEFEAEC),
-    accentCircle = Color(0xFFE08A52),
-    promptText = Color(0xFFF4F0F1),
-    placeholder = Color(0xFFC6C0C2),
-    mutedIcon = Color(0xFFE4ECF5),
-    selectedIcon = Color(0xFF201D1F),
-    accentIcon = Color(0xFF5E250A),
-    assistantIcon = Color(0xFFD6CFD3)
-)
-
 @Composable
 @ReadOnlyComposable
 fun auraFloatingBarColors(): AuraFloatingBarColors {
     return if (MaterialTheme.colorScheme.background.luminance() < 0.5f) {
-        DarkAuraFloatingBarColors
+        AuraFloatingBarColors(
+            container = AuraDarkSurfaceContainerHigh,
+            outline = AuraDarkOutlineVariant,
+            activeOutline = AuraDarkPrimary.copy(alpha = 0.78f),
+            mutedCircle = AuraDarkSurfaceBright,
+            selectedCircle = AuraDarkInverseSurface,
+            accentCircle = AuraDarkFloatingAccent,
+            promptText = AuraDarkOnSurface,
+            placeholder = AuraDarkOnSurfaceVariant,
+            mutedIcon = AuraDarkOnSurfaceVariant.copy(alpha = 0.9f),
+            selectedIcon = AuraDarkInverseOnSurface,
+            accentIcon = AuraDarkOnFloatingAccent,
+            assistantIcon = AuraDarkOnSurfaceVariant
+        )
     } else {
-        LightAuraFloatingBarColors
+        AuraFloatingBarColors(
+            container = AuraLightSurfaceContainerHigh,
+            outline = AuraLightOutline,
+            activeOutline = AuraLightPrimary.copy(alpha = 0.72f),
+            mutedCircle = AuraLightSurfaceDim,
+            selectedCircle = AuraLightSurfaceBright,
+            accentCircle = AuraLightFloatingAccent,
+            promptText = AuraLightOnSurface,
+            placeholder = AuraLightOnSurfaceVariant,
+            mutedIcon = AuraLightOnSurfaceVariant.copy(alpha = 0.92f),
+            selectedIcon = AuraLightOnSurface,
+            accentIcon = AuraLightOnFloatingAccent,
+            assistantIcon = AuraLightOnSurfaceVariant
+        )
     }
 }

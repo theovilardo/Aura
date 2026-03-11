@@ -92,9 +92,6 @@ fun HomeScreen(
         ) {
             Spacer(modifier = Modifier.height(18.dp))
             SimpleTopBar()
-            Spacer(modifier = Modifier.height(22.dp))
-            HeroBlock()
-            Spacer(modifier = Modifier.height(20.dp))
             QuickCategories(
                 selected = selectedCategory,
                 onSelect = { selectedCategory = it }
@@ -131,22 +128,6 @@ fun HomeScreen(
             }
             Spacer(modifier = Modifier.height(12.dp))
         }
-
-//        PromptComposer(
-//            prompt = promptDraft,
-//            onPromptChange = { promptDraft = it },
-//            onManualCreate = onNavigateToManualCreate,
-//            onPromptSubmit = {
-//                val value = promptDraft.trim()
-//                if (value.isNotEmpty()) {
-//                    onNavigateToPromptCreate(value)
-//                    promptDraft = ""
-//                }
-//            },
-//            modifier = Modifier
-//                .align(Alignment.BottomCenter)
-//                .padding(horizontal = 20.dp, vertical = 96.dp)
-//        )
     }
 }
 

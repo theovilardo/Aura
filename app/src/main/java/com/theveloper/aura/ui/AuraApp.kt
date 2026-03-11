@@ -2,6 +2,7 @@ package com.theveloper.aura.ui
 
 import android.net.Uri
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
@@ -10,7 +11,6 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -215,19 +214,10 @@ fun AuraBottomBar(
 
     Column(
         modifier = Modifier
-            .background(
-                shape = RoundedCornerShape(
-                    topStart = 44.dp,
-                    topEnd = 44.dp,
-                    bottomEnd = 0.dp,
-                    bottomStart = 0.dp
-                ),
-                color = colors.mutedCircle.copy(alpha = 0.25f)
-            )
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 10.dp, vertical = 0.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+            .padding(horizontal = 12.dp, vertical = 0.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         QuickPromptBar(
             prompt = quickPrompt,
@@ -241,7 +231,6 @@ fun AuraBottomBar(
             shape = CircleShape,
             color = colors.container,
             border = BorderStroke(width = 2.dp, color = colors.outline),
-            shadowElevation = 14.dp
         ) {
             Row(
                 modifier = Modifier
@@ -294,7 +283,7 @@ private fun RowScope.AuraBottomBarItem(
             selected -> colors.selectedCircle
             else -> colors.mutedCircle
         },
-        animationSpec = tween(durationMillis = 420),
+        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
         label = "bottomBarContainer"
     )
     val contentColor by animateColorAsState(
@@ -303,7 +292,7 @@ private fun RowScope.AuraBottomBarItem(
             selected -> colors.selectedIcon
             else -> colors.mutedIcon
         },
-        animationSpec = tween(durationMillis = 220),
+        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
         label = "bottomBarIcon"
     )
     val shadowElevation by animateDpAsState(
@@ -335,12 +324,25 @@ private fun RowScope.AuraBottomBarItem(
                     view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                     scope.launch {
                         pulseScale.stop()
-                        pulseScale.snapTo(0.86f)
+                        pulseScale.animateTo(
+                            targetValue = 0.92f,
+                            animationSpec = tween(
+                                durationMillis = 72,
+                                easing = FastOutSlowInEasing
+                            )
+                        )
+                        pulseScale.animateTo(
+                            targetValue = 1.035f,
+                            animationSpec = spring(
+                                dampingRatio = 0.58f,
+                                stiffness = Spring.StiffnessLow
+                            )
+                        )
                         pulseScale.animateTo(
                             targetValue = 1f,
                             animationSpec = spring(
-                                dampingRatio = 0.38f,
-                                stiffness = Spring.StiffnessMedium
+                                dampingRatio = 0.82f,
+                                stiffness = Spring.StiffnessLow
                             )
                         )
                     }
@@ -348,7 +350,6 @@ private fun RowScope.AuraBottomBarItem(
                 },
             shape = CircleShape,
             color = containerColor,
-            shadowElevation = shadowElevation
         ) {
             Box(
                 modifier = Modifier.fillMaxWidth(),
@@ -380,11 +381,6 @@ private fun QuickPromptBar(
         animationSpec = tween(durationMillis = 180),
         label = "quickPromptOutline"
     )
-    val shadowElevation by animateDpAsState(
-        targetValue = if (isFocused || sendEnabled) 16.dp else 10.dp,
-        animationSpec = tween(durationMillis = 180),
-        label = "quickPromptShadow"
-    )
     val sendScale by animateFloatAsState(
         targetValue = if (sendEnabled) 1f else 0.9f,
         animationSpec = spring(
@@ -397,7 +393,7 @@ private fun QuickPromptBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 10.dp)
+            .padding(top = 6.dp)
             .padding(horizontal = 0.dp, vertical = 0.dp)
     ) {
         Surface(
@@ -412,27 +408,26 @@ private fun QuickPromptBar(
             shape = CircleShape,
             color = colors.container,
             border = BorderStroke(width = 2.dp, color = outlineColor),
-            //shadowElevation = shadowElevation
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .defaultMinSize(minHeight = 76.dp)
-                    .padding(start = 14.dp, top = 12.dp, end = 10.dp, bottom = 12.dp),
+                    .defaultMinSize(minHeight = 68.dp)
+                    .padding(start = 14.dp, top = 9.dp, end = 10.dp, bottom = 9.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
-                    modifier = Modifier.size(42.dp),
+                    modifier = Modifier.size(38.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.AutoAwesome,
                         contentDescription = "AI prompt",
                         tint = colors.assistantIcon,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
                 BasicTextField(
                     value = prompt,
                     onValueChange = onPromptChange,
@@ -487,7 +482,7 @@ private fun QuickPromptBar(
                     IconButton(
                         onClick = {
                             if (sendEnabled) {
-                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             }
                             onSubmit()
                         },
