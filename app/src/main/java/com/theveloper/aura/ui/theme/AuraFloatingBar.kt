@@ -20,7 +20,7 @@ data class AuraFloatingBarColors(
     val mutedIcon: Color,
     val selectedIcon: Color,
     val accentIcon: Color,
-    val diamond: Color
+    val assistantIcon: Color
 )
 
 private val LightAuraFloatingBarColors = AuraFloatingBarColors(
@@ -35,7 +35,7 @@ private val LightAuraFloatingBarColors = AuraFloatingBarColors(
     mutedIcon = Color(0xFFE6F0F7),
     selectedIcon = Color(0xFF232224),
     accentIcon = Color(0xFF6F2E0F),
-    diamond = Color(0xFF686769)
+    assistantIcon = Color(0xFFCAC8CB)
 )
 
 private val DarkAuraFloatingBarColors = AuraFloatingBarColors(
@@ -50,7 +50,7 @@ private val DarkAuraFloatingBarColors = AuraFloatingBarColors(
     mutedIcon = Color(0xFFE4ECF5),
     selectedIcon = Color(0xFF201D1F),
     accentIcon = Color(0xFF5E250A),
-    diamond = Color(0xFF6E6A6E)
+    assistantIcon = Color(0xFFD6CFD3)
 )
 
 @Composable

@@ -1,8 +1,10 @@
 package com.theveloper.aura.ui
 
 import android.net.Uri
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -10,8 +12,10 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,7 +24,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -32,6 +35,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.TaskAlt
@@ -45,6 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -54,6 +59,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -72,6 +78,7 @@ import com.theveloper.aura.ui.screen.TaskDetailScreen
 import com.theveloper.aura.ui.screen.TasksScreen
 import com.theveloper.aura.ui.theme.AuraFloatingBarColors
 import com.theveloper.aura.ui.theme.auraFloatingBarColors
+import kotlinx.coroutines.launch
 
 private const val HOME_ROUTE = "home"
 private const val TASKS_ROUTE = "tasks"
@@ -139,9 +146,6 @@ fun AuraApp() {
                 TasksScreen(
                     onNavigateToTaskDetail = { taskId ->
                         navController.navigate("task_detail/$taskId")
-                    },
-                    onNavigateToCreateTask = { mode ->
-                        navController.navigate(buildCreateTaskRoute(mode = mode))
                     }
                 )
             }
@@ -212,7 +216,7 @@ fun AuraBottomBar(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 18.dp),
+            .padding(horizontal = 20.dp, vertical = 0.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         QuickPromptBar(
@@ -270,6 +274,10 @@ private fun RowScope.AuraBottomBarItem(
     onClick: () -> Unit,
     colors: AuraFloatingBarColors
 ) {
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
+    val interactionSource = remember { MutableInteractionSource() }
+    val pulseScale = remember { Animatable(1f) }
     val containerColor by animateColorAsState(
         targetValue = when {
             item.accent -> colors.accentCircle
@@ -288,22 +296,6 @@ private fun RowScope.AuraBottomBarItem(
         animationSpec = tween(durationMillis = 220),
         label = "bottomBarIcon"
     )
-    val scale by animateFloatAsState(
-        targetValue = if (selected || item.accent) 1f else 0.93f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMediumLow
-        ),
-        label = "bottomBarScale"
-    )
-    val verticalOffset by animateDpAsState(
-        targetValue = if (selected) (-4).dp else 0.dp,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "bottomBarOffset"
-    )
     val shadowElevation by animateDpAsState(
         targetValue = when {
             selected -> 10.dp
@@ -320,13 +312,30 @@ private fun RowScope.AuraBottomBarItem(
     ) {
         Surface(
             modifier = Modifier
-                .size(72.dp)
-                .offset(y = verticalOffset)
+                .fillMaxWidth()
+                .aspectRatio(1f)
                 .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
+                    scaleX = pulseScale.value
+                    scaleY = pulseScale.value
                 }
-                .clickable(onClick = onClick),
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null
+                ) {
+                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    scope.launch {
+                        pulseScale.stop()
+                        pulseScale.snapTo(0.86f)
+                        pulseScale.animateTo(
+                            targetValue = 1f,
+                            animationSpec = spring(
+                                dampingRatio = 0.38f,
+                                stiffness = Spring.StiffnessMedium
+                            )
+                        )
+                    }
+                    onClick()
+                },
             shape = CircleShape,
             color = containerColor,
             shadowElevation = shadowElevation
@@ -339,7 +348,7 @@ private fun RowScope.AuraBottomBarItem(
                     imageVector = item.icon,
                     contentDescription = item.label,
                     tint = contentColor,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(30.dp)
                 )
             }
         }
@@ -355,6 +364,7 @@ private fun QuickPromptBar(
 ) {
     val sendEnabled = prompt.trim().isNotEmpty()
     var isFocused by remember { mutableStateOf(false) }
+    val view = LocalView.current
     val outlineColor by animateColorAsState(
         targetValue = if (isFocused) colors.activeOutline else colors.outline,
         animationSpec = tween(durationMillis = 180),
@@ -374,102 +384,112 @@ private fun QuickPromptBar(
         label = "quickPromptSendScale"
     )
 
-    Surface(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .animateContentSize(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            ),
-        shape = CircleShape,
-        color = colors.container,
-        border = BorderStroke(width = 2.dp, color = outlineColor),
-        shadowElevation = shadowElevation
+            .padding(horizontal = 2.dp, vertical = 6.dp)
     ) {
-        Row(
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .defaultMinSize(minHeight = 76.dp)
-                .padding(start = 16.dp, top = 12.dp, end = 10.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .animateContentSize(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                ),
+            shape = CircleShape,
+            color = colors.container,
+            border = BorderStroke(width = 2.dp, color = outlineColor),
+            shadowElevation = shadowElevation
         ) {
-            Box(
-                modifier = Modifier.size(42.dp),
-                contentAlignment = Alignment.Center
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 76.dp)
+                    .padding(start = 14.dp, top = 12.dp, end = 10.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .graphicsLayer(rotationZ = 45f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(colors.diamond)
-                )
-            }
-            Spacer(modifier = Modifier.width(14.dp))
-            BasicTextField(
-                value = prompt,
-                onValueChange = onPromptChange,
-                modifier = Modifier
-                    .weight(1f)
-                    .onFocusChanged { isFocused = it.isFocused },
-                textStyle = MaterialTheme.typography.titleLarge.copy(
-                    color = colors.promptText,
-                    fontWeight = FontWeight.SemiBold
-                ),
-                cursorBrush = SolidColor(colors.promptText),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(
-                    onSend = {
-                        if (sendEnabled) {
-                            onSubmit()
-                        }
-                    }
-                ),
-                minLines = 1,
-                maxLines = 4,
-                decorationBox = { innerTextField ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        if (prompt.isBlank()) {
-                            Text(
-                                text = "Create task...",
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    color = colors.placeholder,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            )
-                        }
-                        innerTextField()
-                    }
-                }
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .graphicsLayer {
-                        scaleX = sendScale
-                        scaleY = sendScale
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                IconButton(
-                    onClick = onSubmit,
-                    enabled = sendEnabled,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(42.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.Send,
-                        contentDescription = "Create task",
-                        tint = if (sendEnabled) colors.promptText else colors.placeholder.copy(alpha = 0.42f),
-                        modifier = Modifier.size(32.dp)
+                        imageVector = Icons.Rounded.AutoAwesome,
+                        contentDescription = "AI prompt",
+                        tint = colors.assistantIcon,
+                        modifier = Modifier.size(22.dp)
                     )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                BasicTextField(
+                    value = prompt,
+                    onValueChange = onPromptChange,
+                    modifier = Modifier
+                        .weight(1f)
+                        .onFocusChanged { isFocused = it.isFocused },
+                    textStyle = MaterialTheme.typography.titleLarge.copy(
+                        color = colors.promptText,
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    cursorBrush = SolidColor(colors.promptText),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(
+                        onSend = {
+                            if (sendEnabled) {
+                                onSubmit()
+                            }
+                        }
+                    ),
+                    minLines = 1,
+                    maxLines = 4,
+                    decorationBox = { innerTextField ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (prompt.isBlank()) {
+                                Text(
+                                    text = "Create task...",
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        color = colors.placeholder,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                )
+                            }
+                            innerTextField()
+                        }
+                    }
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .graphicsLayer {
+                            scaleX = sendScale
+                            scaleY = sendScale
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    IconButton(
+                        onClick = {
+                            if (sendEnabled) {
+                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            }
+                            onSubmit()
+                        },
+                        enabled = sendEnabled,
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.Send,
+                            contentDescription = "Create task",
+                            tint = if (sendEnabled) colors.promptText else colors.placeholder.copy(alpha = 0.42f),
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
                 }
             }
         }
