@@ -39,7 +39,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.TaskAlt
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -108,29 +108,11 @@ fun AuraApp() {
                 HomeScreen(
                     onNavigateToTaskDetail = { taskId ->
                         navController.navigate("task_detail/$taskId")
-                    },
-                    onNavigateToTasks = {
-                        navController.navigate(TASKS_ROUTE)
-                    },
-                    onNavigateToPromptCreate = { input ->
-                        navController.navigate(
-                            buildCreateTaskRoute(
-                                mode = TaskCreationMode.PROMPT,
-                                input = input
-                            )
-                        )
-                    },
-                    onNavigateToManualCreate = {
-                        navController.navigate(buildCreateTaskRoute(mode = TaskCreationMode.MANUAL))
                     }
                 )
             }
             composable(TASKS_ROUTE) {
-                TasksScreen(
-                    onNavigateToTaskDetail = { taskId ->
-                        navController.navigate("task_detail/$taskId")
-                    }
-                )
+                TasksScreen()
             }
             composable(TASK_DETAIL_ROUTE) { backStackEntry ->
                 val taskId = backStackEntry.arguments?.getString("taskId") ?: ""
@@ -211,7 +193,7 @@ fun AuraBottomBar(
 
     val items = listOf(
         BottomBarItem(key = HOME_ROUTE, label = "Home", icon = Icons.Rounded.Home),
-        BottomBarItem(key = TASKS_ROUTE, label = "Tasks", icon = Icons.Rounded.TaskAlt),
+        BottomBarItem(key = TASKS_ROUTE, label = "Habits", icon = Icons.Rounded.Repeat),
         BottomBarItem(key = SETTINGS_ROUTE, label = "Settings", icon = Icons.Rounded.Settings),
         BottomBarItem(key = "create", label = "Create", icon = Icons.Rounded.Add, accent = true)
     )

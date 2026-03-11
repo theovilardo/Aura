@@ -8,7 +8,9 @@ import com.theveloper.aura.domain.model.Suggestion
 import com.theveloper.aura.domain.repository.SuggestionRepository
 import com.theveloper.aura.domain.repository.TaskRepository
 import com.theveloper.aura.domain.usecase.ApplySuggestionUseCase
+import com.theveloper.aura.domain.usecase.DeleteTaskUseCase
 import com.theveloper.aura.domain.usecase.RemoveLegacySampleTasksUseCase
+import com.theveloper.aura.domain.usecase.UpdateTaskStatusUseCase
 import com.theveloper.aura.engine.suggestion.DayRescueEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -27,7 +29,9 @@ class HomeViewModel @Inject constructor(
     private val suggestionRepository: SuggestionRepository,
     private val applySuggestionUseCase: ApplySuggestionUseCase,
     private val dayRescueEngine: DayRescueEngine,
-    private val removeLegacySampleTasksUseCase: RemoveLegacySampleTasksUseCase
+    private val removeLegacySampleTasksUseCase: RemoveLegacySampleTasksUseCase,
+    private val updateTaskStatusUseCase: UpdateTaskStatusUseCase,
+    private val deleteTaskUseCase: DeleteTaskUseCase
 ) : ViewModel() {
 
     private val errorMessage = MutableStateFlow<String?>(null)
@@ -69,6 +73,30 @@ class HomeViewModel @Inject constructor(
     fun runDayRescue() {
         viewModelScope.launch {
             dayRescueEngine.runDayRescue()
+        }
+    }
+
+    fun completeTask(taskId: String) {
+        viewModelScope.launch {
+            runCatching {
+                updateTaskStatusUseCase(taskId, TaskStatus.COMPLETED)
+            }
+        }
+    }
+
+    fun reopenTask(taskId: String) {
+        viewModelScope.launch {
+            runCatching {
+                updateTaskStatusUseCase(taskId, TaskStatus.ACTIVE)
+            }
+        }
+    }
+
+    fun deleteTask(taskId: String) {
+        viewModelScope.launch {
+            runCatching {
+                deleteTaskUseCase(taskId)
+            }
         }
     }
 

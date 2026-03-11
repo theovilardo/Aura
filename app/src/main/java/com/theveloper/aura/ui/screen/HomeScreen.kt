@@ -9,35 +9,32 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.CalendarMonth
-import androidx.compose.material.icons.rounded.FitnessCenter
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.TaskAlt
-import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -50,7 +47,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -64,60 +60,59 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.theveloper.aura.R
+import com.theveloper.aura.domain.model.ComponentType
+import com.theveloper.aura.domain.model.ProgressBarConfig
 import com.theveloper.aura.domain.model.Task
+import com.theveloper.aura.domain.model.TaskStatus
 import com.theveloper.aura.domain.model.TaskType
-import com.theveloper.aura.ui.components.DayRescueBottomSheet
-import com.theveloper.aura.ui.components.SuggestionCard
-import java.time.LocalDate
-import java.time.LocalTime
+import kotlin.math.roundToInt
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     onNavigateToTaskDetail: (String) -> Unit,
-    onNavigateToTasks: () -> Unit,
-    onNavigateToPromptCreate: (String) -> Unit,
-    onNavigateToManualCreate: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var selectedCategory by rememberSaveable { mutableStateOf("Insights") }
-    var showDayRescue by remember { mutableStateOf(false) }
-    val habitCount = remember(uiState.tasks) { uiState.tasks.count { it.type == TaskType.HABIT } }
-    val signalCount = remember(uiState.suggestions) { uiState.suggestions.size }
+    var selectedFilterKey by rememberSaveable { mutableStateOf(TaskFilter.ALL.key) }
+    var pendingDeleteTask by remember { mutableStateOf<Task?>(null) }
+    val selectedFilter = remember(selectedFilterKey) { TaskFilter.fromKey(selectedFilterKey) }
+    val sortedTasks = remember(uiState.tasks) { uiState.tasks.sortedWith(taskBoardComparator()) }
+    val visibleTasks = remember(sortedTasks, selectedFilter) { selectedFilter.apply(sortedTasks) }
+    val activeCount = remember(uiState.tasks) { uiState.tasks.count { it.status == TaskStatus.ACTIVE } }
+    val completedCount = remember(uiState.tasks) { uiState.tasks.count { it.status == TaskStatus.COMPLETED } }
+    val dueSoonCount = remember(uiState.tasks) {
+        uiState.tasks.count { it.status == TaskStatus.ACTIVE && it.isDueSoon() }
+    }
+    val ritualCount = remember(uiState.tasks) {
+        uiState.tasks.count {
+            it.status == TaskStatus.ACTIVE && (it.type == TaskType.HABIT || it.type == TaskType.HEALTH)
+        }
+    }
+    val systemCount = remember(uiState.tasks) {
+        uiState.tasks.count {
+            it.status == TaskStatus.ACTIVE &&
+                (it.type == TaskType.PROJECT || it.type == TaskType.FINANCE || it.type == TaskType.TRAVEL)
+        }
+    }
 
-    if (showDayRescue) {
-        DayRescueBottomSheet(
-            tasks = uiState.tasks,
-            suggestions = uiState.suggestions.filter { it.type.name == "RESCHEDULE_REMINDER" },
-            onApply = { selected ->
-                selected.forEach { viewModel.applySuggestion(it) }
-                showDayRescue = false
+    pendingDeleteTask?.let { task ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteTask = null },
+            title = { Text("Eliminar tarea") },
+            text = { Text("Se va a eliminar \"${task.title}\" de forma permanente.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteTask(task.id)
+                    pendingDeleteTask = null
+                }) { Text("Eliminar") }
             },
-            onDismiss = { showDayRescue = false }
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteTask = null }) { Text("Cancelar") }
+            }
         )
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-//        floatingActionButton = {
-//            if (LocalTime.now().hour >= 12 && uiState.tasks.isNotEmpty()) {
-//                FloatingActionButton(
-//                    modifier = Modifier.padding(bottom = 160.dp),
-//                    onClick = {
-//                        viewModel.runDayRescue()
-//                        showDayRescue = true
-//                    },
-//                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
-//                ) {
-//                    Icon(
-//                        imageVector = Icons.Rounded.Warning,
-//                        contentDescription = "Day rescue"
-//                    )
-//                }
-//            }
-//        }
-    ) { innerPadding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { innerPadding ->
         if (uiState.isLoading) {
             Box(
                 modifier = Modifier
@@ -131,185 +126,75 @@ fun HomeScreen(
             return@Scaffold
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.background),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(
-                    start = 0.dp,
+                    start = 16.dp,
                     top = innerPadding.calculateTopPadding() + 80.dp,
-                    end = 0.dp,
+                    end = 16.dp,
                     bottom = innerPadding.calculateBottomPadding() + 216.dp
                 )
             ) {
                 item {
-                    HomeHero(
-                        modifier = Modifier.padding(horizontal = 20.dp),
-                        taskCount = uiState.tasks.size,
-                        habitCount = habitCount,
-                        signalCount = signalCount
+                    TasksOverviewRow(
+                        activeCount = activeCount,
+                        completedCount = completedCount,
+                        dueSoonCount = dueSoonCount,
+                        ritualCount = ritualCount,
+                        systemCount = systemCount
                     )
                 }
 
                 item {
-                    HabitTrackerOverview(uiState.tasks)
-                }
-
-                item {
-                    QuickCategories(
-                        selected = selectedCategory,
-                        onSelect = { selectedCategory = it }
-                    )
-                }
-
-                if (uiState.suggestions.isNotEmpty()) {
-                    item {
-                        SectionLabel(
-                            text = "NOW",
-                            actionLabel = null,
-                            onClick = null
-                        )
-                    }
-
-                    items(uiState.suggestions, key = { it.id }) { suggestion ->
-                        SuggestionCard(
-                            suggestion = suggestion,
-                            onApprove = { viewModel.applySuggestion(it) },
-                            onReject = { viewModel.rejectSuggestion(it) }
-                        )
-                    }
-                }
-
-                item {
-                    SectionLabel(
-                        modifier = Modifier.padding(start = 22.dp),
-                        text = if (uiState.tasks.isEmpty()) "READY FOR YOU" else "YOUR TASKS",
-                        actionLabel = if (uiState.tasks.size > 3) "Open board" else null,
-                        onClick = if (uiState.tasks.size > 3) onNavigateToTasks else null
+                    TaskFilterRow(
+                        selected = selectedFilter,
+                        onSelect = { selectedFilterKey = it.key }
                     )
                 }
 
                 when {
-                    uiState.errorMessage != null && uiState.tasks.isEmpty() -> {
-                        item {
-                            HomeInfoCard(
-                                title = "Something went wrong",
-                                body = uiState.errorMessage.orEmpty()
-                            )
-                        }
+                    uiState.errorMessage != null && uiState.tasks.isEmpty() -> item {
+                        TasksStatePanel("Couldn't load tasks", uiState.errorMessage.orEmpty())
                     }
-
-                    uiState.tasks.isEmpty() -> {
-                        item {
-                            HomeInfoCard(
-                                title = "No tasks yet",
-                                body = "Use the floating prompt bar below to create one instantly, or tap the plus circle to build it manually."
-                            )
-                        }
+                    uiState.tasks.isEmpty() -> item {
+                        TasksStatePanel(
+                            "No tasks yet",
+                            "Use the quick prompt or the add circle below to make the first one."
+                        )
                     }
-
+                    visibleTasks.isEmpty() -> item {
+                        TasksStatePanel("No matches", "Try a different filter or create a fresh task.")
+                    }
                     else -> {
-                        items(uiState.tasks, key = { it.id }) { task ->
-                            HomeTaskCard(
-                                modifier = Modifier.padding(horizontal = 20.dp),
+                        if (uiState.errorMessage != null) {
+                            item { TasksStatePanel("Sync needs attention", uiState.errorMessage.orEmpty()) }
+                        }
+                        items(visibleTasks, key = { it.id }) { task ->
+                            CompactTaskBoardCard(
                                 task = task,
-                                onClick = { onNavigateToTaskDetail(task.id) }
+                                onClick = { onNavigateToTaskDetail(task.id) },
+                                onCompleteClick = { viewModel.completeTask(task.id) },
+                                onReopenClick = { viewModel.reopenTask(task.id) },
+                                onDeleteClick = { pendingDeleteTask = task }
                             )
                         }
                     }
                 }
             }
 
-            HomeTopBar(
-                taskCount = uiState.tasks.size,
-                habitCount = habitCount,
-                signalCount = signalCount,
-                onOpenBoard = onNavigateToTasks,
-                modifier = Modifier.align(Alignment.TopCenter)
-            )
+            HomeTopBar(modifier = Modifier.align(Alignment.TopCenter))
         }
     }
 }
 
-@Composable
-private fun HabitTrackerOverview(tasks: List<Task>) {
-    val habitTasks = tasks.filter { it.type == TaskType.HABIT }
-    if (habitTasks.isEmpty()) return
-    val currentWeekdayIndex = LocalDate.now().dayOfWeek.ordinal
-
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SectionLabel(text = "HABIT TRACKER", actionLabel = null, onClick = null)
-        
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val days = listOf("M", "T", "W", "T", "F", "S", "S")
-                days.forEachIndexed { index, day ->
-                    val isActive = index == currentWeekdayIndex
-                    val hasCompleted = index < currentWeekdayIndex
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = if (hasCompleted) MaterialTheme.colorScheme.primaryContainer else if (isActive) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
-                            border = BorderStroke(1.dp, if (isActive) MaterialTheme.colorScheme.primary else Color.Transparent)
-                        ) {
-                            Box(modifier = Modifier.size(32.dp), contentAlignment = Alignment.Center) {
-                                if (hasCompleted) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.TaskAlt,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                } else {
-                                    Text(
-                                        text = day,
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = if (isActive) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+// ── Top Bar ──────────────────────────────────────────────────────────────────
 
 @Composable
-private fun HomeTopBar(
-    taskCount: Int,
-    habitCount: Int,
-    signalCount: Int,
-    onOpenBoard: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val subtitle = when {
-        signalCount > 0 && habitCount > 0 -> "$signalCount now · $habitCount habits"
-        signalCount > 0 -> "$signalCount signals ready"
-        habitCount > 0 -> "$habitCount habits active"
-        else -> "$taskCount tasks live"
-    }
+private fun HomeTopBar(modifier: Modifier = Modifier) {
     val backgroundColor = MaterialTheme.colorScheme.background
     val topBarBrush = remember(backgroundColor) {
         Brush.verticalGradient(
@@ -335,46 +220,13 @@ private fun HomeTopBar(
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(horizontal = 24.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    text = "Aura",
-                    style = auraWordmarkStyle,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-            }
-
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .clickable(onClick = onOpenBoard)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-//                    Text(
-//                        text = "Board",
-//                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-//                        color = MaterialTheme.colorScheme.onSurface
-//                    )
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
-            }
+            Text(
+                text = "Aura",
+                style = auraWordmarkStyle,
+                color = MaterialTheme.colorScheme.onBackground
+            )
         }
     }
 }
@@ -395,7 +247,7 @@ private fun rememberAuraWordmarkStyle(): TextStyle {
                         FontVariation.width(152f),
                         FontVariation.opticalSizing(30.sp),
                         FontVariation.grade(40),
-                        FontVariation.Setting("ROND", 50f),
+                        FontVariation.Setting("ROND", 50f)
                     )
                 )
             ),
@@ -406,83 +258,45 @@ private fun rememberAuraWordmarkStyle(): TextStyle {
     }
 }
 
+// ── Task Board Components ─────────────────────────────────────────────────────
+
 @Composable
-private fun HomeHero(
-    modifier: Modifier = Modifier,
-    taskCount: Int,
-    habitCount: Int,
-    signalCount: Int
+private fun TasksOverviewRow(
+    activeCount: Int,
+    completedCount: Int,
+    dueSoonCount: Int,
+    ritualCount: Int,
+    systemCount: Int
 ) {
-    val greeting = when (LocalTime.now().hour) {
-        in 5..11 -> "Good morning."
-        in 12..18 -> "Good afternoon."
-        else -> "Good evening."
-    }
-
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(34.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
-        shadowElevation = 6.dp
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(22.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = greeting,
-                    style = MaterialTheme.typography.headlineSmall.copy(
-                        fontSize = 30.sp,
-                        lineHeight = 34.sp,
-                        fontWeight = FontWeight.SemiBold
-                    ),
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    text = "Habits, rescue signals and your next tasks should stay visible at a glance.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                HomeHeroMetric(
-                    label = "Tasks",
-                    value = taskCount.toString()
-                )
-                HomeHeroMetric(
-                    label = "Habits",
-                    value = habitCount.toString()
-                )
-                HomeHeroMetric(
-                    label = "Now",
-                    value = signalCount.toString()
-                )
-            }
-        }
+        CompactMetricPill(label = "Active", value = activeCount.toString())
+        CompactMetricPill(label = "Done", value = completedCount.toString())
+        CompactMetricPill(label = "Due", value = dueSoonCount.toString())
+        CompactMetricPill(label = "Rituals", value = ritualCount.toString())
+        CompactMetricPill(label = "Systems", value = systemCount.toString())
     }
 }
 
 @Composable
-private fun RowScope.HomeHeroMetric(
-    label: String,
-    value: String
-) {
+private fun CompactMetricPill(label: String, value: String) {
     Surface(
-        modifier = Modifier.weight(1f),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.58f))
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = value,
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
@@ -495,247 +309,311 @@ private fun RowScope.HomeHeroMetric(
 }
 
 @Composable
-private fun QuickCategories(
-    selected: String,
-    onSelect: (String) -> Unit
-) {
-    val categories = listOf(
-        QuickCategory("Insights", Icons.Rounded.AutoAwesome),
-        QuickCategory("Focus", Icons.Rounded.FitnessCenter),
-        QuickCategory("Daily", Icons.Rounded.CalendarMonth)
-    )
-
-    LazyRow(
+private fun TaskFilterRow(selected: TaskFilter, onSelect: (TaskFilter) -> Unit) {
+    Row(
         modifier = Modifier
-            .fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(horizontal = 20.dp)
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        categories.forEach { category ->
-            val isSelected = category.label == selected
-            item {
-                Surface(
-                    shape = CircleShape,
-                    color = if (isSelected) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surface
-                    },
-                    border = BorderStroke(
-                        width = 1.dp,
-                        color = if (isSelected) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.outlineVariant
-                        }
-                    ),
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .clickable { onSelect(category.label) }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = category.icon,
-                            contentDescription = null,
-                            tint = if (isSelected) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = category.label,
-                            style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
+        TaskFilter.entries.forEach { filter ->
+            val active = filter == selected
+            Surface(
+                shape = CircleShape,
+                color = if (active) MaterialTheme.colorScheme.inverseSurface
+                        else MaterialTheme.colorScheme.surface,
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = if (active) MaterialTheme.colorScheme.inverseSurface
+                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
+                ),
+                modifier = Modifier.clickable { onSelect(filter) }
+            ) {
+                Text(
+                    text = filter.label,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (active) MaterialTheme.colorScheme.inverseOnSurface
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SectionLabel(
-    modifier: Modifier = Modifier,
-    text: String,
-    actionLabel: String?,
-    onClick: (() -> Unit)?
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium.copy(
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp
-            ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-//        if (actionLabel != null && onClick != null) {
-//            Text(
-//                text = actionLabel,
-//                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-//                color = MaterialTheme.colorScheme.primary,
-//                modifier = Modifier.clickable(onClick = onClick)
-//            )
-//        }
-    }
-}
-
-@Composable
-private fun HomeInfoCard(
-    title: String,
-    body: String
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
-    ) {
-        Column(
-            modifier = Modifier.padding(22.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-private fun HomeTaskCard(
-    modifier: Modifier = Modifier,
+internal fun CompactTaskBoardCard(
     task: Task,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onCompleteClick: () -> Unit,
+    onReopenClick: () -> Unit,
+    onDeleteClick: () -> Unit
 ) {
-    val icon = task.icon()
+    val tone = taskTone(task.type)
+    val nextReminder = task.reminders.minByOrNull { it.scheduledAt }?.scheduledAt
+    val progress = task.progressRatio()
 
     Surface(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.58f)),
-        shadowElevation = 4.dp
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+        shadowElevation = 3.dp
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
-                Row(
+                Column(
                     modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceContainerLow
-                    ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            tint = if (task.type == TaskType.TRAVEL || task.type == TaskType.HEALTH) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                            modifier = Modifier
-                                .padding(10.dp)
-                                .size(18.dp)
-                        )
-                    }
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = task.title,
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                    Text(
+                        text = task.title,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontSize = 21.sp,
+                            lineHeight = 25.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = task.boardSummaryLine(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TaskStatusChip(status = task.status)
+                    Surface(shape = CircleShape, color = tone.container) {
                         Text(
                             text = task.type.label(),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = tone.content
                         )
                     }
                 }
-
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
-                )
             }
 
-            Text(
-                text = task.summaryLine(),
-                style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 22.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            progress?.let { CompactTaskProgress(it) }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                nextReminder?.let { timestamp ->
+                    CompactMetaChip(icon = Icons.Rounded.Schedule, text = tasksRelativeReminder(timestamp))
+                }
+                CompactMetaChip(icon = Icons.Rounded.TaskAlt, text = "${task.components.size}")
+                CompactMetaChip(icon = Icons.Rounded.AutoAwesome, text = task.updatedLabel())
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (task.status == TaskStatus.ACTIVE) {
+                    FilledTonalButton(onClick = onCompleteClick, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Rounded.TaskAlt, null, modifier = Modifier.size(18.dp))
+                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(8.dp))
+                        Text("Marcar completa")
+                    }
+                } else {
+                    OutlinedButton(onClick = onReopenClick, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Rounded.AutoAwesome, null, modifier = Modifier.size(18.dp))
+                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(8.dp))
+                        Text("Reabrir")
+                    }
+                }
+                OutlinedButton(onClick = onDeleteClick, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Rounded.DeleteOutline, null, modifier = Modifier.size(18.dp))
+                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(8.dp))
+                    Text("Eliminar")
+                }
+            }
         }
     }
 }
 
-private data class QuickCategory(
-    val label: String,
-    val icon: ImageVector
+@Composable
+private fun TaskStatusChip(status: TaskStatus) {
+    val scheme = MaterialTheme.colorScheme
+    val (container, content, label) = when (status) {
+        TaskStatus.ACTIVE -> Triple(scheme.primaryContainer, scheme.onPrimaryContainer, "Activa")
+        TaskStatus.COMPLETED -> Triple(scheme.tertiaryContainer, scheme.onTertiaryContainer, "Completada")
+        TaskStatus.ARCHIVED -> Triple(scheme.surfaceContainerHighest, scheme.onSurfaceVariant, "Archivada")
+    }
+    Surface(shape = CircleShape, color = container) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = content
+        )
+    }
+}
+
+@Composable
+internal fun CompactMetaChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String
+) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+            Text(text = text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun CompactTaskProgress(progress: Float) {
+    val safe = progress.coerceIn(0f, 1f)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Momentum", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${(safe * 100f).roundToInt()}%", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+        }
+        Box(modifier = Modifier.fillMaxWidth().height(7.dp).background(MaterialTheme.colorScheme.surfaceContainerHighest, CircleShape)) {
+            Box(modifier = Modifier.fillMaxWidth(safe).height(7.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
+        }
+    }
+}
+
+@Composable
+internal fun TasksStatePanel(title: String, body: String) {
+    Surface(
+        shape = RoundedCornerShape(26.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onSurface)
+            Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+// ── Shared Task Utilities ─────────────────────────────────────────────────────
+
+internal data class TaskTone(val container: Color, val content: Color)
+
+@Composable
+internal fun taskTone(type: TaskType): TaskTone {
+    val s = MaterialTheme.colorScheme
+    return when (type) {
+        TaskType.GENERAL -> TaskTone(s.secondaryContainer, s.onSecondaryContainer)
+        TaskType.TRAVEL -> TaskTone(s.tertiaryContainer, s.onTertiaryContainer)
+        TaskType.HABIT -> TaskTone(s.primaryContainer, s.onPrimaryContainer)
+        TaskType.HEALTH -> TaskTone(s.errorContainer, s.onErrorContainer)
+        TaskType.PROJECT -> TaskTone(s.surfaceContainerHighest, s.onSurface)
+        TaskType.FINANCE -> TaskTone(s.inverseSurface, s.inverseOnSurface)
+    }
+}
+
+internal fun TaskType.label(): String = when (this) {
+    TaskType.GENERAL -> "General"
+    TaskType.TRAVEL -> "Travel"
+    TaskType.HABIT -> "Habit"
+    TaskType.HEALTH -> "Health"
+    TaskType.PROJECT -> "Project"
+    TaskType.FINANCE -> "Finance"
+}
+
+internal enum class TaskFilter(val key: String, val label: String) {
+    ALL("all", "All"),
+    ACTIVE("active", "Active"),
+    COMPLETED("completed", "Done"),
+    DUE_SOON("due_soon", "Due soon"),
+    RITUALS("rituals", "Rituals"),
+    SYSTEMS("systems", "Systems");
+
+    fun apply(tasks: List<Task>): List<Task> = when (this) {
+        ALL -> tasks
+        ACTIVE -> tasks.filter { it.status == TaskStatus.ACTIVE }
+        COMPLETED -> tasks.filter { it.status == TaskStatus.COMPLETED }
+        DUE_SOON -> tasks.filter { it.status == TaskStatus.ACTIVE && it.isDueSoon() }
+        RITUALS -> tasks.filter { it.status == TaskStatus.ACTIVE && (it.type == TaskType.HABIT || it.type == TaskType.HEALTH) }
+        SYSTEMS -> tasks.filter { it.status == TaskStatus.ACTIVE && (it.type == TaskType.PROJECT || it.type == TaskType.FINANCE || it.type == TaskType.TRAVEL) }
+    }
+
+    companion object {
+        fun fromKey(key: String): TaskFilter = entries.firstOrNull { it.key == key } ?: ALL
+    }
+}
+
+internal fun taskBoardComparator(): Comparator<Task> = compareBy(
+    { !it.isDueSoon() },
+    { it.nextTouchpoint() ?: Long.MAX_VALUE },
+    { -it.updatedAt }
 )
 
-private fun Task.icon(): ImageVector {
-    return when (type) {
-        TaskType.TRAVEL -> Icons.Rounded.CalendarMonth
-        TaskType.HEALTH -> Icons.Rounded.FitnessCenter
-        TaskType.PROJECT -> Icons.Rounded.TaskAlt
-        else -> Icons.Rounded.AutoAwesome
-    }
+internal fun Task.isDueSoon(): Boolean {
+    val now = System.currentTimeMillis()
+    val threshold = now + 36L * 60L * 60L * 1000L
+    return reminders.any { it.scheduledAt in now..threshold } ||
+        (targetDate != null && targetDate in now..threshold)
 }
 
-private fun TaskType.label(): String {
-    return when (this) {
-        TaskType.GENERAL -> "General"
-        TaskType.TRAVEL -> "Travel"
-        TaskType.HABIT -> "Habit"
-        TaskType.HEALTH -> "Health"
-        TaskType.PROJECT -> "Project"
-        TaskType.FINANCE -> "Finance"
-    }
+internal fun Task.nextTouchpoint(): Long? = listOfNotNull(
+    reminders.minByOrNull { it.scheduledAt }?.scheduledAt, targetDate
+).minOrNull()
+
+internal fun Task.progressRatio(): Float? {
+    components.firstOrNull { it.type == ComponentType.PROGRESS_BAR }?.config
+        ?.let { return (it as? ProgressBarConfig)?.manualProgress?.coerceIn(0f, 1f) }
+    val checklist = components.firstOrNull { it.type == ComponentType.CHECKLIST }
+    val total = checklist?.checklistItems?.size ?: 0
+    if (total > 0) return (checklist?.checklistItems?.count { it.isCompleted } ?: 0).toFloat() / total
+    return null
 }
 
-private fun Task.summaryLine(): String {
-    return when (type) {
-        TaskType.TRAVEL -> "Countdown and checklist are ready for your next travel step."
-        TaskType.HABIT -> "Keep the routine moving with a quick check-in."
-        TaskType.PROJECT -> "Track progress and turn notes into next actions."
-        TaskType.HEALTH -> "Review your health metrics and update the task."
-        TaskType.FINANCE -> "Open the feed and inspect the latest signal."
-        TaskType.GENERAL -> "Open the task and continue building it from your prompt."
+internal fun Task.updatedLabel(): String {
+    val h = ((System.currentTimeMillis() - updatedAt) / 3_600_000L).coerceAtLeast(0L)
+    return when { h < 1L -> "now"; h < 24L -> "${h}h"; else -> "${h / 24L}d" }
+}
+
+internal fun tasksRelativeReminder(timestamp: Long): String {
+    val m = ((timestamp - System.currentTimeMillis()) / 60_000L).coerceAtLeast(0L)
+    return when { m < 60L -> "in ${m}m"; m < 1_440L -> "in ${m / 60L}h"; else -> "in ${m / 1_440L}d" }
+}
+
+private fun Task.boardSummaryLine(): String = when (type) {
+    TaskType.TRAVEL -> {
+        val cl = components.firstOrNull { it.type == ComponentType.CHECKLIST }
+        "Countdown in play. Checklist at ${cl?.checklistItems?.count { it.isCompleted } ?: 0}/${cl?.checklistItems?.size ?: 0}."
     }
+    TaskType.HABIT -> "Recurring rhythm with an active reminder cadence."
+    TaskType.PROJECT -> {
+        val p = components.firstOrNull { it.type == ComponentType.PROGRESS_BAR }?.config as? ProgressBarConfig
+        "Manual progress at ${(((p?.manualProgress ?: 0f) * 100f).toInt())}%."
+    }
+    TaskType.HEALTH -> "Metrics and habits bundled into one health loop."
+    TaskType.FINANCE -> "External data watchlist ready for quick checks."
+    TaskType.GENERAL -> "Flexible task with notes, reminders and structure."
 }

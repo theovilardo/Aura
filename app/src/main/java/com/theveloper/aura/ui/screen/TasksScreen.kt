@@ -2,27 +2,31 @@ package com.theveloper.aura.ui.screen
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.Schedule
-import androidx.compose.material.icons.rounded.TaskAlt
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,12 +39,12 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -49,41 +53,28 @@ import androidx.compose.ui.text.font.FontLoadingStrategy
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.theveloper.aura.R
-import com.theveloper.aura.domain.model.ComponentType
-import com.theveloper.aura.domain.model.ProgressBarConfig
-import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskType
+import java.time.LocalDate
+import java.time.format.TextStyle as JavaDateTextStyle
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TasksScreen(
-    onNavigateToTaskDetail: (String) -> Unit,
-    viewModel: HomeViewModel = hiltViewModel()
+    viewModel: HabitTrackerViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var selectedFilterKey by rememberSaveable { mutableStateOf(TaskFilter.ALL.key) }
-    val selectedFilter = remember(selectedFilterKey) { TaskFilter.fromKey(selectedFilterKey) }
-    val sortedTasks = remember(uiState.tasks) { uiState.tasks.sortedWith(taskBoardComparator()) }
-    val visibleTasks = remember(sortedTasks, selectedFilter) { selectedFilter.apply(sortedTasks) }
-    val dueSoonCount = remember(uiState.tasks) { uiState.tasks.count { it.isDueSoon() } }
-    val ritualCount = remember(uiState.tasks) {
-        uiState.tasks.count { it.type == TaskType.HABIT || it.type == TaskType.HEALTH }
-    }
-    val systemCount = remember(uiState.tasks) {
-        uiState.tasks.count {
-            it.type == TaskType.PROJECT || it.type == TaskType.FINANCE || it.type == TaskType.TRAVEL
-        }
-    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = { TasksTopBar() }
+        topBar = { HabitTrackerTopBar() }
     ) { innerPadding ->
         if (uiState.isLoading) {
             Box(
@@ -102,89 +93,48 @@ fun TasksScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(
                 start = 16.dp,
-                top = innerPadding.calculateTopPadding() + 10.dp,
+                top = innerPadding.calculateTopPadding() + 12.dp,
                 end = 16.dp,
                 bottom = innerPadding.calculateBottomPadding() + 216.dp
             )
         ) {
             item {
-                TasksOverviewRow(
-                    taskCount = uiState.tasks.size,
-                    dueSoonCount = dueSoonCount,
-                    ritualCount = ritualCount,
-                    systemCount = systemCount
+                DateProgressHeader(
+                    today = uiState.today,
+                    doneToday = uiState.doneToday,
+                    totalActive = uiState.totalActive
                 )
             }
 
-            item {
-                TaskFilterRow(
-                    selected = selectedFilter,
-                    onSelect = { selectedFilterKey = it.key }
-                )
-            }
-
-            when {
-                uiState.errorMessage != null && uiState.tasks.isEmpty() -> {
-                    item {
-                        TasksStatePanel(
-                            title = "Couldn’t load tasks",
-                            body = uiState.errorMessage.orEmpty()
-                        )
-                    }
+            if (uiState.habitItems.isNotEmpty()) {
+                item {
+                    HabitStreakSection(habits = uiState.habitItems)
                 }
-
-                uiState.tasks.isEmpty() -> {
-                    item {
-                        TasksStatePanel(
-                            title = "No tasks yet",
-                            body = "Use the quick prompt or the add circle below to make the first one."
-                        )
-                    }
+                items(uiState.habitItems, key = { it.taskId }) { habit ->
+                    HabitCard(habit = habit, today = uiState.today)
                 }
-
-                visibleTasks.isEmpty() -> {
-                    item {
-                        TasksStatePanel(
-                            title = "No matches",
-                            body = "Try a different filter or create a fresh task from the prompt bar."
-                        )
-                    }
-                }
-
-                else -> {
-                    if (uiState.errorMessage != null) {
-                        item {
-                            TasksStatePanel(
-                                title = "Sync needs attention",
-                                body = uiState.errorMessage.orEmpty()
-                            )
-                        }
-                    }
-
-                    items(visibleTasks, key = { it.id }) { task ->
-                        CompactTaskBoardCard(
-                            task = task,
-                            onClick = { onNavigateToTaskDetail(task.id) }
-                        )
-                    }
+            } else {
+                item {
+                    HabitEmptyState()
                 }
             }
         }
     }
 }
 
+// ─── Top bar ─────────────────────────────────────────────────────────────────
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TasksTopBar() {
-    val titleStyle = rememberTasksTitleStyle()
-
+private fun HabitTrackerTopBar() {
+    val titleStyle = rememberHabitTrackerTitleStyle()
     CenterAlignedTopAppBar(
         title = {
             Text(
-                text = "Tasks",
+                text = "Habits",
                 style = titleStyle,
                 color = MaterialTheme.colorScheme.onBackground
             )
@@ -199,7 +149,7 @@ private fun TasksTopBar() {
 
 @OptIn(ExperimentalTextApi::class)
 @Composable
-private fun rememberTasksTitleStyle(): TextStyle {
+private fun rememberHabitTrackerTitleStyle(): TextStyle {
     return remember {
         TextStyle(
             fontFamily = FontFamily(
@@ -224,436 +174,481 @@ private fun rememberTasksTitleStyle(): TextStyle {
     }
 }
 
-@Composable
-private fun TasksOverviewRow(
-    taskCount: Int,
-    dueSoonCount: Int,
-    ritualCount: Int,
-    systemCount: Int
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        CompactMetricPill(label = "Active", value = taskCount.toString())
-        CompactMetricPill(label = "Due", value = dueSoonCount.toString())
-        CompactMetricPill(label = "Rituals", value = ritualCount.toString())
-        CompactMetricPill(label = "Systems", value = systemCount.toString())
-    }
-}
+// ─── Date + progress header ──────────────────────────────────────────────────
 
 @Composable
-private fun CompactMetricPill(
-    label: String,
-    value: String
+private fun DateProgressHeader(
+    today: LocalDate,
+    doneToday: Int,
+    totalActive: Int
 ) {
+    val dayName = remember(today) {
+        today.dayOfWeek.getDisplayName(JavaDateTextStyle.FULL, Locale.ENGLISH)
+    }
+    val monthDay = remember(today) {
+        val month = today.month.getDisplayName(JavaDateTextStyle.FULL, Locale.ENGLISH)
+        "$month ${today.dayOfMonth}"
+    }
+    val year = remember(today) { today.year.toString() }
+    val progressRatio = if (totalActive > 0) doneToday.toFloat() / totalActive.toFloat() else 0f
+
     Surface(
-        shape = RoundedCornerShape(22.dp),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.58f))
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = label,
+                text = dayName.uppercase(),
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
             )
-        }
-    }
-}
-
-@Composable
-private fun TaskFilterRow(
-    selected: TaskFilter,
-    onSelect: (TaskFilter) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        TaskFilter.entries.forEach { filter ->
-            val active = filter == selected
-            Surface(
-                shape = CircleShape,
-                color = if (active) {
-                    MaterialTheme.colorScheme.inverseSurface
-                } else {
-                    MaterialTheme.colorScheme.surface
-                },
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = if (active) {
-                        MaterialTheme.colorScheme.inverseSurface
-                    } else {
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
-                    }
-                ),
-                modifier = Modifier.clickable { onSelect(filter) }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Bottom
             ) {
                 Text(
-                    text = filter.label,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = if (active) {
-                        MaterialTheme.colorScheme.inverseOnSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
+                    text = monthDay,
+                    style = MaterialTheme.typography.displaySmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 36.sp,
+                        lineHeight = 36.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = year,
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        fontWeight = FontWeight.Light,
+                        fontSize = 20.sp,
+                        lineHeight = 20.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 3.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "$doneToday / $totalActive done today",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "${(progressRatio * 100f).roundToInt()}%",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progressRatio.coerceIn(0f, 1f))
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.primary, CircleShape)
                 )
             }
         }
     }
 }
 
+// ─── Active streaks row ──────────────────────────────────────────────────────
+
 @Composable
-private fun CompactTaskBoardCard(
-    task: Task,
-    onClick: () -> Unit
-) {
-    val tone = taskTone(task.type)
-    val nextReminder = task.reminders.minByOrNull { it.scheduledAt }?.scheduledAt
-    val progress = task.progressRatio()
+private fun HabitStreakSection(habits: List<HabitItemUiState>) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = "ACTIVE STREAKS",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.sp
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(habits, key = { it.taskId }) { habit ->
+                ActiveStreakBadge(habit = habit)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActiveStreakBadge(habit: HabitItemUiState) {
+    val accentColor = habitAccentColor(habit.type)
 
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-        shadowElevation = 3.dp
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (habit.completedToday) {
+                accentColor.copy(alpha = 0.5f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+            }
+        )
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier
+                .width(118.dp)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = accentColor.copy(alpha = 0.14f),
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = habitTypeIcon(habit.type),
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+                if (habit.completedToday) {
+                    Icon(
+                        imageVector = Icons.Rounded.CheckCircle,
+                        contentDescription = "Done today",
+                        tint = accentColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Rounded.RadioButtonUnchecked,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outlineVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+            Text(
+                text = habit.title,
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.LocalFireDepartment,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(12.dp)
+                )
+                Text(
+                    text = "${habit.streakDays}d",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = accentColor
+                )
+            }
+        }
+    }
+}
+
+// ─── Per-habit card ──────────────────────────────────────────────────────────
+
+@Composable
+private fun HabitCard(habit: HabitItemUiState, today: LocalDate) {
+    val accentColor = habitAccentColor(habit.type)
+    val weekData = remember(habit.completionGrid30d) { habit.completionGrid30d.takeLast(7) }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+        shadowElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Title + streak badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = task.title,
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontSize = 21.sp,
-                            lineHeight = 25.sp,
-                            fontWeight = FontWeight.SemiBold
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = task.summaryLine(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
+                Text(
+                    text = habit.title,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 10.dp),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 18.sp,
+                        lineHeight = 22.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Surface(
-                    shape = CircleShape,
-                    color = tone.container
+                    shape = RoundedCornerShape(12.dp),
+                    color = accentColor.copy(alpha = 0.13f)
                 ) {
-                    Text(
-                        text = task.type.label(),
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = tone.content
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.LocalFireDepartment,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = "${habit.streakDays}",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = accentColor
+                        )
+                    }
                 }
             }
 
-            progress?.let {
-                CompactTaskProgress(progress = it)
-            }
+            // 30-day completion grid
+            HabitCompletionGrid(
+                grid30d = habit.completionGrid30d,
+                today = today,
+                accentColor = accentColor
+            )
 
+            // Stats + sparkline
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.Bottom
             ) {
-                nextReminder?.let { timestamp ->
-                    CompactMetaChip(
-                        icon = Icons.Rounded.Schedule,
-                        text = tasksRelativeReminder(timestamp)
-                    )
+                Column(
+                    modifier = Modifier.width(84.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    HabitStatChip(label = "7 DAYS", value = habit.completionRate7d)
+                    HabitStatChip(label = "30 DAYS", value = habit.completionRate30d)
                 }
-                CompactMetaChip(
-                    icon = Icons.Rounded.TaskAlt,
-                    text = "${task.components.size}"
-                )
-                CompactMetaChip(
-                    icon = Icons.Rounded.AutoAwesome,
-                    text = task.updatedLabel()
+                WeekSparkline(
+                    weekData = weekData,
+                    accentColor = accentColor,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
                 )
             }
         }
     }
 }
 
+// ─── 30-day completion grid ───────────────────────────────────────────────────
+
 @Composable
-private fun CompactMetaChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    text: String
+private fun HabitCompletionGrid(
+    grid30d: List<Boolean>,
+    today: LocalDate,
+    accentColor: Color,
+    modifier: Modifier = Modifier
 ) {
-    Surface(
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+    val startDay = remember(today) { today.minusDays(29) }
+    // DayOfWeek.value: 1=Mon … 7=Sun → leading blanks = value-1 (Mon=0, Sun=6)
+    val leadingBlanks = remember(startDay) { startDay.dayOfWeek.value - 1 }
+
+    val allCells: List<Boolean?> = remember(grid30d, leadingBlanks) {
+        buildList {
+            repeat(leadingBlanks) { add(null) }
+            addAll(grid30d)
+            val trailing = (7 - (leadingBlanks + 30) % 7) % 7
+            repeat(trailing) { add(null) }
+        }
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
+        // Day-of-week header
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(14.dp)
-            )
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            listOf("M", "T", "W", "T", "F", "S", "S").forEach { label ->
+                Text(
+                    text = label,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                )
+            }
+        }
+        // Grid rows (5-6 rows of 7)
+        allCells.chunked(7).forEach { rowCells ->
+            val paddedRow: List<Boolean?> = if (rowCells.size < 7) {
+                rowCells + List(7 - rowCells.size) { null }
+            } else {
+                rowCells
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                paddedRow.forEach { cell ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(
+                                when (cell) {
+                                    true -> accentColor.copy(alpha = 0.82f)
+                                    false -> MaterialTheme.colorScheme.surfaceContainerHighest
+                                    null -> Color.Transparent
+                                }
+                            )
+                    )
+                }
+            }
         }
     }
 }
 
-@Composable
-private fun CompactTaskProgress(progress: Float) {
-    val safeProgress = progress.coerceIn(0f, 1f)
+// ─── Completion stats chip ────────────────────────────────────────────────────
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Momentum",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = "${(safeProgress * 100f).roundToInt()}%",
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(7.dp)
-                .background(
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    shape = CircleShape
-                )
-        ) {
+@Composable
+private fun HabitStatChip(label: String, value: Float) {
+    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        Text(
+            text = "${(value * 100f).roundToInt()}%",
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.6.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+        )
+    }
+}
+
+// ─── Weekly sparkline bar chart ───────────────────────────────────────────────
+
+@Composable
+private fun WeekSparkline(
+    weekData: List<Boolean>,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        weekData.forEach { done ->
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(safeProgress)
-                    .height(7.dp)
+                    .weight(1f)
+                    .fillMaxHeight(if (done) 1f else 0.16f)
+                    .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp, bottomStart = 2.dp, bottomEnd = 2.dp))
                     .background(
-                        color = MaterialTheme.colorScheme.primary,
-                        shape = CircleShape
+                        if (done) accentColor.copy(alpha = 0.78f)
+                        else MaterialTheme.colorScheme.surfaceContainerHighest
                     )
             )
         }
     }
 }
 
+// ─── Empty state ──────────────────────────────────────────────────────────────
+
 @Composable
-private fun TasksStatePanel(
-    title: String,
-    body: String
-) {
+private fun HabitEmptyState() {
     Surface(
-        shape = RoundedCornerShape(26.dp),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(56.dp)
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Rounded.Repeat,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
             Text(
-                text = title,
+                text = "No active habits",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = body,
+                text = "Create a habit or health task from the prompt bar to start tracking your rituals.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
             )
         }
     }
 }
 
-private enum class TaskFilter(val key: String, val label: String) {
-    ALL("all", "All"),
-    DUE_SOON("due_soon", "Due soon"),
-    RITUALS("rituals", "Rituals"),
-    SYSTEMS("systems", "Systems");
-
-    fun apply(tasks: List<Task>): List<Task> {
-        return when (this) {
-            ALL -> tasks
-            DUE_SOON -> tasks.filter { it.isDueSoon() }
-            RITUALS -> tasks.filter { it.type == TaskType.HABIT || it.type == TaskType.HEALTH }
-            SYSTEMS -> tasks.filter {
-                it.type == TaskType.PROJECT || it.type == TaskType.FINANCE || it.type == TaskType.TRAVEL
-            }
-        }
-    }
-
-    companion object {
-        fun fromKey(key: String): TaskFilter {
-            return entries.firstOrNull { it.key == key } ?: ALL
-        }
-    }
-}
-
-private data class TaskTone(
-    val container: androidx.compose.ui.graphics.Color,
-    val content: androidx.compose.ui.graphics.Color
-)
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 @Composable
-private fun taskTone(type: TaskType): TaskTone {
+private fun habitAccentColor(type: TaskType): Color {
     val scheme = MaterialTheme.colorScheme
     return when (type) {
-        TaskType.GENERAL -> TaskTone(
-            container = scheme.secondaryContainer,
-            content = scheme.onSecondaryContainer
-        )
-        TaskType.TRAVEL -> TaskTone(
-            container = scheme.tertiaryContainer,
-            content = scheme.onTertiaryContainer
-        )
-        TaskType.HABIT -> TaskTone(
-            container = scheme.primaryContainer,
-            content = scheme.onPrimaryContainer
-        )
-        TaskType.HEALTH -> TaskTone(
-            container = scheme.errorContainer,
-            content = scheme.onErrorContainer
-        )
-        TaskType.PROJECT -> TaskTone(
-            container = scheme.surfaceContainerHighest,
-            content = scheme.onSurface
-        )
-        TaskType.FINANCE -> TaskTone(
-            container = scheme.inverseSurface,
-            content = scheme.inverseOnSurface
-        )
+        TaskType.HABIT -> scheme.primary
+        TaskType.HEALTH -> scheme.error
+        else -> scheme.primary
     }
 }
 
-private fun taskBoardComparator(): Comparator<Task> {
-    return compareBy<Task>(
-        { !it.isDueSoon() },
-        { it.nextTouchpoint() ?: Long.MAX_VALUE },
-        { -it.updatedAt }
-    )
-}
-
-private fun Task.isDueSoon(): Boolean {
-    val now = System.currentTimeMillis()
-    val soonThreshold = now + 36L * 60L * 60L * 1000L
-    return reminders.any { it.scheduledAt in now..soonThreshold } ||
-        (targetDate != null && targetDate in now..soonThreshold)
-}
-
-private fun Task.nextTouchpoint(): Long? {
-    return listOfNotNull(
-        reminders.minByOrNull { it.scheduledAt }?.scheduledAt,
-        targetDate
-    ).minOrNull()
-}
-
-private fun Task.progressRatio(): Float? {
-    components.firstOrNull { it.type == ComponentType.PROGRESS_BAR }
-        ?.config
-        ?.let { config ->
-            val progress = config as? ProgressBarConfig
-            return progress?.manualProgress?.coerceIn(0f, 1f)
-        }
-
-    val checklist = components.firstOrNull { it.type == ComponentType.CHECKLIST }
-    val checklistTotal = checklist?.checklistItems?.size ?: 0
-    if (checklistTotal > 0) {
-        val complete = checklist?.checklistItems?.count { it.isCompleted } ?: 0
-        return complete.toFloat() / checklistTotal.toFloat()
-    }
-
-    return null
-}
-
-private fun Task.updatedLabel(): String {
-    val diffHours = ((System.currentTimeMillis() - updatedAt) / 3_600_000L).coerceAtLeast(0L)
-    return when {
-        diffHours < 1L -> "now"
-        diffHours < 24L -> "${diffHours}h"
-        else -> "${diffHours / 24L}d"
-    }
-}
-
-private fun TaskType.label(): String {
-    return when (this) {
-        TaskType.GENERAL -> "General"
-        TaskType.TRAVEL -> "Travel"
-        TaskType.HABIT -> "Habit"
-        TaskType.HEALTH -> "Health"
-        TaskType.PROJECT -> "Project"
-        TaskType.FINANCE -> "Finance"
-    }
-}
-
-private fun Task.summaryLine(): String {
+private fun habitTypeIcon(type: TaskType): ImageVector {
     return when (type) {
-        TaskType.TRAVEL -> {
-            val checklist = components.firstOrNull { it.type == ComponentType.CHECKLIST }
-            val done = checklist?.checklistItems?.count { it.isCompleted } ?: 0
-            val total = checklist?.checklistItems?.size ?: 0
-            "Countdown in play. Checklist at $done/$total."
-        }
-        TaskType.HABIT -> "Recurring rhythm with an active reminder cadence."
-        TaskType.PROJECT -> {
-            val progress = components.firstOrNull { it.type == ComponentType.PROGRESS_BAR }?.config as? ProgressBarConfig
-            "Manual progress parked at ${(((progress?.manualProgress ?: 0f) * 100f).toInt())}%."
-        }
-        TaskType.HEALTH -> "Metrics and habits bundled into one health loop."
-        TaskType.FINANCE -> "External data watchlist ready for quick checks."
-        TaskType.GENERAL -> "Flexible task with notes, reminders and structure."
-    }
-}
-
-private fun tasksRelativeReminder(timestamp: Long): String {
-    val diffMinutes = ((timestamp - System.currentTimeMillis()) / 60_000L).coerceAtLeast(0L)
-    return when {
-        diffMinutes < 60L -> "in ${diffMinutes}m"
-        diffMinutes < 1_440L -> "in ${diffMinutes / 60L}h"
-        else -> "in ${diffMinutes / 1_440L}d"
+        TaskType.HABIT -> Icons.Rounded.Repeat
+        TaskType.HEALTH -> Icons.Rounded.Favorite
+        else -> Icons.Rounded.Repeat
     }
 }

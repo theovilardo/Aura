@@ -7,13 +7,16 @@ import com.theveloper.aura.domain.model.SignalType
 import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskStatus
 import com.theveloper.aura.domain.repository.TaskRepository
+import com.theveloper.aura.domain.usecase.DeleteTaskUseCase
 import com.theveloper.aura.engine.habit.HabitEngine
 import com.theveloper.aura.domain.usecase.UpdateTaskStatusUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -22,11 +25,15 @@ import javax.inject.Inject
 class TaskDetailViewModel @Inject constructor(
     taskRepository: TaskRepository,
     private val updateTaskStatusUseCase: UpdateTaskStatusUseCase,
+    private val deleteTaskUseCase: DeleteTaskUseCase,
     private val habitEngine: HabitEngine,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
     private val taskId: String = checkNotNull(savedStateHandle["taskId"])
+    private val events = MutableSharedFlow<TaskDetailEvent>(extraBufferCapacity = 1)
+
+    val eventFlow = events.asSharedFlow()
 
     val uiState: StateFlow<TaskDetailUiState> = taskRepository.getTaskFlow(taskId)
         .map { task ->
@@ -68,6 +75,24 @@ class TaskDetailViewModel @Inject constructor(
             }
         }
     }
+
+    fun onReopenTask() {
+        viewModelScope.launch {
+            runCatching {
+                updateTaskStatusUseCase(taskId, TaskStatus.ACTIVE)
+            }
+        }
+    }
+
+    fun onDeleteTask() {
+        viewModelScope.launch {
+            runCatching {
+                deleteTaskUseCase(taskId)
+            }.onSuccess {
+                events.tryEmit(TaskDetailEvent.TaskDeleted)
+            }
+        }
+    }
 }
 
 data class TaskDetailUiState(
@@ -75,3 +100,7 @@ data class TaskDetailUiState(
     val task: Task? = null,
     val errorMessage: String? = null
 )
+
+sealed interface TaskDetailEvent {
+    data object TaskDeleted : TaskDetailEvent
+}
