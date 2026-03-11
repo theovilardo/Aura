@@ -39,10 +39,18 @@ android {
         val exchangeRateApiKey = localProperties.getProperty("exchangerate.api.key")
             ?: System.getenv("EXCHANGERATE_API_KEY")
             ?: "dummy_key_for_now"
+        val supabaseUrl = localProperties.getProperty("supabase.url")
+            ?: System.getenv("SUPABASE_URL")
+            ?: "https://dummy.supabase.co"
+        val supabaseKey = localProperties.getProperty("supabase.key")
+            ?: System.getenv("SUPABASE_KEY")
+            ?: "dummy_anon_key"
 
         buildConfigField("String", "GROQ_API_KEY", "\"${escapeBuildConfig(groqApiKey)}\"")
         buildConfigField("String", "GROQ_BASE_URL", "\"https://api.groq.com/openai/v1/\"")
         buildConfigField("String", "EXCHANGERATE_API_KEY", "\"${escapeBuildConfig(exchangeRateApiKey)}\"")
+        buildConfigField("String", "SUPABASE_URL", "\"${escapeBuildConfig(supabaseUrl)}\"")
+        buildConfigField("String", "SUPABASE_KEY", "\"${escapeBuildConfig(supabaseKey)}\"")
     }
 
     buildTypes {

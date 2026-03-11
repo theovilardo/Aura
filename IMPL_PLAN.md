@@ -303,7 +303,7 @@ aura/
 
 | Fase | Nombre                           | Duración estimada | Estado |
 | ---- | -------------------------------- | ----------------: | ------ |
-| F6   | Sincronización (opcional en MVP) |         2 semanas | [ ]    |
+| F6   | Sincronización (opcional en MVP) |         2 semanas | [x]    |
 
 **Objetivo:** el usuario puede activar sync entre dispositivos de forma opt-in. Los datos viajan E2E encrypted. El servidor (Supabase) nunca ve plaintext de datos sensibles.
 
@@ -312,13 +312,13 @@ aura/
 
 ## Tareas
 
-| ID    | Tarea + detalle                                                                                                                                                                                               | Done   | Deps  |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ----- |
-| F6-01 | **Supabase project setup**  Crear proyecto en `supabase.com` (o self-hosted). Tablas: `tasks_sync`, `components_sync`. Row Level Security activado. Claves en `local.properties`.                             | ☐ Done | F0-01 |
-| F6-02 | **E2E encryption — AES-256**  Generar clave de cifrado por usuario, almacenarla en Android Keystore (nunca en DB ni `SharedPreferences`). Cifrar payload antes de escribir a `sync_queue`. Descifrar al leer. | ☐ Done | F6-01 |
-| F6-03 | **SyncWorker — upload de sync_queue**  Lee `sync_queue` donde `synced_at IS NULL`. Cifra payload. POST a Supabase. Marca `synced_at`. Retry automático con exponential backoff.                               | ☐ Done | F6-02 |
-| F6-04 | **SyncWorker — download de cambios remotos**  Consulta Supabase por cambios más recientes que `last_sync_at`. Descifra. Aplica CRDT (`last-write-wins` por campo). Persiste en Room.                          | ☐ Done | F6-03 |
-| F6-05 | **Settings — toggle de sync**  En `SettingsScreen`: toggle `"Sincronizar entre dispositivos"` (off por defecto). Al activar: muestra aviso de que los datos se cifran antes de salir del dispositivo.         | ☐ Done | F6-04 |
+| ID    | Tarea + detalle                                                                                                                                                                                                                                  | Done   | Deps              |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | ----------------- |
+| F6-01 | **Supabase project setup**  Crear proyecto en supabase.com (o self-hosted). Tablas: `tasks_sync`, `components_sync`. Row Level Security activado. Claves en `local.properties`.                                                                   | ☑ Done | -                 |
+| F6-02 | **E2E encryption — AES-256**  Generar clave de cifrado por usuario, almacenarla en Android Keystore (nunca en DB ni SharedPreferences). Cifrar payload antes de escribir a `sync_queue`. Descifrar al leer.                                      | ☑ Done | F6-01             |
+| F6-03 | **SyncWorker — upload de sync_queue**  Lee `sync_queue` donde `synced_at IS NULL`. Cifra payload. POST a Supabase. Marca `synced_at`. Retry automático con exponential backoff.                                                                    | ☑ Done | F6-02,F1-08       |
+| F6-04 | **SyncWorker — download de cambios remotos**  Consulta Supabase por cambios más recientes que `last_sync_at`. Descifra. Aplica CRDT (last-write-wins por campo). Persiste en Room.                                                             | ☑ Done | F6-03             |
+| F6-05 | **Settings — toggle de sync**  En `SettingsScreen`: toggle `"Sincronizar entre dispositivos"` (off por defecto). Al activar: muestra aviso de que los datos se cifran antes de salir del dispositivo.                                            | ☑ Done | F0-11,F6-02       |
 
 ## Checklist de verificación
 
