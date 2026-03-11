@@ -1,8 +1,18 @@
 package com.theveloper.aura.ui.components
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Notes
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.theveloper.aura.domain.model.NotesConfig
@@ -22,20 +32,25 @@ fun NotesComponent(
         }
     }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        if (config.isMarkdown) {
-            Text(
-                text = "Soporta markdown básico",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
+    ComponentCard(
+        title = "Notes",
+        icon = Icons.AutoMirrored.Rounded.Notes,
+        eyebrow = if (config.isMarkdown) "Markdown" else "Plain text",
+        subtitle = "Keep context, blockers or links close to the task",
+        trailing = {
+            if (text.isNotBlank()) {
+                ComponentPill("${text.length} chars")
+            }
         }
+    ) {
         OutlinedTextField(
             value = text,
             onValueChange = { newText -> text = newText },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
-            label = { Text("Notas") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 160.dp),
+            label = { Text("Notes") },
+            placeholder = { Text("Capture the details the engine should not lose.") },
             textStyle = MaterialTheme.typography.bodyMedium
         )
     }
