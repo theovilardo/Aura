@@ -3,12 +3,12 @@ package com.theveloper.aura.ui.screen
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,8 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,6 +38,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -47,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -56,6 +58,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -66,6 +69,10 @@ import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskStatus
 import com.theveloper.aura.domain.model.TaskType
 import kotlin.math.roundToInt
+
+private val HomeTopBarFallbackHeight = 152.dp
+private val HomeTopBarContentOverlap = 30.dp
+private val HomeTopBarMinContentPadding = 110.dp
 
 @Composable
 fun HomeScreen(
@@ -80,6 +87,7 @@ fun HomeScreen(
     val visibleTasks = remember(sortedTasks, selectedFilter) { selectedFilter.apply(sortedTasks) }
     val activeCount = remember(uiState.tasks) { uiState.tasks.count { it.status == TaskStatus.ACTIVE } }
     val completedCount = remember(uiState.tasks) { uiState.tasks.count { it.status == TaskStatus.COMPLETED } }
+    var topBarHeightPx by remember { mutableIntStateOf(0) }
     val dueSoonCount = remember(uiState.tasks) {
         uiState.tasks.count { it.status == TaskStatus.ACTIVE && it.isDueSoon() }
     }
@@ -127,6 +135,8 @@ fun HomeScreen(
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
+            val topContentPadding = homeTopBarContentPadding(topBarHeightPx)
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -134,7 +144,7 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(
                     start = 16.dp,
-                    top = innerPadding.calculateTopPadding() + 80.dp,
+                    top = innerPadding.calculateTopPadding() + topContentPadding,
                     end = 16.dp,
                     bottom = innerPadding.calculateBottomPadding() + 216.dp
                 )
@@ -146,13 +156,6 @@ fun HomeScreen(
                         dueSoonCount = dueSoonCount,
                         ritualCount = ritualCount,
                         systemCount = systemCount
-                    )
-                }
-
-                item {
-                    TaskFilterRow(
-                        selected = selectedFilter,
-                        onSelect = { selectedFilterKey = it.key }
                     )
                 }
 
@@ -186,7 +189,29 @@ fun HomeScreen(
                 }
             }
 
-            HomeTopBar(modifier = Modifier.align(Alignment.TopCenter))
+            HomeTopBar(
+                selectedFilter = selectedFilter,
+                onSelectFilter = { selectedFilterKey = it.key },
+                modifier = Modifier.align(Alignment.TopCenter),
+                onHeightChanged = { topBarHeightPx = it }
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .height(58.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                MaterialTheme.colorScheme.background
+                            )
+                        )
+                    )
+            ) {
+
+            }
         }
     }
 }
@@ -194,7 +219,12 @@ fun HomeScreen(
 // ── Top Bar ──────────────────────────────────────────────────────────────────
 
 @Composable
-private fun HomeTopBar(modifier: Modifier = Modifier) {
+private fun HomeTopBar(
+    selectedFilter: TaskFilter,
+    onSelectFilter: (TaskFilter) -> Unit,
+    modifier: Modifier = Modifier,
+    onHeightChanged: (Int) -> Unit = {}
+) {
     val backgroundColor = MaterialTheme.colorScheme.background
     val topBarBrush = remember(backgroundColor) {
         Brush.verticalGradient(
@@ -213,22 +243,43 @@ private fun HomeTopBar(modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .background(topBarBrush)
-            .padding(bottom = 30.dp)
+            .onSizeChanged { onHeightChanged(it.height) }
+            .padding(bottom = 12.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(top = 12.dp, bottom = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = "Aura",
-                style = auraWordmarkStyle,
-                color = MaterialTheme.colorScheme.onBackground
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Aura",
+                    style = auraWordmarkStyle,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+
+            TaskFilterRow(
+                selected = selectedFilter,
+                onSelect = onSelectFilter,
             )
         }
     }
+}
+
+@Composable
+private fun homeTopBarContentPadding(topBarHeightPx: Int): Dp {
+    val measuredHeight = if (topBarHeightPx == 0) HomeTopBarFallbackHeight else with(androidx.compose.ui.platform.LocalDensity.current) {
+        topBarHeightPx.toDp()
+    }
+    return (measuredHeight - HomeTopBarContentOverlap).coerceAtLeast(HomeTopBarMinContentPadding)
 }
 
 @OptIn(ExperimentalTextApi::class)
@@ -268,74 +319,226 @@ private fun TasksOverviewRow(
     ritualCount: Int,
     systemCount: Int
 ) {
+    val scheme = MaterialTheme.colorScheme
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+            .height(204.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        CompactMetricPill(label = "Active", value = activeCount.toString())
-        CompactMetricPill(label = "Done", value = completedCount.toString())
-        CompactMetricPill(label = "Due", value = dueSoonCount.toString())
-        CompactMetricPill(label = "Rituals", value = ritualCount.toString())
-        CompactMetricPill(label = "Systems", value = systemCount.toString())
-    }
-}
-
-@Composable
-private fun CompactMetricPill(label: String, value: String) {
-    Surface(
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.58f))
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier
+                .weight(1.1f)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface
+            OverviewMetricCard(
+                label = "Active",
+                value = activeCount.toString(),
+                supporting = "in motion",
+                containerColor = scheme.primaryContainer.copy(alpha = 0.38f),
+                accentColor = scheme.primary,
+                modifier = Modifier
+                    .weight(1.16f)
+                    .fillMaxWidth()
             )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+
+            Row(
+                modifier = Modifier
+                    .weight(0.84f)
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OverviewMetricCard(
+                    label = "Done",
+                    value = completedCount.toString(),
+                    supporting = "closed",
+                    containerColor = scheme.secondaryContainer.copy(alpha = 0.34f),
+                    accentColor = scheme.secondary,
+                    compact = true,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                )
+                OverviewMetricCard(
+                    label = "Due soon",
+                    value = dueSoonCount.toString(),
+                    supporting = "next up",
+                    containerColor = scheme.tertiaryContainer.copy(alpha = 0.34f),
+                    accentColor = scheme.tertiary,
+                    compact = true,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .weight(0.9f)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            OverviewMetricCard(
+                label = "Rituals",
+                value = ritualCount.toString(),
+                supporting = "habit loops",
+                containerColor = scheme.errorContainer.copy(alpha = 0.28f),
+                accentColor = scheme.error,
+                compact = true,
+                modifier = Modifier
+                    .weight(0.78f)
+                    .fillMaxWidth()
+            )
+            OverviewMetricCard(
+                label = "Systems",
+                value = systemCount.toString(),
+                supporting = "projects + travel",
+                containerColor = scheme.surfaceContainerHigh,
+                accentColor = scheme.onSurface,
+                modifier = Modifier
+                    .weight(1.22f)
+                    .fillMaxWidth()
             )
         }
     }
 }
 
 @Composable
-private fun TaskFilterRow(selected: TaskFilter, onSelect: (TaskFilter) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+private fun OverviewMetricCard(
+    label: String,
+    value: String,
+    supporting: String,
+    containerColor: Color,
+    accentColor: Color,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
+) {
+    val labelText = if (compact) label else label.uppercase()
+    val horizontalPadding = if (compact) 14.dp else 16.dp
+    val verticalPadding = if (compact) 12.dp else 15.dp
+    val labelStyle = if (compact) {
+        MaterialTheme.typography.labelSmall.copy(
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.2.sp
+        )
+    } else {
+        MaterialTheme.typography.labelMedium.copy(
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.8.sp
+        )
+    }
+    val valueStyle = if (compact) {
+        MaterialTheme.typography.headlineMedium.copy(
+            fontSize = 26.sp,
+            lineHeight = 26.sp,
+            fontWeight = FontWeight.Black
+        )
+    } else {
+        MaterialTheme.typography.displaySmall.copy(
+            fontSize = 36.sp,
+            lineHeight = 36.sp,
+            fontWeight = FontWeight.Black
+        )
+    }
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(if (compact) 14.dp else 18.dp),
+        color = containerColor,
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.14f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = horizontalPadding, vertical = verticalPadding)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Text(
+                    text = labelText,
+                    style = labelStyle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.76f),
+                    maxLines = if (compact) 1 else 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
+                )
+                Surface(
+                    shape = CircleShape,
+                    color = accentColor.copy(alpha = 0.14f)
+                ) {
+                    Box(modifier = Modifier.size(if (compact) 8.dp else 12.dp))
+                }
+            }
+
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
+
+            Text(
+                text = value,
+                style = valueStyle,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
+            )
+
+            if (!compact) {
+                androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = supporting,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TaskFilterRow(
+    selected: TaskFilter,
+    onSelect: (TaskFilter) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyRow(
+        modifier = modifier
+            .fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(
+            horizontal = 20.dp
+        )
     ) {
         TaskFilter.entries.forEach { filter ->
             val active = filter == selected
-            Surface(
-                shape = CircleShape,
-                color = if (active) MaterialTheme.colorScheme.inverseSurface
-                        else MaterialTheme.colorScheme.surface,
-                border = BorderStroke(
-                    width = 1.dp,
+            item {
+                Surface(
+                    shape = CircleShape,
                     color = if (active) MaterialTheme.colorScheme.inverseSurface
-                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
-                ),
-                modifier = Modifier.clickable { onSelect(filter) }
-            ) {
-                Text(
-                    text = filter.label,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = if (active) MaterialTheme.colorScheme.inverseOnSurface
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    else MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = if (active) MaterialTheme.colorScheme.inverseSurface
+                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
+                    ),
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { onSelect(filter) }
+                ) {
+                    Text(
+                        text = filter.label,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = if (active) MaterialTheme.colorScheme.inverseOnSurface
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
@@ -433,19 +636,19 @@ internal fun CompactTaskBoardCard(
                     FilledTonalButton(onClick = onCompleteClick, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Rounded.TaskAlt, null, modifier = Modifier.size(18.dp))
                         androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(8.dp))
-                        Text("Marcar completa")
+                        Text("Complete")
                     }
                 } else {
                     OutlinedButton(onClick = onReopenClick, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Rounded.AutoAwesome, null, modifier = Modifier.size(18.dp))
                         androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(8.dp))
-                        Text("Reabrir")
+                        Text("Reopen")
                     }
                 }
                 OutlinedButton(onClick = onDeleteClick, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Rounded.DeleteOutline, null, modifier = Modifier.size(18.dp))
                     androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(8.dp))
-                    Text("Eliminar")
+                    Text("Delete")
                 }
             }
         }
@@ -456,9 +659,9 @@ internal fun CompactTaskBoardCard(
 private fun TaskStatusChip(status: TaskStatus) {
     val scheme = MaterialTheme.colorScheme
     val (container, content, label) = when (status) {
-        TaskStatus.ACTIVE -> Triple(scheme.primaryContainer, scheme.onPrimaryContainer, "Activa")
-        TaskStatus.COMPLETED -> Triple(scheme.tertiaryContainer, scheme.onTertiaryContainer, "Completada")
-        TaskStatus.ARCHIVED -> Triple(scheme.surfaceContainerHighest, scheme.onSurfaceVariant, "Archivada")
+        TaskStatus.ACTIVE -> Triple(scheme.primaryContainer, scheme.onPrimaryContainer, "Active")
+        TaskStatus.COMPLETED -> Triple(scheme.tertiaryContainer, scheme.onTertiaryContainer, "Completed")
+        TaskStatus.ARCHIVED -> Triple(scheme.surfaceContainerHighest, scheme.onSurfaceVariant, "Archived")
     }
     Surface(shape = CircleShape, color = container) {
         Text(
