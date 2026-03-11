@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -88,7 +89,6 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp)
         ) {
             Spacer(modifier = Modifier.height(18.dp))
             SimpleTopBar()
@@ -98,6 +98,7 @@ fun HomeScreen(
             )
             Spacer(modifier = Modifier.height(24.dp))
             SectionLabel(
+                modifier = Modifier.padding(start = 22.dp),
                 text = if (uiState.tasks.isEmpty()) "READY FOR YOU" else "YOUR TASKS",
                 onClick = if (uiState.tasks.size > 3) onNavigateToTasks else null
             )
@@ -115,7 +116,9 @@ fun HomeScreen(
                 )
             } else {
                 Column(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     uiState.tasks.take(3).forEach { task ->
@@ -218,51 +221,54 @@ private fun QuickCategories(
         QuickCategory("Daily", Icons.Default.CalendarMonth)
     )
 
-    Row(
+    LazyRow(
         modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .fillMaxWidth(),
+            //.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(horizontal = 22.dp)
     ) {
         categories.forEach { category ->
             val isSelected = category.label == selected
-            Surface(
-                shape = RoundedCornerShape(22.dp),
-                color = if (isSelected) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surface
-                },
-                border = BorderStroke(
-                    width = 1.dp,
+            item {
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
                     color = if (isSelected) {
                         MaterialTheme.colorScheme.primaryContainer
                     } else {
-                        MaterialTheme.colorScheme.outlineVariant
-                    }
-                ),
-                modifier = Modifier.clickable { onSelect(category.label) }
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = category.icon,
-                        contentDescription = null,
-                        tint = if (isSelected) {
-                            MaterialTheme.colorScheme.primary
+                        MaterialTheme.colorScheme.surface
+                    },
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primaryContainer
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = category.label,
-                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                            MaterialTheme.colorScheme.outlineVariant
+                        }
+                    ),
+                    modifier = Modifier.clickable { onSelect(category.label) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = category.icon,
+                            contentDescription = null,
+                            tint = if (isSelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = category.label,
+                            style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
         }
@@ -271,11 +277,12 @@ private fun QuickCategories(
 
 @Composable
 private fun SectionLabel(
+    modifier: Modifier,
     text: String,
     onClick: (() -> Unit)?
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -341,7 +348,7 @@ private fun SuggestionCard(
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        //border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
