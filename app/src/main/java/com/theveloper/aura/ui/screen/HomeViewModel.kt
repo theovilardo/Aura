@@ -4,8 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskStatus
+import com.theveloper.aura.domain.model.Suggestion
+import com.theveloper.aura.domain.repository.SuggestionRepository
 import com.theveloper.aura.domain.repository.TaskRepository
+import com.theveloper.aura.domain.usecase.ApplySuggestionUseCase
 import com.theveloper.aura.domain.usecase.RemoveLegacySampleTasksUseCase
+import com.theveloper.aura.engine.suggestion.DayRescueEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +24,9 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     taskRepository: TaskRepository,
+    private val suggestionRepository: SuggestionRepository,
+    private val applySuggestionUseCase: ApplySuggestionUseCase,
+    private val dayRescueEngine: DayRescueEngine,
     private val removeLegacySampleTasksUseCase: RemoveLegacySampleTasksUseCase
 ) : ViewModel() {
 
@@ -32,11 +39,13 @@ class HomeViewModel @Inject constructor(
                 errorMessage.value = throwable.message ?: "No se pudo cargar la home."
                 emit(emptyList())
             },
+        suggestionRepository.getPendingSuggestions(),
         errorMessage
-    ) { tasks, error ->
+    ) { tasks, suggestions, error ->
         HomeUiState(
             isLoading = false,
             tasks = tasks,
+            suggestions = suggestions,
             errorMessage = error
         )
     }.stateIn(
@@ -44,6 +53,24 @@ class HomeViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = HomeUiState(isLoading = true)
     )
+
+    fun applySuggestion(suggestion: Suggestion) {
+        viewModelScope.launch {
+            applySuggestionUseCase.applySuggestion(suggestion)
+        }
+    }
+
+    fun rejectSuggestion(suggestion: Suggestion) {
+        viewModelScope.launch {
+            applySuggestionUseCase.rejectSuggestion(suggestion)
+        }
+    }
+
+    fun runDayRescue() {
+        viewModelScope.launch {
+            dayRescueEngine.runDayRescue()
+        }
+    }
 
     init {
         viewModelScope.launch {
@@ -55,5 +82,6 @@ class HomeViewModel @Inject constructor(
 data class HomeUiState(
     val isLoading: Boolean = false,
     val tasks: List<Task> = emptyList(),
+    val suggestions: List<Suggestion> = emptyList(),
     val errorMessage: String? = null
 )

@@ -115,3 +115,29 @@ fun Reminder.toEntity(): ReminderEntity {
         repetitions = repetitions
     )
 }
+
+fun com.theveloper.aura.data.db.SuggestionEntity.toDomain(): Suggestion {
+    return Suggestion(
+        id = id,
+        taskId = taskId,
+        type = type,
+        status = runCatching { SuggestionStatus.valueOf(status) }.getOrDefault(SuggestionStatus.PENDING),
+        payloadJson = payloadJson,
+        reasoning = reasoning,
+        createdAt = createdAt,
+        expiresAt = expiresAt
+    )
+}
+
+fun Suggestion.toEntity(): com.theveloper.aura.data.db.SuggestionEntity {
+    return com.theveloper.aura.data.db.SuggestionEntity(
+        id = id,
+        taskId = taskId,
+        type = type,
+        status = status.name,
+        payloadJson = payloadJson,
+        reasoning = reasoning,
+        createdAt = createdAt,
+        expiresAt = expiresAt
+    )
+}

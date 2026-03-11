@@ -4,23 +4,20 @@ import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.theveloper.aura.engine.habit.HabitEngine
-import com.theveloper.aura.engine.suggestion.SuggestionEngine
+import com.theveloper.aura.domain.repository.SuggestionRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 
 @HiltWorker
-class HabitAnalysisWorker @AssistedInject constructor(
+class SuggestionCleanupWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted params: WorkerParameters,
-    private val habitEngine: HabitEngine,
-    private val suggestionEngine: SuggestionEngine
+    private val suggestionRepository: SuggestionRepository
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
         return try {
-            habitEngine.processBatch()
-            suggestionEngine.evaluatePatterns() // F5-02
+            suggestionRepository.markExpired(System.currentTimeMillis())
             Result.success()
         } catch (e: Exception) {
             e.printStackTrace()

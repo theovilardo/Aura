@@ -14,6 +14,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -57,6 +58,55 @@ class GroqLLMService @Inject constructor(
             auraJson.decodeFromString<TaskDSLOutput>(stripCodeFences(content))
         }.getOrElse {
             TaskDSLBuilder.buildFallback(input, context)
+        }
+    }
+
+    override suspend fun getDayRescuePlan(tasksJson: String, patternsJson: String, currentTime: String): String {
+        if (BuildConfig.GROQ_API_KEY.isBlank()) {
+            return "[]"
+        }
+
+        return runCatching {
+            val response = withContext(Dispatchers.IO) {
+                val systemPrompt = try {
+                    context.assets.open("day_rescue_prompt.txt").bufferedReader().use { it.readText() }
+                } catch (e: Exception) {
+                    "Responde estrictamente con un array JSON."
+                }
+                
+                val userPrompt = buildString {
+                    appendLine("Hora actual: $currentTime")
+                    appendLine("Tareas activas: $tasksJson")
+                    appendLine("Patrones del usuario: $patternsJson")
+                }
+                
+                val requestBody = auraJson.encodeToString(
+                    GroqChatRequest(
+                        messages = listOf(
+                            GroqMessage(role = "system", content = systemPrompt),
+                            GroqMessage(role = "user", content = userPrompt)
+                        )
+                    )
+                )
+
+                val request = Request.Builder()
+                    .url(BuildConfig.GROQ_BASE_URL + "chat/completions")
+                    .header("Authorization", "Bearer ${BuildConfig.GROQ_API_KEY}")
+                    .header("Content-Type", "application/json")
+                    .post(requestBody.toRequestBody(JSON_MEDIA_TYPE))
+                    .build()
+
+                okHttpClient.newCall(request).execute().use { response ->
+                    check(response.isSuccessful) { "Groq request failed with HTTP ${response.code}" }
+                    response.body?.string().orEmpty()
+                }
+            }
+
+            val payload = auraJson.decodeFromString<GroqChatResponse>(response)
+            val content = payload.choices.firstOrNull()?.message?.content?.trim().orEmpty()
+            stripCodeFences(content)
+        }.getOrElse {
+            "[]"
         }
     }
 

@@ -29,7 +29,10 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.TaskAlt
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -40,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -50,8 +54,11 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.ui.components.SuggestionCard
+import com.theveloper.aura.ui.components.DayRescueBottomSheet
 import java.time.LocalTime
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     onNavigateToTaskDetail: (String) -> Unit,
@@ -62,6 +69,19 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var selectedCategory by rememberSaveable { mutableStateOf("Insights") }
+    var showDayRescue by remember { mutableStateOf(false) }
+
+    if (showDayRescue) {
+        DayRescueBottomSheet(
+            tasks = uiState.tasks,
+            suggestions = uiState.suggestions.filter { it.type.name == "RESCHEDULE_REMINDER" }, // Day rescue spawns these
+            onApply = { selected ->
+                selected.forEach { viewModel.applySuggestion(it) }
+                showDayRescue = false
+            },
+            onDismiss = { showDayRescue = false }
+        )
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -70,6 +90,19 @@ fun HomeScreen(
                 taskCount = uiState.tasks.size,
                 onOpenBoard = onNavigateToTasks
             )
+        },
+        floatingActionButton = {
+            if (LocalTime.now().hour >= 12 && uiState.tasks.isNotEmpty()) {
+                FloatingActionButton(
+                    onClick = { 
+                        viewModel.runDayRescue() // Run the engine
+                        showDayRescue = true 
+                    },
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                ) {
+                    Icon(imageVector = Icons.Rounded.Warning, contentDescription = "¿Día descarrilado?")
+                }
+            }
         }
     ) { innerPadding ->
         if (uiState.isLoading) {
@@ -115,6 +148,17 @@ fun HomeScreen(
                     actionLabel = if (uiState.tasks.size > 3) "Open board" else null,
                     onClick = if (uiState.tasks.size > 3) onNavigateToTasks else null
                 )
+            }
+
+            if (uiState.suggestions.isNotEmpty()) {
+                val directSuggestions = uiState.suggestions // MVP display all as cards
+                items(directSuggestions, key = { it.id }) { suggestion ->
+                    SuggestionCard(
+                        suggestion = suggestion,
+                        onApprove = { viewModel.applySuggestion(it) },
+                        onReject = { viewModel.rejectSuggestion(it) }
+                    )
+                }
             }
 
             when {

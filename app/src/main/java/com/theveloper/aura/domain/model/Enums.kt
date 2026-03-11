@@ -57,3 +57,8 @@ enum class DataFeedStatus {
     ERROR,
     STALE
 }
+
+@Serializable
+enum class SuggestionStatus {
+    PENDING, APPROVED, REJECTED, EXPIRED
+}

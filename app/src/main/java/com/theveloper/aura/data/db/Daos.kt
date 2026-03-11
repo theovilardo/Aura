@@ -185,8 +185,8 @@ interface SuggestionDao {
     @Query("UPDATE suggestions SET status = :status WHERE id = :id")
     suspend fun updateStatus(id: String, status: String)
 
-    @Query("DELETE FROM suggestions WHERE expires_at < :currentTime")
-    suspend fun deleteExpired(currentTime: Long)
+    @Query("UPDATE suggestions SET status = 'EXPIRED' WHERE expires_at < :currentTime AND status = 'PENDING'")
+    suspend fun markExpired(currentTime: Long)
 }
 
 @Dao

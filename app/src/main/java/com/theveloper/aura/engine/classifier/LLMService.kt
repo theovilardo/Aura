@@ -4,6 +4,7 @@ import com.theveloper.aura.engine.dsl.TaskDSLOutput
 
 interface LLMService {
     suspend fun classify(input: String, context: LLMClassificationContext): TaskDSLOutput
+    suspend fun getDayRescuePlan(tasksJson: String, patternsJson: String, currentTime: String): String
 }
 
 data class LLMClassificationContext(

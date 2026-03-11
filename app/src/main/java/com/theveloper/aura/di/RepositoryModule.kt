@@ -10,6 +10,8 @@ import com.theveloper.aura.data.repository.UserPatternRepositoryImpl
 import com.theveloper.aura.domain.repository.UserPatternRepository
 import com.theveloper.aura.data.repository.FetcherConfigRepositoryImpl
 import com.theveloper.aura.domain.repository.FetcherConfigRepository
+import com.theveloper.aura.data.repository.SuggestionRepositoryImpl
+import com.theveloper.aura.domain.repository.SuggestionRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -47,4 +49,10 @@ abstract class RepositoryModule {
     abstract fun bindFetcherConfigRepository(
         fetcherConfigRepositoryImpl: FetcherConfigRepositoryImpl
     ): FetcherConfigRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSuggestionRepository(
+        suggestionRepositoryImpl: SuggestionRepositoryImpl
+    ): SuggestionRepository
 }

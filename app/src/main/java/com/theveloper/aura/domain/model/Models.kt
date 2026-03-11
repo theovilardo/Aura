@@ -120,3 +120,15 @@ data class Reminder(
     val easeFactor: Float,
     val repetitions: Int
 )
+
+@Immutable
+data class Suggestion(
+    val id: String,
+    val taskId: String?,
+    val type: SuggestionType,
+    val status: SuggestionStatus,
+    val payloadJson: String,
+    val reasoning: String,
+    val createdAt: Long,
+    val expiresAt: Long
+)
