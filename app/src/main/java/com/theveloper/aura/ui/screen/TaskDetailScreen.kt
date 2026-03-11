@@ -109,7 +109,7 @@ fun TaskDetailScreen(
                                 contentDescription = null
                             )
                             Text(
-                                text = " Marcar completada"
+                                text = " Completed"
                             )
                         }
                     } else {
@@ -117,7 +117,7 @@ fun TaskDetailScreen(
                             onClick = viewModel::onReopenTask,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("Reabrir tarea")
+                            Text("Reopen task")
                         }
                     }
 
@@ -129,7 +129,7 @@ fun TaskDetailScreen(
                             imageVector = Icons.Rounded.DeleteOutline,
                             contentDescription = null
                         )
-                        Text(" Eliminar")
+                        Text("Delete")
                     }
                 }
             }
