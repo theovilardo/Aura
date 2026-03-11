@@ -5,8 +5,6 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.theveloper.aura.data.db.AuraDatabase
-import com.theveloper.aura.data.db.TaskComponentDao
-import com.theveloper.aura.data.db.TaskDao
 import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskStatus
 import com.theveloper.aura.domain.model.TaskType
@@ -22,8 +20,6 @@ import org.junit.runner.RunWith
 class TaskRepositoryImplTest {
 
     private lateinit var db: AuraDatabase
-    private lateinit var taskDao: TaskDao
-    private lateinit var taskComponentDao: TaskComponentDao
     private lateinit var repository: TaskRepositoryImpl
 
     @Before
@@ -32,9 +28,7 @@ class TaskRepositoryImplTest {
         db = Room.inMemoryDatabaseBuilder(
             context, AuraDatabase::class.java
         ).build()
-        taskDao = db.taskDao()
-        taskComponentDao = db.taskComponentDao()
-        repository = TaskRepositoryImpl(taskDao, taskComponentDao)
+        repository = TaskRepositoryImpl(db)
     }
 
     @After

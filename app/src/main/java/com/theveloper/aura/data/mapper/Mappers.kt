@@ -1,18 +1,14 @@
 package com.theveloper.aura.data.mapper
 
+import com.theveloper.aura.core.json.auraJson
 import com.theveloper.aura.data.db.ChecklistItemEntity
 import com.theveloper.aura.data.db.ReminderEntity
 import com.theveloper.aura.data.db.TaskComponentEntity
 import com.theveloper.aura.data.db.TaskEntity
-import com.theveloper.aura.data.db.TaskWithComponents
+import com.theveloper.aura.data.db.TaskWithDetails
 import com.theveloper.aura.domain.model.*
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-
-val uiJson = Json {
-    ignoreUnknownKeys = true
-    classDiscriminator = "config_type"
-}
 
 fun TaskEntity.toDomain(components: List<TaskComponent> = emptyList()): Task {
     return Task(
@@ -22,6 +18,7 @@ fun TaskEntity.toDomain(components: List<TaskComponent> = emptyList()): Task {
         status = status,
         priority = priority,
         targetDate = targetDate,
+        reminders = emptyList(),
         createdAt = createdAt,
         updatedAt = updatedAt,
         components = components
@@ -47,7 +44,7 @@ fun TaskComponentEntity.toDomain(): TaskComponent {
         taskId = taskId,
         type = type,
         sortOrder = sortOrder,
-        config = runCatching { uiJson.decodeFromString<ComponentConfig>(config) }.getOrDefault(UnknownConfig())
+        config = runCatching { auraJson.decodeFromString<ComponentConfig>(config) }.getOrDefault(UnknownConfig())
     )
 }
 
@@ -57,13 +54,23 @@ fun TaskComponent.toEntity(): TaskComponentEntity {
         taskId = taskId,
         type = type,
         sortOrder = sortOrder,
-        config = uiJson.encodeToString(config as ComponentConfig)
+        config = auraJson.encodeToString(config)
     )
 }
 
-fun TaskWithComponents.toDomain(): Task {
+fun TaskWithDetails.toDomain(): Task {
     return task.toDomain(
-        components = components.map { it.toDomain() }.sortedBy { it.sortOrder }
+        components = components
+            .map { component ->
+                component.component.toDomain().copy(
+                    checklistItems = component.checklistItems
+                        .map { item -> item.toDomain() }
+                        .sortedBy { item -> item.sortOrder }
+                )
+            }
+            .sortedBy { it.sortOrder }
+    ).copy(
+        reminders = reminders.map { it.toDomain() }.sortedBy { it.scheduledAt }
     )
 }
 

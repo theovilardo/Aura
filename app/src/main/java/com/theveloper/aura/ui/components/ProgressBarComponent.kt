@@ -12,10 +12,11 @@ import com.theveloper.aura.domain.model.ProgressBarConfig
 @Composable
 fun ProgressBarComponent(
     config: ProgressBarConfig,
-    progress: Float // 0f to 1f
+    progress: Float? = null
 ) {
+    val finalProgress = (progress ?: config.manualProgress ?: 0f).coerceIn(0f, 1f)
     val animatedProgress by animateFloatAsState(
-        targetValue = progress,
+        targetValue = finalProgress,
         animationSpec = tween(durationMillis = 500),
         label = "progress"
     )

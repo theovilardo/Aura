@@ -9,17 +9,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.theveloper.aura.domain.model.DataFeedConfig
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import com.theveloper.aura.domain.model.DataFeedStatus
 
 @Composable
 fun DataFeedComponent(
-    config: DataFeedConfig
+    config: DataFeedConfig,
+    onRefresh: () -> Unit = {}
 ) {
-    var isLoading by remember { mutableStateOf(false) }
-    var dataValue by remember { mutableStateOf<String?>("$1,200.50 (Dummy)") }
-    val coroutineScope = rememberCoroutineScope()
-
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
@@ -36,13 +32,7 @@ fun DataFeedComponent(
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
                 IconButton(
-                    onClick = {
-                        coroutineScope.launch {
-                            isLoading = true
-                            delay(1000) // simulate fetch
-                            isLoading = false
-                        }
-                    },
+                    onClick = onRefresh,
                     modifier = Modifier.size(24.dp)
                 ) {
                     Icon(
@@ -55,20 +45,65 @@ fun DataFeedComponent(
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            if (isLoading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            } else {
-                Text(
-                    text = dataValue ?: "No data",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-                Text(
-                    text = "Updated just now",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
-                )
+            when (config.status) {
+                DataFeedStatus.LOADING -> {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text(
+                        text = "Consultando fuente externa...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+                DataFeedStatus.DATA -> {
+                    Text(
+                        text = config.value ?: "Sin datos",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    FeedTimestamp(config = config)
+                }
+                DataFeedStatus.ERROR -> {
+                    Text(
+                        text = config.errorMessage ?: "No se pudo cargar el feed",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    FeedTimestamp(config = config)
+                }
+                DataFeedStatus.STALE -> {
+                    Text(
+                        text = config.lastValue ?: "Sin cache disponible",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Text(
+                        text = "Mostrando el último valor conocido",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    FeedTimestamp(config = config)
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun FeedTimestamp(config: DataFeedConfig) {
+    Text(
+        text = config.lastUpdatedAt?.let { "Actualizado ${relativeTime(it)}" } ?: "Sin actualización registrada",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+    )
+}
+
+private fun relativeTime(timestamp: Long): String {
+    val diffMinutes = ((System.currentTimeMillis() - timestamp) / 60000L).coerceAtLeast(0L)
+    return when {
+        diffMinutes < 1L -> "recién"
+        diffMinutes < 60L -> "hace ${diffMinutes} min"
+        diffMinutes < 1440L -> "hace ${diffMinutes / 60L} h"
+        else -> "hace ${diffMinutes / 1440L} d"
     }
 }

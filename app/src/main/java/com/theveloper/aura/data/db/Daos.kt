@@ -12,23 +12,46 @@ import androidx.room.Update
 import com.theveloper.aura.domain.model.TaskType
 import kotlinx.coroutines.flow.Flow
 
-data class TaskWithComponents(
+data class TaskComponentWithItems(
+    @Embedded val component: TaskComponentEntity,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "component_id"
+    )
+    val checklistItems: List<ChecklistItemEntity>
+)
+
+data class TaskWithDetails(
     @Embedded val task: TaskEntity,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "task_id",
+        entity = TaskComponentEntity::class
+    )
+    val components: List<TaskComponentWithItems>,
     @Relation(
         parentColumn = "id",
         entityColumn = "task_id"
     )
-    val components: List<TaskComponentEntity>
+    val reminders: List<ReminderEntity>
 )
 
 @Dao
 interface TaskDao {
-    @Query("SELECT * FROM tasks")
-    fun getTasksFlow(): Flow<List<TaskEntity>>
+    @Transaction
+    @Query("SELECT * FROM tasks ORDER BY created_at DESC")
+    fun getTasksDetailedFlow(): Flow<List<TaskWithDetails>>
 
     @Transaction
     @Query("SELECT * FROM tasks WHERE id = :taskId")
-    suspend fun getTaskWithComponents(taskId: String): TaskWithComponents?
+    suspend fun getTaskWithDetails(taskId: String): TaskWithDetails?
+
+    @Transaction
+    @Query("SELECT * FROM tasks WHERE id = :taskId")
+    fun getTaskWithDetailsFlow(taskId: String): Flow<TaskWithDetails?>
+
+    @Query("SELECT COUNT(*) FROM tasks")
+    suspend fun getTaskCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTask(task: TaskEntity)
@@ -43,6 +66,9 @@ interface TaskDao {
 @Dao
 interface TaskComponentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertComponents(components: List<TaskComponentEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertComponent(component: TaskComponentEntity)
 
     @Update
@@ -53,10 +79,16 @@ interface TaskComponentDao {
 
     @Query("SELECT * FROM task_components WHERE task_id = :taskId ORDER BY sort_order ASC")
     fun getComponentsForTask(taskId: String): Flow<List<TaskComponentEntity>>
+
+    @Query("DELETE FROM task_components WHERE task_id = :taskId")
+    suspend fun deleteComponentsForTask(taskId: String)
 }
 
 @Dao
 interface ChecklistItemDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertItems(items: List<ChecklistItemEntity>)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(item: ChecklistItemEntity)
 
@@ -68,6 +100,9 @@ interface ChecklistItemDao {
 
     @Query("SELECT * FROM checklist_items WHERE component_id = :componentId ORDER BY sort_order ASC")
     suspend fun getItemsForComponent(componentId: String): List<ChecklistItemEntity>
+
+    @Query("DELETE FROM checklist_items WHERE component_id IN (SELECT id FROM task_components WHERE task_id = :taskId)")
+    suspend fun deleteItemsForTask(taskId: String)
 }
 
 @Dao
@@ -94,6 +129,9 @@ interface UserPatternDao {
 @Dao
 interface ReminderDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReminders(reminders: List<ReminderEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(reminder: ReminderEntity)
 
     @Update
@@ -104,6 +142,9 @@ interface ReminderDao {
 
     @Query("SELECT * FROM reminders WHERE scheduled_at < :beforeTime")
     fun getActiveRemindersScheduled(beforeTime: Long): Flow<List<ReminderEntity>>
+
+    @Query("DELETE FROM reminders WHERE task_id = :taskId")
+    suspend fun deleteRemindersForTask(taskId: String)
 }
 
 @Dao

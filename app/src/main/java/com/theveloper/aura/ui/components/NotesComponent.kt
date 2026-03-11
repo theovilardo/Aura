@@ -7,7 +7,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.theveloper.aura.domain.model.NotesConfig
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @Composable
 fun NotesComponent(
@@ -15,20 +14,26 @@ fun NotesComponent(
     onSave: (String) -> Unit
 ) {
     var text by remember(config.text) { mutableStateOf(config.text) }
-    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(text) {
+        delay(500)
+        if (text != config.text) {
+            onSave(text)
+        }
+    }
 
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        if (config.isMarkdown) {
+            Text(
+                text = "Soporta markdown básico",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
         OutlinedTextField(
             value = text,
-            onValueChange = { newText ->
-                text = newText
-                coroutineScope.launch {
-                    delay(500) // debounce
-                    if (text == newText) {
-                        onSave(text)
-                    }
-                }
-            },
+            onValueChange = { newText -> text = newText },
             modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
             label = { Text("Notas") },
             textStyle = MaterialTheme.typography.bodyMedium

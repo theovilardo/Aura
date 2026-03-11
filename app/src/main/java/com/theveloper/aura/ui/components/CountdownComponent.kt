@@ -24,8 +24,10 @@ fun CountdownComponent(
     }
 
     val diff = config.targetDate - currentTime
-    val daysRemaining = TimeUnit.MILLISECONDS.toDays(diff)
+    val daysRemaining = TimeUnit.MILLISECONDS.toDays(diff).coerceAtLeast(0)
+    val hoursRemaining = TimeUnit.MILLISECONDS.toHours(diff).coerceAtLeast(0)
     val color = if (daysRemaining in 0..7) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    val supportingText = if (daysRemaining == 0L) "$hoursRemaining horas restantes" else "días restantes"
 
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         if (config.label.isNotEmpty()) {
@@ -39,13 +41,13 @@ fun CountdownComponent(
         
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
-                text = if (daysRemaining < 0) "0" else daysRemaining.toString(),
+                text = if (daysRemaining == 0L) hoursRemaining.toString() else daysRemaining.toString(),
                 style = MaterialTheme.typography.displayMedium,
                 color = color
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = "días restantes",
+                text = supportingText,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 6.dp)

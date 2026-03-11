@@ -19,11 +19,11 @@ import com.theveloper.aura.domain.model.HabitRingConfig
 @Composable
 fun HabitRingComponent(
     config: HabitRingConfig,
-    isCompletedToday: Boolean = false,
+    isCompletedToday: Boolean = config.completedToday,
     onToggle: (Boolean) -> Unit
 ) {
     var completed by remember(isCompletedToday) { mutableStateOf(isCompletedToday) }
-    
+
     val progress by animateFloatAsState(
         targetValue = if (completed) 1f else 0f,
         animationSpec = tween(durationMillis = 600),
@@ -72,9 +72,17 @@ fun HabitRingComponent(
                 )
             }
             Text(
-                text = if (completed) "Done" else "Tap",
+                text = if (completed) "Hecho" else "Tap",
                 style = MaterialTheme.typography.bodyLarge,
                 color = if (completed) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (config.streakCount > 0) {
+            Text(
+                text = "Racha actual: ${config.streakCount} días",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 12.dp)
             )
         }
     }

@@ -14,6 +14,6 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindTaskRepository(
-        fakeTaskRepository: com.theveloper.aura.data.repository.FakeTaskRepository
+        taskRepositoryImpl: TaskRepositoryImpl
     ): TaskRepository
 }

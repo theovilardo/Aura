@@ -1,88 +1,91 @@
 package com.theveloper.aura.engine.classifier
 
-import com.google.mlkit.nl.entityextraction.DateTimeEntity
-import com.google.mlkit.nl.entityextraction.Entity
 import com.theveloper.aura.domain.model.TaskType
-import com.theveloper.aura.engine.dsl.ComponentDSL
+import com.theveloper.aura.engine.dsl.TaskComponentCatalog
+import com.theveloper.aura.engine.dsl.TaskComponentContext
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 
 object TaskDSLBuilder {
-    fun buildPathDeterministic(
-        title: String,
-        taskType: TaskType,
-        entities: List<Entity>
+
+    fun buildDeterministic(
+        input: String,
+        intentResult: IntentResult,
+        entities: ExtractedEntities
     ): TaskDSLOutput {
-        var targetDateMs: Long? = null
-
-        val dateTimeEntities = entities.filterIsInstance<DateTimeEntity>()
-        if (dateTimeEntities.isNotEmpty()) {
-            targetDateMs = dateTimeEntities.first().timestampMillis
-        }
-
-        val components = mutableListOf<ComponentDSL>()
-        
-        when (taskType) {
-            TaskType.TRAVEL -> {
-                components.add(ComponentDSL(type = "COUNTDOWN", sortOrder = 0, config = buildJsonObject {
-                    put("config_type", JsonPrimitive("COUNTDOWN"))
-                    put("targetDate", JsonPrimitive(targetDateMs ?: 0L))
-                    put("label", JsonPrimitive("Días para el viaje"))
-                }))
-                components.add(ComponentDSL(type = "CHECKLIST", sortOrder = 1, config = buildJsonObject {
-                    put("config_type", JsonPrimitive("CHECKLIST"))
-                    put("label", JsonPrimitive("Preparativos"))
-                    put("allowAddItems", JsonPrimitive(true))
-                }))
-            }
-            TaskType.HABIT -> {
-                components.add(ComponentDSL(type = "HABIT_RING", sortOrder = 0, config = buildJsonObject {
-                    put("config_type", JsonPrimitive("HABIT_RING"))
-                    put("frequency", JsonPrimitive("DAILY"))
-                    put("label", JsonPrimitive("Progreso"))
-                }))
-            }
-            TaskType.HEALTH -> {
-                 components.add(ComponentDSL(type = "METRIC_TRACKER", sortOrder = 0, config = buildJsonObject {
-                    put("config_type", JsonPrimitive("METRIC_TRACKER"))
-                    put("unit", JsonPrimitive(""))
-                    put("label", JsonPrimitive("Medición"))
-                }))
-            }
-            TaskType.PROJECT -> {
-                components.add(ComponentDSL(type = "PROGRESS_BAR", sortOrder = 0, config = buildJsonObject {
-                    put("config_type", JsonPrimitive("PROGRESS_BAR"))
-                    put("source", JsonPrimitive("MANUAL"))
-                    put("label", JsonPrimitive("Avance general"))
-                }))
-                components.add(ComponentDSL(type = "NOTES", sortOrder = 1, config = buildJsonObject {
-                    put("config_type", JsonPrimitive("NOTES"))
-                    put("text", JsonPrimitive(""))
-                    put("isMarkdown", JsonPrimitive(true))
-                }))
-            }
-            TaskType.FINANCE -> {
-                components.add(ComponentDSL(type = "DATA_FEED", sortOrder = 0, config = buildJsonObject {
-                    put("config_type", JsonPrimitive("DATA_FEED"))
-                    put("fetcherConfigId", JsonPrimitive("usd_ars"))
-                    put("displayLabel", JsonPrimitive("Cotización USD"))
-                }))
-            }
-            else -> {
-                components.add(ComponentDSL(type = "NOTES", sortOrder = 0, config = buildJsonObject {
-                    put("config_type", JsonPrimitive("NOTES"))
-                    put("text", JsonPrimitive(""))
-                    put("isMarkdown", JsonPrimitive(true))
-                }))
-            }
-        }
+        val taskType = intentResult.taskType
+        val targetDateMs = entities.dateTimes.firstOrNull()
+        val title = buildTitle(input, taskType)
+        val context = TaskComponentContext(
+            input = input,
+            title = title,
+            taskType = taskType,
+            targetDateMs = targetDateMs,
+            numbers = entities.numbers,
+            locations = entities.locations
+        )
+        val presetIds = presetIdsFor(taskType, input)
+        val (components, reminders) = TaskComponentCatalog.buildSelection(
+            templateIds = presetIds,
+            now = System.currentTimeMillis(),
+            context = context
+        )
 
         return TaskDSLOutput(
             title = title,
             type = taskType,
             targetDateMs = targetDateMs,
-            components = components
+            components = components,
+            reminders = reminders
         )
+    }
+
+    fun buildFallback(input: String, context: LLMClassificationContext): TaskDSLOutput {
+        val fallbackType = context.intentHint ?: TaskType.GENERAL
+        return buildDeterministic(
+            input = input,
+            intentResult = IntentResult(fallbackType, context.intentConfidence),
+            entities = ExtractedEntities(
+                dateTimes = context.extractedDates,
+                numbers = context.extractedNumbers,
+                locations = context.extractedLocations
+            )
+        )
+    }
+
+    private fun buildTitle(input: String, taskType: TaskType): String {
+        return input.trim()
+            .replaceFirstChar { char -> if (char.isLowerCase()) char.titlecase() else char.toString() }
+            .ifBlank { taskType.name.lowercase().replaceFirstChar { it.titlecase() } }
+    }
+
+    private fun presetIdsFor(taskType: TaskType, input: String): List<String> {
+        return when (taskType) {
+            TaskType.TRAVEL -> listOf("travel_countdown", "packing_checklist")
+            TaskType.HABIT -> listOf(if (isWeekly(input)) "habit_weekly" else "habit_daily")
+            TaskType.HEALTH -> listOf(metricPreset(input), "notes_brain_dump")
+            TaskType.PROJECT -> listOf("progress_milestones", "action_checklist", "notes_meeting")
+            TaskType.FINANCE -> listOf("feed_exchange", "notes_meeting")
+            TaskType.GENERAL -> buildList {
+                if (containsDate(input)) add("deadline_countdown")
+                add("notes_brain_dump")
+            }
+        }
+    }
+
+    private fun metricPreset(input: String): String {
+        return when {
+            Regex("\\bagua\\b|hidrat", RegexOption.IGNORE_CASE).containsMatchIn(input) -> "metric_hydration"
+            Regex("\\bpasos\\b|camina|actividad", RegexOption.IGNORE_CASE).containsMatchIn(input) -> "metric_steps"
+            else -> "metric_weight"
+        }
+    }
+
+    private fun isWeekly(input: String): Boolean {
+        return Regex("\\bsemana\\b|semanal", RegexOption.IGNORE_CASE).containsMatchIn(input)
+    }
+
+    private fun containsDate(input: String): Boolean {
+        return Regex("\\bmañana\\b|hoy\\b|viernes\\b|lunes\\b|martes\\b|miércoles\\b|jueves\\b|sábado\\b|domingo\\b|enero\\b|febrero\\b|marzo\\b|abril\\b|mayo\\b|junio\\b|julio\\b|agosto\\b|septiembre\\b|octubre\\b|noviembre\\b|diciembre\\b", RegexOption.IGNORE_CASE)
+            .containsMatchIn(input)
     }
 }

@@ -21,7 +21,11 @@ fun ChecklistComponent(
 ) {
     var items by remember(initialItems) { mutableStateOf(initialItems) }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
         if (config.label.isNotEmpty()) {
             Text(
                 text = config.label,
@@ -30,11 +34,19 @@ fun ChecklistComponent(
                 modifier = Modifier.padding(bottom = 8.dp)
             )
         }
-        
+
+        if (items.isEmpty()) {
+            Text(
+                text = "Todavía no hay items para esta checklist.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
         items.forEach { item ->
             val alpha by animateFloatAsState(targetValue = if (item.isCompleted) 0.6f else 1f, label = "alpha")
             val textDecoration = if (item.isCompleted) TextDecoration.LineThrough else TextDecoration.None
-            
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

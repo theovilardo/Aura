@@ -10,33 +10,88 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+private val LightColorScheme = lightColorScheme(
+    primary = AuraLightPrimary,
+    onPrimary = AuraLightOnPrimary,
+    primaryContainer = AuraLightPrimaryContainer,
+    onPrimaryContainer = AuraLightOnPrimaryContainer,
+    inversePrimary = AuraLightInversePrimary,
+    secondary = AuraLightSecondary,
+    onSecondary = AuraLightOnSecondary,
+    secondaryContainer = AuraLightSecondaryContainer,
+    onSecondaryContainer = AuraLightOnSecondaryContainer,
+    tertiary = AuraLightTertiary,
+    onTertiary = AuraLightOnTertiary,
+    tertiaryContainer = AuraLightTertiaryContainer,
+    onTertiaryContainer = AuraLightOnTertiaryContainer,
+    background = AuraLightBackground,
+    onBackground = AuraLightOnBackground,
+    surface = AuraLightSurface,
+    onSurface = AuraLightOnSurface,
+    surfaceVariant = AuraLightSurfaceVariant,
+    onSurfaceVariant = AuraLightOnSurfaceVariant,
+    surfaceTint = AuraLightPrimary,
+    inverseSurface = AuraLightInverseSurface,
+    inverseOnSurface = AuraLightInverseOnSurface,
+    error = AuraLightError,
+    onError = AuraLightOnError,
+    errorContainer = AuraLightErrorContainer,
+    onErrorContainer = AuraLightOnErrorContainer,
+    outline = AuraLightOutline,
+    outlineVariant = AuraLightOutlineVariant,
+    scrim = AuraLightScrim,
+    surfaceBright = AuraLightSurfaceBright,
+    surfaceContainer = AuraLightSurfaceContainer,
+    surfaceContainerHigh = AuraLightSurfaceContainerHigh,
+    surfaceContainerHighest = AuraLightSurfaceContainerHighest,
+    surfaceContainerLow = AuraLightSurfaceContainerLow,
+    surfaceContainerLowest = AuraLightSurfaceContainerLowest,
+    surfaceDim = AuraLightSurfaceDim
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+private val DarkColorScheme = darkColorScheme(
+    primary = AuraDarkPrimary,
+    onPrimary = AuraDarkOnPrimary,
+    primaryContainer = AuraDarkPrimaryContainer,
+    onPrimaryContainer = AuraDarkOnPrimaryContainer,
+    inversePrimary = AuraDarkInversePrimary,
+    secondary = AuraDarkSecondary,
+    onSecondary = AuraDarkOnSecondary,
+    secondaryContainer = AuraDarkSecondaryContainer,
+    onSecondaryContainer = AuraDarkOnSecondaryContainer,
+    tertiary = AuraDarkTertiary,
+    onTertiary = AuraDarkOnTertiary,
+    tertiaryContainer = AuraDarkTertiaryContainer,
+    onTertiaryContainer = AuraDarkOnTertiaryContainer,
+    background = AuraDarkBackground,
+    onBackground = AuraDarkOnBackground,
+    surface = AuraDarkSurface,
+    onSurface = AuraDarkOnSurface,
+    surfaceVariant = AuraDarkSurfaceVariant,
+    onSurfaceVariant = AuraDarkOnSurfaceVariant,
+    surfaceTint = AuraDarkPrimary,
+    inverseSurface = AuraDarkInverseSurface,
+    inverseOnSurface = AuraDarkInverseOnSurface,
+    error = AuraDarkError,
+    onError = AuraDarkOnError,
+    errorContainer = AuraDarkErrorContainer,
+    onErrorContainer = AuraDarkOnErrorContainer,
+    outline = AuraDarkOutline,
+    outlineVariant = AuraDarkOutlineVariant,
+    scrim = AuraDarkScrim,
+    surfaceBright = AuraDarkSurfaceBright,
+    surfaceContainer = AuraDarkSurfaceContainer,
+    surfaceContainerHigh = AuraDarkSurfaceContainerHigh,
+    surfaceContainerHighest = AuraDarkSurfaceContainerHighest,
+    surfaceContainerLow = AuraDarkSurfaceContainerLow,
+    surfaceContainerLowest = AuraDarkSurfaceContainerLowest,
+    surfaceDim = AuraDarkSurfaceDim
 )
 
 @Composable
 fun AuraTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -44,7 +99,6 @@ fun AuraTheme(
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }

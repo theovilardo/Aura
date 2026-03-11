@@ -1,8 +1,10 @@
 package com.theveloper.aura.engine.dsl
 
+import com.theveloper.aura.domain.model.ComponentType
+import com.theveloper.aura.domain.model.FetcherType
 import com.theveloper.aura.domain.model.TaskType
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 
 @Serializable
 data class TaskDSLOutput(
@@ -17,9 +19,9 @@ data class TaskDSLOutput(
 
 @Serializable
 data class ComponentDSL(
-    val type: String, // Maps to ComponentType enum
+    val type: ComponentType,
     val sortOrder: Int,
-    val config: JsonElement // Raw JSON representation of ComponentConfig
+    val config: JsonObject
 )
 
 @Serializable
@@ -32,7 +34,7 @@ data class ReminderDSL(
 
 @Serializable
 data class FetcherDSL(
-    val type: String, // Maps to FetcherType enum
-    val params: JsonElement,
+    val type: FetcherType,
+    val params: JsonObject,
     val cronExpression: String
 )
