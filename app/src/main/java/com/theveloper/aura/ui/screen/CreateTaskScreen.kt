@@ -324,8 +324,7 @@ private fun CreateTaskPromptBar(
     onSubmit: () -> Unit
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+        color = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
         Row(
             modifier = Modifier
@@ -333,13 +332,13 @@ private fun CreateTaskPromptBar(
                 .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Bottom
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(26.dp),
+                shape = CircleShape,
                 color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+                border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
             ) {
                 BasicTextField(
                     value = prompt,
@@ -369,7 +368,7 @@ private fun CreateTaskPromptBar(
                         ) {
                             if (prompt.isBlank()) {
                                 Text(
-                                    text = "Describe the task or add more context...",
+                                    text = "Describe task or add context...",
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
