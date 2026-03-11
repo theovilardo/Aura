@@ -160,6 +160,18 @@ interface FetcherConfigDao {
 
     @Query("SELECT * FROM fetcher_configs WHERE task_id = :taskId")
     suspend fun getConfigsForTask(taskId: String): List<FetcherConfigEntity>
+
+    @Query("SELECT * FROM fetcher_configs")
+    suspend fun getActiveConfigs(): List<FetcherConfigEntity>
+
+    @Query("SELECT * FROM fetcher_configs WHERE id = :id")
+    fun getConfigFlow(id: String): Flow<FetcherConfigEntity?>
+
+    @Query("SELECT * FROM fetcher_configs WHERE id = :id")
+    suspend fun getConfigById(id: String): FetcherConfigEntity?
+
+    @Query("UPDATE fetcher_configs SET last_result_json = :json, last_updated_at = :timestamp WHERE id = :configId")
+    suspend fun updateLastResult(configId: String, json: String, timestamp: Long)
 }
 
 @Dao

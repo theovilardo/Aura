@@ -8,6 +8,8 @@ import com.theveloper.aura.data.repository.ReminderRepositoryImpl
 import com.theveloper.aura.domain.repository.ReminderRepository
 import com.theveloper.aura.data.repository.UserPatternRepositoryImpl
 import com.theveloper.aura.domain.repository.UserPatternRepository
+import com.theveloper.aura.data.repository.FetcherConfigRepositoryImpl
+import com.theveloper.aura.domain.repository.FetcherConfigRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -39,4 +41,10 @@ abstract class RepositoryModule {
     abstract fun bindUserPatternRepository(
         userPatternRepositoryImpl: UserPatternRepositoryImpl
     ): UserPatternRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindFetcherConfigRepository(
+        fetcherConfigRepositoryImpl: FetcherConfigRepositoryImpl
+    ): FetcherConfigRepository
 }

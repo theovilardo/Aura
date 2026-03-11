@@ -28,4 +28,44 @@ object DatabaseModule {
     fun provideTaskDao(db: AuraDatabase): TaskDao {
         return db.taskDao()
     }
+
+    @Provides
+    fun provideTaskComponentDao(db: AuraDatabase): com.theveloper.aura.data.db.TaskComponentDao {
+        return db.taskComponentDao()
+    }
+
+    @Provides
+    fun provideChecklistItemDao(db: AuraDatabase): com.theveloper.aura.data.db.ChecklistItemDao {
+        return db.checklistItemDao()
+    }
+
+    @Provides
+    fun provideHabitSignalDao(db: AuraDatabase): com.theveloper.aura.data.db.HabitSignalDao {
+        return db.habitSignalDao()
+    }
+
+    @Provides
+    fun provideUserPatternDao(db: AuraDatabase): com.theveloper.aura.data.db.UserPatternDao {
+        return db.userPatternDao()
+    }
+
+    @Provides
+    fun provideReminderDao(db: AuraDatabase): com.theveloper.aura.data.db.ReminderDao {
+        return db.reminderDao()
+    }
+
+    @Provides
+    fun provideFetcherConfigDao(db: AuraDatabase): com.theveloper.aura.data.db.FetcherConfigDao {
+        return db.fetcherConfigDao()
+    }
+
+    @Provides
+    fun provideSuggestionDao(db: AuraDatabase): com.theveloper.aura.data.db.SuggestionDao {
+        return db.suggestionDao()
+    }
+
+    @Provides
+    fun provideSyncQueueDao(db: AuraDatabase): com.theveloper.aura.data.db.SyncQueueDao {
+        return db.syncQueueDao()
+    }
 }

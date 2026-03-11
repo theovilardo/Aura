@@ -225,7 +225,7 @@ aura/
 
 | Fase | Nombre         | Duración estimada | Estado |
 | ---- | -------------- | ----------------: | ------ |
-| F4   | Fetcher Engine |       1–2 semanas | [ ]    |
+| F4   | Fetcher Engine |       1–2 semanas | [x]    |
 
 **Objetivo:** los 3 fetchers del MVP funcionan, los datos se cachean localmente, y el componente `DATA_FEED` los muestra correctamente. Ningún dato de usuario sale sin sanitización.
 
@@ -233,14 +233,14 @@ aura/
 
 | ID    | Tarea + detalle                                                                                                                                                                                                                                  | Done   | Deps              |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | ----------------- |
-| F4-01 | **FetcherEngine — estructura base**  `FetcherEngine` con `fun fetch(type, params): FetchResult`. `FetchResult` sealed: `Success(data)`, `MissingParams`, `NotSupported`, `Error(reason)`. `OkHttpClient` con interceptor de sanitización de PII. | ☐ Done | F2-08             |
-| F4-02 | **PII Sanitizer — interceptor OkHttp**  Antes de toda request: eliminar de params cualquier key que sea: `name`, `email`, `phone`, `address`, `id`, `user`, `token`. Log en debug de qué params se enviaron.                                     | ☐ Done | F4-01             |
-| F4-03 | **Fetcher: WEATHER**  API: `open-meteo.com` (gratuita, sin key). Params: `latitude`, `longitude`. Response: temperatura actual, descripción, ícono. Cachear resultado en `fetcher_configs.last_result_json`.                                     | ☐ Done | F4-02             |
-| F4-04 | **Fetcher: CURRENCY_EXCHANGE**  API: `exchangerate-api.com` (tier free, API key embebida en `BuildConfig`). Params: `from`, `to`. Response: tasa actual, timestamp. Cache: 1 hora.                                                               | ☐ Done | F4-02             |
-| F4-05 | **Fetcher: FLIGHT_PRICES**  API: Aviasales API pública (o alternativa sin auth de usuario). Params: `origin`, `destination`, `date_from`, `date_to`. Response: precio mínimo, aerolínea, link de compra.                                         | ☐ Done | F4-02             |
-| F4-06 | **FetcherWorker — WorkManager**  `PeriodicWorkRequest` por fetcher activo. Respeta el `cron_expression` de cada `FetcherConfig`. Constraint: `NetworkType.CONNECTED`. Actualiza `last_result_json` en DB.                                        | ☐ Done | F4-03,F4-04,F4-05 |
-| F4-07 | **DATA_FEED component — conectar a FetcherEngine**  `DataFeedViewModel` carga `last_result_json` de DB (cache). Refresh manual hace fetch on-demand. Muestra timestamp del último update.                                                        | ☐ Done | F4-06             |
-| F4-08 | **Conectar creación de tareas TRAVEL con fetchers**  Cuando el Classifier crea una tarea `TRAVEL` con origen/destino: auto-crear `FetcherConfig` para `FLIGHT_PRICES` y `WEATHER`. El usuario puede desactivarlos.                               | ☐ Done | F4-07             |
+| F4-01 | **FetcherEngine — estructura base**  `FetcherEngine` con `fun fetch(type, params): FetchResult`. `FetchResult` sealed: `Success(data)`, `MissingParams`, `NotSupported`, `Error(reason)`. `OkHttpClient` con interceptor de sanitización de PII. | ☑ Done | F2-08             |
+| F4-02 | **PII Sanitizer — interceptor OkHttp**  Antes de toda request: eliminar de params cualquier key que sea: `name`, `email`, `phone`, `address`, `id`, `user`, `token`. Log en debug de qué params se enviaron.                                     | ☑ Done | F4-01             |
+| F4-03 | **Fetcher: WEATHER**  API: `open-meteo.com` (gratuita, sin key). Params: `latitude`, `longitude`. Response: temperatura actual, descripción, ícono. Cachear resultado en `fetcher_configs.last_result_json`.                                     | ☑ Done | F4-02             |
+| F4-04 | **Fetcher: CURRENCY_EXCHANGE**  API: `exchangerate-api.com` (tier free, API key embebida en `BuildConfig`). Params: `from`, `to`. Response: tasa actual, timestamp. Cache: 1 hora.                                                               | ☑ Done | F4-02             |
+| F4-05 | **Fetcher: FLIGHT_PRICES**  API: Aviasales API pública (o alternativa sin auth de usuario). Params: `origin`, `destination`, `date_from`, `date_to`. Response: precio mínimo, aerolínea, link de compra.                                         | ☑ Done | F4-02             |
+| F4-06 | **FetcherWorker — WorkManager**  `PeriodicWorkRequest` por fetcher activo. Respeta el `cron_expression` de cada `FetcherConfig`. Constraint: `NetworkType.CONNECTED`. Actualiza `last_result_json` en DB.                                        | ☑ Done | F4-03,F4-04,F4-05 |
+| F4-07 | **DATA_FEED component — conectar a FetcherEngine**  `DataFeedViewModel` carga `last_result_json` de DB (cache). Refresh manual hace fetch on-demand. Muestra timestamp del último update.                                                        | ☑ Done | F4-06             |
+| F4-08 | **Conectar creación de tareas TRAVEL con fetchers**  Cuando el Classifier crea una tarea `TRAVEL` con origen/destino: auto-crear `FetcherConfig` para `FLIGHT_PRICES` y `WEATHER`. El usuario puede desactivarlos.                               | ☑ Done | F4-07             |
 
 ## Checklist de verificación
 

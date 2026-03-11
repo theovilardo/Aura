@@ -11,11 +11,21 @@ import androidx.compose.ui.unit.dp
 import com.theveloper.aura.domain.model.DataFeedConfig
 import com.theveloper.aura.domain.model.DataFeedStatus
 
+import androidx.hilt.navigation.compose.hiltViewModel
+
 @Composable
 fun DataFeedComponent(
     config: DataFeedConfig,
-    onRefresh: () -> Unit = {}
+    viewModel: DataFeedViewModel = hiltViewModel()
 ) {
+    val uiState by viewModel.uiState.collectAsState()
+    
+    LaunchedEffect(config.fetcherConfigId) {
+        if (config.fetcherConfigId.isNotBlank()) {
+            viewModel.initialize(config.fetcherConfigId)
+            viewModel.refreshFeed() // Autorefresh on first load per phase request
+        }
+    }
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
@@ -32,7 +42,7 @@ fun DataFeedComponent(
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
                 IconButton(
-                    onClick = onRefresh,
+                    onClick = { viewModel.refreshFeed() },
                     modifier = Modifier.size(24.dp)
                 ) {
                     Icon(
@@ -45,7 +55,7 @@ fun DataFeedComponent(
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            when (config.status) {
+            when (uiState.status) {
                 DataFeedStatus.LOADING -> {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     Text(
@@ -57,23 +67,23 @@ fun DataFeedComponent(
                 }
                 DataFeedStatus.DATA -> {
                     Text(
-                        text = config.value ?: "Sin datos",
+                        text = uiState.value ?: config.value ?: "Sin datos",
                         style = MaterialTheme.typography.headlineMedium,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
-                    FeedTimestamp(config = config)
+                    FeedTimestamp(timestamp = uiState.lastUpdatedAt)
                 }
                 DataFeedStatus.ERROR -> {
                     Text(
-                        text = config.errorMessage ?: "No se pudo cargar el feed",
+                        text = uiState.errorMessage ?: config.errorMessage ?: "No se pudo cargar el feed",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error
                     )
-                    FeedTimestamp(config = config)
+                    FeedTimestamp(timestamp = uiState.lastUpdatedAt)
                 }
                 DataFeedStatus.STALE -> {
                     Text(
-                        text = config.lastValue ?: "Sin cache disponible",
+                        text = uiState.lastValue ?: config.lastValue ?: "Sin cache disponible",
                         style = MaterialTheme.typography.headlineSmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
@@ -82,7 +92,7 @@ fun DataFeedComponent(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
-                    FeedTimestamp(config = config)
+                    FeedTimestamp(timestamp = uiState.lastUpdatedAt)
                 }
             }
         }
@@ -90,9 +100,9 @@ fun DataFeedComponent(
 }
 
 @Composable
-private fun FeedTimestamp(config: DataFeedConfig) {
+private fun FeedTimestamp(timestamp: Long?) {
     Text(
-        text = config.lastUpdatedAt?.let { "Actualizado ${relativeTime(it)}" } ?: "Sin actualización registrada",
+        text = timestamp?.let { "Actualizado ${relativeTime(it)}" } ?: "Sin actualización registrada",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
     )

@@ -72,8 +72,7 @@ fun ComponentRenderer(
         }
         component.type == ComponentType.DATA_FEED && config is DataFeedConfig -> {
             DataFeedComponent(
-                config = config,
-                onRefresh = { }
+                config = config
             )
         }
         else -> {

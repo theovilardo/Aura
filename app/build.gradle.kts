@@ -36,9 +36,13 @@ android {
         val groqApiKey = localProperties.getProperty("groq.api.key")
             ?: System.getenv("GROQ_API_KEY")
             ?: ""
+        val exchangeRateApiKey = localProperties.getProperty("exchangerate.api.key")
+            ?: System.getenv("EXCHANGERATE_API_KEY")
+            ?: "dummy_key_for_now"
 
         buildConfigField("String", "GROQ_API_KEY", "\"${escapeBuildConfig(groqApiKey)}\"")
         buildConfigField("String", "GROQ_BASE_URL", "\"https://api.groq.com/openai/v1/\"")
+        buildConfigField("String", "EXCHANGERATE_API_KEY", "\"${escapeBuildConfig(exchangeRateApiKey)}\"")
     }
 
     buildTypes {
