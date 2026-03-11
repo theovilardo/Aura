@@ -2,6 +2,12 @@ package com.theveloper.aura.di
 
 import com.theveloper.aura.data.repository.TaskRepositoryImpl
 import com.theveloper.aura.domain.repository.TaskRepository
+import com.theveloper.aura.data.repository.HabitRepositoryImpl
+import com.theveloper.aura.domain.repository.HabitRepository
+import com.theveloper.aura.data.repository.ReminderRepositoryImpl
+import com.theveloper.aura.domain.repository.ReminderRepository
+import com.theveloper.aura.data.repository.UserPatternRepositoryImpl
+import com.theveloper.aura.domain.repository.UserPatternRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -16,4 +22,21 @@ abstract class RepositoryModule {
     abstract fun bindTaskRepository(
         taskRepositoryImpl: TaskRepositoryImpl
     ): TaskRepository
+    @Binds
+    @Singleton
+    abstract fun bindHabitRepository(
+        habitRepositoryImpl: HabitRepositoryImpl
+    ): HabitRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindReminderRepository(
+        reminderRepositoryImpl: ReminderRepositoryImpl
+    ): ReminderRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindUserPatternRepository(
+        userPatternRepositoryImpl: UserPatternRepositoryImpl
+    ): UserPatternRepository
 }

@@ -188,7 +188,7 @@ aura/
 
 | Fase | Nombre                         | Duración estimada | Estado |
 | ---- | ------------------------------ | ----------------: | ------ |
-| F3   | Habit Engine y Reminder Engine |       2–3 semanas | [ ]    |
+| F3   | Habit Engine y Reminder Engine |       2–3 semanas | [x]    |
 
 **Objetivo:** el sistema registra señales de comportamiento, calcula patrones, y programa recordatorios inteligentes con SM-2. WorkManager corre el análisis nocturno.
 
@@ -196,17 +196,17 @@ aura/
 
 | ID    | Tarea + detalle                                                                                                                                                                                                                   | Done   | Deps  |
 | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ----- |
-| F3-01 | **HabitSignalRepository — implementación**  `insert()` append-only. `getSignalsForTask()`. `getSignalsByTimeWindow(hour, day)`. **NUNCA** exponer `update()` ni `delete()`.                                                       | ☐ Done | F0-09 |
-| F3-02 | **HabitEngine — logSignal()**  Registra señales desde el ViewModel al completar/ignorar/posponer tareas y reminders. Llamado desde los `onSignal` callbacks del `TaskRenderer`.                                                   | ☐ Done | F3-01 |
-| F3-03 | **HabitEngine — calculatePattern()**  Dado un set de señales: calcula `completionRate`, `dismissRate`, `avgDelayMs`, `sampleSize`, `confidence`. `Confidence = min(1.0, sampleSize/20)`.                                          | ☐ Done | F3-02 |
-| F3-04 | **HabitAnalysisWorker — WorkManager**  `PeriodicWorkRequest` cada 24hs, constraint: charging + idle (para no consumir batería). Llama `HabitEngine.processBatch()`. En `data/worker/`.                                            | ☐ Done | F3-03 |
-| F3-05 | **UserPatternRepository — upsert por (taskType, hour, day)**  Si ya existe el patrón para esa combinación: actualizar. Si no: insertar. Query `getBestPatternForType()` devuelve el horario con mayor `completionRate`.           | ☐ Done | F3-03 |
-| F3-06 | **ReminderEngine — calculateOptimalTime()**  Consulta `UserPatternRepository`. Si hay datos con `confidence > 0.5`: usa el mejor horario. Si no: `defaultTimeForType()` según `TaskType`.                                         | ☐ Done | F3-05 |
-| F3-07 | **ReminderEngine — SM-2 calculateNextInterval()**  Implementación exacta del algoritmo SM-2 adaptado. `COMPLETED→quality 5`, `SNOOZED→3`, `DISMISSED→1`. `EaseFactor` mínimo: `1.3`.                                              | ☐ Done | F0-04 |
-| F3-08 | **ReminderWorker — WorkManager**  `OneTimeWorkRequest` por cada reminder. Al dispararse: muestra notificación con acciones (**Completar / Posponer 30min / Ignorar**). Al responder: llama `ReminderEngine.onReminderResponse()`. | ☐ Done | F3-07 |
-| F3-09 | **NotificationService — canales Android**  Canal `REMINDERS` (`importance HIGH`). Canal `SUGGESTIONS` (`importance DEFAULT`). Notificación de reminder con 3 action buttons. Manejo de respuestas via `BroadcastReceiver`.        | ☐ Done | F3-08 |
-| F3-10 | **Conectar onSignal del TaskRenderer al HabitEngine**  `TaskDetailViewModel.onSignal()` → `HabitEngine.logSignal()`. Cada interacción del usuario con la tarea genera una señal automáticamente.                                  | ☐ Done | F3-02 |
-| F3-11 | **ReminderRepository — implementación completa**  CRUD de reminders. `getActiveRemindersScheduled(before: Long)` para el `ReminderWorker`. `reschedule()` actualiza `scheduled_at`.                                               | ☐ Done | F0-09 |
+| F3-01 | **HabitSignalRepository — implementación**  `insert()` append-only. `getSignalsForTask()`. `getSignalsByTimeWindow(hour, day)`. **NUNCA** exponer `update()` ni `delete()`.                                                       | ☑ Done | F0-09 |
+| F3-02 | **HabitEngine — logSignal()**  Registra señales desde el ViewModel al completar/ignorar/posponer tareas y reminders. Llamado desde los `onSignal` callbacks del `TaskRenderer`.                                                   | ☑ Done | F3-01 |
+| F3-03 | **HabitEngine — calculatePattern()**  Dado un set de señales: calcula `completionRate`, `dismissRate`, `avgDelayMs`, `sampleSize`, `confidence`. `Confidence = min(1.0, sampleSize/20)`.                                          | ☑ Done | F3-02 |
+| F3-04 | **HabitAnalysisWorker — WorkManager**  `PeriodicWorkRequest` cada 24hs, constraint: charging + idle (para no consumir batería). Llama `HabitEngine.processBatch()`. En `data/worker/`.                                            | ☑ Done | F3-03 |
+| F3-05 | **UserPatternRepository — upsert por (taskType, hour, day)**  Si ya existe el patrón para esa combinación: actualizar. Si no: insertar. Query `getBestPatternForType()` devuelve el horario con mayor `completionRate`.           | ☑ Done | F3-03 |
+| F3-06 | **ReminderEngine — calculateOptimalTime()**  Consulta `UserPatternRepository`. Si hay datos con `confidence > 0.5`: usa el mejor horario. Si no: `defaultTimeForType()` según `TaskType`.                                         | ☑ Done | F3-05 |
+| F3-07 | **ReminderEngine — SM-2 calculateNextInterval()**  Implementación exacta del algoritmo SM-2 adaptado. `COMPLETED→quality 5`, `SNOOZED→3`, `DISMISSED→1`. `EaseFactor` mínimo: `1.3`.                                              | ☑ Done | F0-04 |
+| F3-08 | **ReminderWorker — WorkManager**  `OneTimeWorkRequest` por cada reminder. Al dispararse: muestra notificación con acciones (**Completar / Posponer 30min / Ignorar**). Al responder: llama `ReminderEngine.onReminderResponse()`. | ☑ Done | F3-07 |
+| F3-09 | **NotificationService — canales Android**  Canal `REMINDERS` (`importance HIGH`). Canal `SUGGESTIONS` (`importance DEFAULT`). Notificación de reminder con 3 action buttons. Manejo de respuestas via `BroadcastReceiver`.        | ☑ Done | F3-08 |
+| F3-10 | **Conectar onSignal del TaskRenderer al HabitEngine**  `TaskDetailViewModel.onSignal()` → `HabitEngine.logSignal()`. Cada interacción del usuario con la tarea genera una señal automáticamente.                                  | ☑ Done | F3-02 |
+| F3-11 | **ReminderRepository — implementación completa**  CRUD de reminders. `getActiveRemindersScheduled(before: Long)` para el `ReminderWorker`. `reschedule()` actualiza `scheduled_at`.                                               | ☑ Done | F0-09 |
 
 ## Checklist de verificación
 

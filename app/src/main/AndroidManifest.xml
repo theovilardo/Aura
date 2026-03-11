@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application
         android:name=".AuraApplication"
@@ -25,6 +27,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <receiver android:name=".data.worker.NotificationReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="com.theveloper.aura.ACTION_COMPLETE" />
+                <action android:name="com.theveloper.aura.ACTION_SNOOZE" />
+                <action android:name="com.theveloper.aura.ACTION_DISMISS" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

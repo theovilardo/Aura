@@ -7,6 +7,7 @@ import com.theveloper.aura.domain.model.SignalType
 import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskStatus
 import com.theveloper.aura.domain.repository.TaskRepository
+import com.theveloper.aura.engine.habit.HabitEngine
 import com.theveloper.aura.domain.usecase.UpdateTaskStatusUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,6 +22,7 @@ import javax.inject.Inject
 class TaskDetailViewModel @Inject constructor(
     taskRepository: TaskRepository,
     private val updateTaskStatusUseCase: UpdateTaskStatusUseCase,
+    private val habitEngine: HabitEngine,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -49,10 +51,13 @@ class TaskDetailViewModel @Inject constructor(
         )
 
     fun onSignal(signalType: SignalType) {
-        when (signalType) {
-            SignalType.TASK_COMPLETED -> onCompleteTask()
-            SignalType.REMINDER_DISMISSED,
-            SignalType.REMINDER_SNOOZED -> Unit
+        viewModelScope.launch {
+            habitEngine.logSignal(taskId, signalType)
+            when (signalType) {
+                SignalType.TASK_COMPLETED -> onCompleteTask()
+                SignalType.REMINDER_DISMISSED,
+                SignalType.REMINDER_SNOOZED -> Unit
+            }
         }
     }
 
