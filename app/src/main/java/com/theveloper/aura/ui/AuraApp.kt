@@ -22,12 +22,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -42,7 +42,6 @@ import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -94,34 +93,15 @@ fun AuraApp() {
     val navController = rememberNavController()
     var quickPrompt by rememberSaveable { mutableStateOf("") }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        bottomBar = {
-            AuraBottomBar(
-                navController = navController,
-                quickPrompt = quickPrompt,
-                onQuickPromptChange = { quickPrompt = it },
-                onQuickPromptSubmit = {
-                    val input = quickPrompt.trim()
-                    if (input.isNotBlank()) {
-                        navController.navigate(
-                            buildCreateTaskRoute(
-                                mode = TaskCreationMode.PROMPT,
-                                input = input,
-                                autoSubmit = true
-                            )
-                        )
-                        quickPrompt = ""
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(0.dp)
+    ) {
         NavHost(
             navController = navController,
             startDestination = HOME_ROUTE,
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier.fillMaxSize()
         ) {
             composable(HOME_ROUTE) {
                 HomeScreen(
@@ -185,6 +165,26 @@ fun AuraApp() {
                 )
             }
         }
+
+        AuraBottomBar(
+            navController = navController,
+            quickPrompt = quickPrompt,
+            onQuickPromptChange = { quickPrompt = it },
+            onQuickPromptSubmit = {
+                val input = quickPrompt.trim()
+                if (input.isNotBlank()) {
+                    navController.navigate(
+                        buildCreateTaskRoute(
+                            mode = TaskCreationMode.PROMPT,
+                            input = input,
+                            autoSubmit = true
+                        )
+                    )
+                    quickPrompt = ""
+                }
+            },
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 
@@ -193,7 +193,8 @@ fun AuraBottomBar(
     navController: NavHostController,
     quickPrompt: String,
     onQuickPromptChange: (String) -> Unit,
-    onQuickPromptSubmit: () -> Unit
+    onQuickPromptSubmit: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -215,7 +216,7 @@ fun AuraBottomBar(
     )
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 0.dp),

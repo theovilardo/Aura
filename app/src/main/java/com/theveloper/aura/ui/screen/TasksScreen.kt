@@ -98,7 +98,7 @@ fun TasksScreen(
             .statusBarsPadding()
             .background(MaterialTheme.colorScheme.background),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(start = 20.dp, top = 24.dp, end = 20.dp, bottom = 144.dp)
+        contentPadding = PaddingValues(start = 20.dp, top = 24.dp, end = 20.dp, bottom = 216.dp)
     ) {
         item {
             TasksHero(

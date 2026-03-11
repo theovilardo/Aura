@@ -94,7 +94,7 @@ fun HomeScreen(
                 start = 20.dp,
                 top = innerPadding.calculateTopPadding() + 12.dp,
                 end = 20.dp,
-                bottom = innerPadding.calculateBottomPadding() + 148.dp
+                bottom = innerPadding.calculateBottomPadding() + 216.dp
             )
         ) {
             item {
