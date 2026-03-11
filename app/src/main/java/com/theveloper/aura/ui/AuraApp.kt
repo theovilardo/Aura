@@ -56,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -214,10 +215,19 @@ fun AuraBottomBar(
 
     Column(
         modifier = Modifier
+            .background(
+                shape = RoundedCornerShape(
+                    topStart = 44.dp,
+                    topEnd = 44.dp,
+                    bottomEnd = 0.dp,
+                    bottomStart = 0.dp
+                ),
+                color = colors.mutedCircle.copy(alpha = 0.25f)
+            )
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 0.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = 10.dp, vertical = 0.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         QuickPromptBar(
             prompt = quickPrompt,
@@ -284,7 +294,7 @@ private fun RowScope.AuraBottomBarItem(
             selected -> colors.selectedCircle
             else -> colors.mutedCircle
         },
-        animationSpec = tween(durationMillis = 220),
+        animationSpec = tween(durationMillis = 420),
         label = "bottomBarContainer"
     )
     val contentColor by animateColorAsState(
@@ -387,7 +397,8 @@ private fun QuickPromptBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 2.dp, vertical = 6.dp)
+            .padding(top = 10.dp)
+            .padding(horizontal = 0.dp, vertical = 0.dp)
     ) {
         Surface(
             modifier = Modifier
@@ -401,7 +412,7 @@ private fun QuickPromptBar(
             shape = CircleShape,
             color = colors.container,
             border = BorderStroke(width = 2.dp, color = outlineColor),
-            shadowElevation = shadowElevation
+            //shadowElevation = shadowElevation
         ) {
             Row(
                 modifier = Modifier
