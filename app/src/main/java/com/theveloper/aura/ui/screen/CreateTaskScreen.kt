@@ -93,7 +93,7 @@ fun CreateTaskScreen(
                 .padding(horizontal = 24.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            CreateHero()
+            CreateHero(mode = uiState.mode)
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 ModePill(
@@ -175,14 +175,30 @@ fun CreateTaskScreen(
 
 @Composable
 private fun CreateHero() {
+    CreateHero(mode = TaskCreationMode.PROMPT)
+}
+
+@Composable
+private fun CreateHero(mode: TaskCreationMode) {
+    val title = if (mode == TaskCreationMode.MANUAL) {
+        "Build your task"
+    } else {
+        "Design your next task"
+    }
+    val subtitle = if (mode == TaskCreationMode.MANUAL) {
+        "Keep it direct: title, type and the modules you actually need."
+    } else {
+        "Use a prompt to let Aura infer the structure, or build it manually from dynamic component variants."
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            text = "Design your next task",
+            text = title,
             style = MaterialTheme.typography.headlineMedium.copy(fontSize = 34.sp),
             color = MaterialTheme.colorScheme.onBackground
         )
         Text(
-            text = "Use a prompt to let Aura infer the structure, or build it manually from dynamic component variants.",
+            text = subtitle,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -266,28 +282,14 @@ private fun ManualBuilder(
     val recommendedTemplates = TaskComponentCatalog.recommended(uiState.manual.taskType)
     val selectedTemplates = recommendedTemplates.filter { it.id in uiState.manual.selectedTemplateIds }
 
-    Card(
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(22.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ManualSection(
+            title = "Task title",
+            body = "Start with the one-line name you want to see on the board."
         ) {
-            Text(
-                text = "Manual builder",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Text(
-                text = "Choose a task type and combine component variants. This is the base for the dynamic builder.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
             OutlinedTextField(
                 value = uiState.manual.title,
                 onValueChange = onTitleChange,
@@ -295,12 +297,12 @@ private fun ManualBuilder(
                 label = { Text("Task title") },
                 placeholder = { Text("Plan workout for tomorrow") }
             )
+        }
 
-            Text(
-                text = "Task type",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground
-            )
+        ManualSection(
+            title = "Task type",
+            body = "This shapes the recommended modules."
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -315,18 +317,16 @@ private fun ManualBuilder(
                     )
                 }
             }
+        }
 
-            Text(
-                text = "Dynamic component variants",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Text(
-                text = "${selectedTemplates.size} variant(s) selected",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
+        ManualSection(
+            title = "Modules",
+            body = if (selectedTemplates.isEmpty()) {
+                "Choose the building blocks for this task."
+            } else {
+                "${selectedTemplates.size} module(s) selected."
+            }
+        ) {
             if (selectedTemplates.isNotEmpty()) {
                 Row(
                     modifier = Modifier
@@ -338,27 +338,53 @@ private fun ManualBuilder(
                         SelectedTemplatePill(template = template)
                     }
                 }
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
-            recommendedTemplates.chunked(2).forEach { rowTemplates ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    rowTemplates.forEach { template ->
-                        ManualTemplateCard(
-                            modifier = Modifier.weight(1f),
-                            template = template,
-                            selected = template.id in uiState.manual.selectedTemplateIds,
-                            onToggle = { onTemplateToggle(template.id) }
-                        )
-                    }
-                    if (rowTemplates.size == 1) {
-                        Spacer(modifier = Modifier.weight(1f))
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                recommendedTemplates.chunked(2).forEach { rowTemplates ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        rowTemplates.forEach { template ->
+                            ManualTemplateCard(
+                                modifier = Modifier.weight(1f),
+                                template = template,
+                                selected = template.id in uiState.manual.selectedTemplateIds,
+                                onToggle = { onTemplateToggle(template.id) }
+                            )
+                        }
+                        if (rowTemplates.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ManualSection(
+    title: String,
+    body: String,
+    content: @Composable () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        content()
     }
 }
 
