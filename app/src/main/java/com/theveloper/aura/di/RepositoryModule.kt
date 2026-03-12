@@ -9,7 +9,9 @@ import com.theveloper.aura.domain.repository.ReminderRepository
 import com.theveloper.aura.data.repository.UserPatternRepositoryImpl
 import com.theveloper.aura.domain.repository.UserPatternRepository
 import com.theveloper.aura.data.repository.FetcherConfigRepositoryImpl
+import com.theveloper.aura.data.repository.MemoryRepositoryImpl
 import com.theveloper.aura.domain.repository.FetcherConfigRepository
+import com.theveloper.aura.domain.repository.MemoryRepository
 import com.theveloper.aura.data.repository.SuggestionRepositoryImpl
 import com.theveloper.aura.domain.repository.SuggestionRepository
 import dagger.Binds
@@ -55,4 +57,10 @@ abstract class RepositoryModule {
     abstract fun bindSuggestionRepository(
         suggestionRepositoryImpl: SuggestionRepositoryImpl
     ): SuggestionRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindMemoryRepository(
+        memoryRepositoryImpl: MemoryRepositoryImpl
+    ): MemoryRepository
 }

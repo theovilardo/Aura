@@ -21,12 +21,13 @@ import kotlinx.coroutines.delay
 @Composable
 fun NotesComponent(
     config: NotesConfig,
-    onSave: (String) -> Unit
+    onSave: (String) -> Unit,
+    saveDelayMillis: Long = 500L
 ) {
     var text by remember(config.text) { mutableStateOf(config.text) }
 
     LaunchedEffect(text) {
-        delay(500)
+        delay(saveDelayMillis)
         if (text != config.text) {
             onSave(text)
         }

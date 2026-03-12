@@ -200,3 +200,18 @@ interface SyncQueueDao {
     @Update
     suspend fun update(item: SyncQueueEntity)
 }
+
+@Dao
+interface MemorySlotDao {
+    @Query("SELECT * FROM memory_slots ORDER BY category ASC")
+    suspend fun getAll(): List<MemorySlotEntity>
+
+    @Query("SELECT * FROM memory_slots WHERE category = :category LIMIT 1")
+    suspend fun getByCategory(category: com.theveloper.aura.domain.model.MemoryCategory): MemorySlotEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(slot: MemorySlotEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(slots: List<MemorySlotEntity>)
+}

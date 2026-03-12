@@ -21,7 +21,9 @@ data class TaskDSLOutput(
 data class ComponentDSL(
     val type: ComponentType,
     val sortOrder: Int,
-    val config: JsonObject
+    val config: JsonObject,
+    val populatedFromInput: Boolean = false,
+    val needsClarification: Boolean = false
 )
 
 @Serializable

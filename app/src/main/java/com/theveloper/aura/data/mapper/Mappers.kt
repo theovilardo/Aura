@@ -2,6 +2,7 @@ package com.theveloper.aura.data.mapper
 
 import com.theveloper.aura.core.json.auraJson
 import com.theveloper.aura.data.db.ChecklistItemEntity
+import com.theveloper.aura.data.db.MemorySlotEntity
 import com.theveloper.aura.data.db.ReminderEntity
 import com.theveloper.aura.data.db.TaskComponentEntity
 import com.theveloper.aura.data.db.TaskEntity
@@ -44,7 +45,8 @@ fun TaskComponentEntity.toDomain(): TaskComponent {
         taskId = taskId,
         type = type,
         sortOrder = sortOrder,
-        config = runCatching { auraJson.decodeFromString<ComponentConfig>(config) }.getOrDefault(UnknownConfig())
+        config = runCatching { auraJson.decodeFromString<ComponentConfig>(config) }.getOrDefault(UnknownConfig()),
+        needsClarification = needsClarification
     )
 }
 
@@ -54,7 +56,8 @@ fun TaskComponent.toEntity(): TaskComponentEntity {
         taskId = taskId,
         type = type,
         sortOrder = sortOrder,
-        config = auraJson.encodeToString(config)
+        config = auraJson.encodeToString(config),
+        needsClarification = needsClarification
     )
 }
 
@@ -80,6 +83,7 @@ fun ChecklistItemEntity.toDomain(): ChecklistItem {
         componentId = componentId,
         text = text,
         isCompleted = isCompleted,
+        isSuggested = isSuggested,
         sortOrder = sortOrder
     )
 }
@@ -90,7 +94,8 @@ fun ChecklistItem.toEntity(): ChecklistItemEntity {
         componentId = componentId,
         text = text,
         isCompleted = isCompleted,
-        sortOrder = sortOrder
+        sortOrder = sortOrder,
+        isSuggested = isSuggested
     )
 }
 
@@ -139,5 +144,29 @@ fun Suggestion.toEntity(): com.theveloper.aura.data.db.SuggestionEntity {
         reasoning = reasoning,
         createdAt = createdAt,
         expiresAt = expiresAt
+    )
+}
+
+fun MemorySlotEntity.toDomain(): MemorySlot {
+    return MemorySlot(
+        id = id,
+        category = category,
+        content = content,
+        lastUpdatedAt = lastUpdatedAt,
+        version = version,
+        tokenCount = tokenCount,
+        maxTokens = maxTokens
+    )
+}
+
+fun MemorySlot.toEntity(): MemorySlotEntity {
+    return MemorySlotEntity(
+        id = id,
+        category = category,
+        content = content,
+        lastUpdatedAt = lastUpdatedAt,
+        version = version,
+        tokenCount = tokenCount,
+        maxTokens = maxTokens
     )
 }

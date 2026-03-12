@@ -1,7 +1,11 @@
 package com.theveloper.aura.engine.classifier
 
 import com.theveloper.aura.domain.model.ComponentType
+import com.theveloper.aura.domain.model.MemoryCategory
+import com.theveloper.aura.domain.model.MemorySlot
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.domain.repository.MemoryRepository
+import com.theveloper.aura.engine.memory.MemoryContextBuilder
 import com.theveloper.aura.engine.dsl.ComponentDSL
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
 import io.mockk.coEvery
@@ -9,8 +13,10 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -22,13 +28,19 @@ class TaskClassifierTest {
     private val intentClassifier = IntentClassifier()
     private val onDeviceTaskDslService = mockk<OnDeviceTaskDslService>()
     private val aiExecutionModeStore = mockk<AiExecutionModeStore>()
+    private val memoryRepository = mockk<MemoryRepository>()
+    private val completenessValidator = CompletenessValidator()
+    private val memoryContextBuilder = MemoryContextBuilder()
 
     private val subject = TaskClassifier(
         entityExtractorService = entityExtractorService,
         intentClassifier = intentClassifier,
         onDeviceTaskDslService = onDeviceTaskDslService,
         llmService = llmService,
-        aiExecutionModeStore = aiExecutionModeStore
+        aiExecutionModeStore = aiExecutionModeStore,
+        completenessValidator = completenessValidator,
+        memoryRepository = memoryRepository,
+        memoryContextBuilder = memoryContextBuilder
     )
 
     @Test
@@ -37,6 +49,7 @@ class TaskClassifierTest {
             locations = listOf("Madrid")
         )
         coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.AUTO
+        coEvery { memoryRepository.getSlots() } returns emptyList()
         every { llmService.isAvailable() } returns true
         coEvery { onDeviceTaskDslService.compose(any()) } returns OnDeviceTaskDslResult(
             dsl = travelDsl(),
@@ -56,6 +69,7 @@ class TaskClassifierTest {
     fun `auto mode escalates to groq for weak local result`() = runTest {
         coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
         coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.AUTO
+        coEvery { memoryRepository.getSlots() } returns emptyList()
         every { llmService.isAvailable() } returns true
         coEvery { onDeviceTaskDslService.compose(any()) } returns OnDeviceTaskDslResult(
             dsl = localThinDsl(),
@@ -75,6 +89,7 @@ class TaskClassifierTest {
     fun `cloud first uses groq before local fallback`() = runTest {
         coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
         coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.CLOUD_FIRST
+        coEvery { memoryRepository.getSlots() } returns emptyList()
         every { llmService.isAvailable() } returns true
         coEvery { onDeviceTaskDslService.compose(any()) } returns OnDeviceTaskDslResult(
             dsl = travelDsl(),
@@ -94,6 +109,7 @@ class TaskClassifierTest {
     fun `missing groq config stays on local and surfaces warning`() = runTest {
         coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
         coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.CLOUD_FIRST
+        coEvery { memoryRepository.getSlots() } returns emptyList()
         every { llmService.isAvailable() } returns false
         coEvery { onDeviceTaskDslService.compose(any()) } returns OnDeviceTaskDslResult(
             dsl = localThinDsl(),
@@ -106,6 +122,53 @@ class TaskClassifierTest {
         assertEquals(TaskGenerationSource.RULES, result.source)
         assertTrue(result.warnings.any { it.contains("Groq no esta configurado") })
         coVerify(exactly = 0) { llmService.classify(any(), any()) }
+    }
+
+    @Test
+    fun `shopping prompt asks for clarification when checklist has no real items`() = runTest {
+        coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
+        coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.LOCAL_ONLY
+        coEvery { memoryRepository.getSlots() } returns emptyList()
+        every { llmService.isAvailable() } returns false
+        coEvery { onDeviceTaskDslService.compose(any()) } returns OnDeviceTaskDslResult(
+            dsl = shoppingDsl(),
+            confidence = 0.8f,
+            source = TaskGenerationSource.LOCAL_AI
+        )
+
+        val result = subject.classify("lista de compras")
+
+        assertEquals("¿Qué ítems querés incluir?", result.clarification?.question)
+        assertTrue(result.dsl.components.any { it.needsClarification })
+    }
+
+    @Test
+    fun `shopping prompt reuses memory-backed items before asking`() = runTest {
+        coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
+        coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.LOCAL_ONLY
+        coEvery { memoryRepository.getSlots() } returns listOf(
+            MemorySlot(
+                id = "vocabulary",
+                category = MemoryCategory.VOCABULARY,
+                content = "Compras frecuentes: leche, pan, tomate.",
+                lastUpdatedAt = 1L,
+                tokenCount = 4
+            )
+        )
+        every { llmService.isAvailable() } returns false
+        coEvery { onDeviceTaskDslService.compose(any()) } returns OnDeviceTaskDslResult(
+            dsl = shoppingDsl(),
+            confidence = 0.8f,
+            source = TaskGenerationSource.LOCAL_AI
+        )
+
+        val result = subject.classify("lista de compras")
+        val checklist = result.dsl.components.first { it.type == ComponentType.CHECKLIST }
+        val items = checklist.config["items"].toString()
+
+        assertEquals(null, result.clarification)
+        assertTrue(items.contains("leche"))
+        assertTrue(items.contains("isSuggested"))
     }
 
     private fun travelDsl() = TaskDSLOutput(
@@ -141,6 +204,18 @@ class TaskClassifierTest {
         )
     )
 
+    private fun shoppingDsl() = TaskDSLOutput(
+        title = "Lista de compras",
+        type = TaskType.GENERAL,
+        components = listOf(
+            checklistComponent(
+                sortOrder = 0,
+                label = "Key steps",
+                items = listOf("Define next step", "Execute", "Review result")
+            )
+        )
+    )
+
     private fun countdownComponent(sortOrder: Int, label: String) = ComponentDSL(
         type = ComponentType.COUNTDOWN,
         sortOrder = sortOrder,
@@ -151,13 +226,22 @@ class TaskClassifierTest {
         }
     )
 
-    private fun checklistComponent(sortOrder: Int, label: String) = ComponentDSL(
+    private fun checklistComponent(
+        sortOrder: Int,
+        label: String,
+        items: List<String> = emptyList()
+    ) = ComponentDSL(
         type = ComponentType.CHECKLIST,
         sortOrder = sortOrder,
         config = buildJsonObject {
             put("config_type", "CHECKLIST")
             put("label", label)
             put("allowAddItems", true)
+            if (items.isNotEmpty()) {
+                putJsonArray("items") {
+                    items.forEach { add(JsonPrimitive(it)) }
+                }
+            }
         }
     )
 

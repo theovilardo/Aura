@@ -42,12 +42,17 @@ fun ChecklistComponent(
     }
 
     val completedCount = items.count(ChecklistItem::isCompleted)
+    val suggestedCount = items.count(ChecklistItem::isSuggested)
     val progress = if (items.isEmpty()) 0 else ((completedCount / items.size.toFloat()) * 100).roundToInt()
 
     ComponentCard(
         title = config.label.ifBlank { "Checklist" },
         icon = Icons.Rounded.DoneAll,
-        eyebrow = if (items.isEmpty()) "No items yet" else "$completedCount of ${items.size} done",
+        eyebrow = when {
+            items.isEmpty() -> "No items yet"
+            suggestedCount > 0 -> "$completedCount of ${items.size} done · $suggestedCount suggested"
+            else -> "$completedCount of ${items.size} done"
+        },
         subtitle = if (config.allowAddItems) "Flexible task structure" else null,
         trailing = {
             if (items.isNotEmpty()) {
@@ -87,7 +92,10 @@ fun ChecklistComponent(
                             .alpha(alpha)
                             .clickable {
                                 val newValue = !item.isCompleted
-                                val updated = item.copy(isCompleted = newValue)
+                                val updated = item.copy(
+                                    isCompleted = newValue,
+                                    isSuggested = false
+                                )
                                 items = items.map { current ->
                                     if (current.id == item.id) updated else current
                                 }
@@ -115,7 +123,10 @@ fun ChecklistComponent(
                             Checkbox(
                                 checked = item.isCompleted,
                                 onCheckedChange = { checked ->
-                                    val updated = item.copy(isCompleted = checked)
+                                    val updated = item.copy(
+                                        isCompleted = checked,
+                                        isSuggested = false
+                                    )
                                     items = items.map { current ->
                                         if (current.id == item.id) updated else current
                                     }
@@ -132,6 +143,8 @@ fun ChecklistComponent(
                             )
                             if (item.isCompleted) {
                                 ComponentPill("Done")
+                            } else if (item.isSuggested) {
+                                ComponentPill("Suggested")
                             }
                         }
                     }

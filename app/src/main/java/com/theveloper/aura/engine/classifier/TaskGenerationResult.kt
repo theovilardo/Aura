@@ -15,5 +15,7 @@ data class TaskGenerationResult(
     val executionMode: AiExecutionMode,
     val intentConfidence: Float,
     val localConfidence: Float,
-    val warnings: List<String> = emptyList()
+    val warnings: List<String> = emptyList(),
+    val completenessCheck: CompletenessCheck = CompletenessCheck(isComplete = true),
+    val clarification: ClarificationRequest? = null
 )

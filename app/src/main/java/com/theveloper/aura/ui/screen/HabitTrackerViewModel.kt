@@ -99,8 +99,6 @@ class HabitTrackerViewModel @Inject constructor(
             completedSignals.any { it.recordedAt.toDate() == day }
         }
 
-        val completedToday = grid30d.last()
-
         return habitItemFromGrid(
             taskId = task.id,
             title = task.title,

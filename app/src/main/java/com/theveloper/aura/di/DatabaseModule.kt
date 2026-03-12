@@ -2,6 +2,8 @@ package com.theveloper.aura.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.theveloper.aura.data.db.AuraDatabase
 import com.theveloper.aura.data.db.TaskDao
 import dagger.Module
@@ -21,7 +23,9 @@ object DatabaseModule {
             context,
             AuraDatabase::class.java,
             "aura_database"
-        ).build()
+        )
+            .addMigrations(MIGRATION_1_2)
+            .build()
     }
 
     @Provides
@@ -67,5 +71,37 @@ object DatabaseModule {
     @Provides
     fun provideSyncQueueDao(db: AuraDatabase): com.theveloper.aura.data.db.SyncQueueDao {
         return db.syncQueueDao()
+    }
+
+    @Provides
+    fun provideMemorySlotDao(db: AuraDatabase): com.theveloper.aura.data.db.MemorySlotDao {
+        return db.memorySlotDao()
+    }
+
+    private val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                "ALTER TABLE task_components ADD COLUMN needs_clarification INTEGER NOT NULL DEFAULT 0"
+            )
+            database.execSQL(
+                "ALTER TABLE checklist_items ADD COLUMN is_suggested INTEGER NOT NULL DEFAULT 0"
+            )
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS memory_slots (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    category TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    last_updated_at INTEGER NOT NULL,
+                    version INTEGER NOT NULL DEFAULT 0,
+                    token_count INTEGER NOT NULL,
+                    max_tokens INTEGER NOT NULL DEFAULT 300
+                )
+                """.trimIndent()
+            )
+            database.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS index_memory_slots_category ON memory_slots(category)"
+            )
+        }
     }
 }

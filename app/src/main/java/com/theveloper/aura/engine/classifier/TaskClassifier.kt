@@ -1,7 +1,10 @@
 package com.theveloper.aura.engine.classifier
 
+import com.theveloper.aura.domain.model.MemorySlot
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.domain.repository.MemoryRepository
 import com.theveloper.aura.engine.dsl.TaskDSLValidator
+import com.theveloper.aura.engine.memory.MemoryContextBuilder
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -11,21 +14,32 @@ class TaskClassifier @Inject constructor(
     private val intentClassifier: IntentClassifier,
     private val onDeviceTaskDslService: OnDeviceTaskDslService,
     private val llmService: LLMService,
-    private val aiExecutionModeStore: AiExecutionModeStore
+    private val aiExecutionModeStore: AiExecutionModeStore,
+    private val completenessValidator: CompletenessValidator,
+    private val memoryRepository: MemoryRepository,
+    private val memoryContextBuilder: MemoryContextBuilder
 ) {
 
-    suspend fun classify(input: String): TaskGenerationResult {
+    suspend fun classify(
+        input: String,
+        allowClarification: Boolean = true
+    ): TaskGenerationResult {
         val normalizedInput = input.trim()
         require(normalizedInput.isNotBlank()) { "El texto de la tarea no puede estar vacio." }
 
         val extractedEntities = entityExtractorService.extract(normalizedInput)
         val intentResult = intentClassifier.classify(normalizedInput)
+        val memorySlots = memoryRepository.getSlots()
         val context = LLMClassificationContext(
             intentHint = intentResult.taskType,
             intentConfidence = intentResult.confidence,
             extractedDates = extractedEntities.dateTimes,
             extractedNumbers = extractedEntities.numbers,
-            extractedLocations = extractedEntities.locations
+            extractedLocations = extractedEntities.locations,
+            memoryContext = memoryContextBuilder.buildContextForClassifier(
+                detectedType = intentResult.taskType,
+                memorySlots = memorySlots
+            )
         )
         val executionMode = aiExecutionModeStore.getMode()
         val warnings = mutableListOf<String>()
@@ -38,7 +52,9 @@ class TaskClassifier @Inject constructor(
             extractedEntities = extractedEntities,
             context = context,
             executionMode = executionMode,
-            warnings = warnings
+            warnings = warnings,
+            memorySlots = memorySlots,
+            allowClarification = allowClarification
         )
 
         if (executionMode == AiExecutionMode.CLOUD_FIRST) {
@@ -49,7 +65,9 @@ class TaskClassifier @Inject constructor(
                     executionMode = executionMode,
                     intentConfidence = intentResult.confidence,
                     localConfidence = localResult?.localConfidence ?: 0f,
-                    warnings = warnings
+                    warnings = warnings,
+                    memorySlots = memorySlots,
+                    allowClarification = allowClarification
                 )?.let { return it }
             } else {
                 warnings += CLOUD_NOT_CONFIGURED_WARNING
@@ -69,7 +87,9 @@ class TaskClassifier @Inject constructor(
                 executionMode = executionMode,
                 intentConfidence = intentResult.confidence,
                 localConfidence = localResult?.localConfidence ?: 0f,
-                warnings = warnings
+                warnings = warnings,
+                memorySlots = memorySlots,
+                allowClarification = allowClarification
             )?.let { return it }
         } else if (cloudEnabled && !cloudAvailable) {
             warnings += CLOUD_NOT_CONFIGURED_WARNING
@@ -91,7 +111,9 @@ class TaskClassifier @Inject constructor(
         extractedEntities: ExtractedEntities,
         context: LLMClassificationContext,
         executionMode: AiExecutionMode,
-        warnings: MutableList<String>
+        warnings: MutableList<String>,
+        memorySlots: List<MemorySlot>,
+        allowClarification: Boolean
     ): TaskGenerationResult? {
         val onDeviceResult = runCatching {
             onDeviceTaskDslService.compose(
@@ -102,7 +124,7 @@ class TaskClassifier @Inject constructor(
                     llmContext = context
                 )
             )
-        }.getOrElse { error ->
+        }.getOrElse {
             warnings += "La IA local tuvo un problema. Se uso el preset deterministico."
             OnDeviceTaskDslResult(
                 dsl = TaskDSLBuilder.buildDeterministic(input, intentResult, extractedEntities),
@@ -113,29 +135,41 @@ class TaskClassifier @Inject constructor(
 
         return when (val validation = TaskDSLValidator.validate(onDeviceResult.dsl)) {
             TaskDSLValidator.ValidationResult.Valid -> {
-                TaskGenerationResult(
-                    dsl = onDeviceResult.dsl,
-                    source = onDeviceResult.source,
-                    executionMode = executionMode,
-                    intentConfidence = intentResult.confidence,
-                    localConfidence = onDeviceResult.confidence,
-                    warnings = emptyList()
+                postProcess(
+                    result = TaskGenerationResult(
+                        dsl = onDeviceResult.dsl,
+                        source = onDeviceResult.source,
+                        executionMode = executionMode,
+                        intentConfidence = intentResult.confidence,
+                        localConfidence = onDeviceResult.confidence,
+                        warnings = emptyList()
+                    ),
+                    input = input,
+                    memorySlots = memorySlots,
+                    allowClarification = allowClarification
                 )
             }
+
             is TaskDSLValidator.ValidationResult.Invalid -> {
                 warnings += "La composicion local no fue valida. Se intento una ruta mas segura."
                 val deterministic = TaskDSLBuilder.buildDeterministic(input, intentResult, extractedEntities)
                 when (TaskDSLValidator.validate(deterministic)) {
                     TaskDSLValidator.ValidationResult.Valid -> {
-                        TaskGenerationResult(
-                            dsl = deterministic,
-                            source = TaskGenerationSource.RULES,
-                            executionMode = executionMode,
-                            intentConfidence = intentResult.confidence,
-                            localConfidence = onDeviceResult.confidence,
-                            warnings = emptyList()
+                        postProcess(
+                            result = TaskGenerationResult(
+                                dsl = deterministic,
+                                source = TaskGenerationSource.RULES,
+                                executionMode = executionMode,
+                                intentConfidence = intentResult.confidence,
+                                localConfidence = onDeviceResult.confidence,
+                                warnings = emptyList()
+                            ),
+                            input = input,
+                            memorySlots = memorySlots,
+                            allowClarification = allowClarification
                         )
                     }
+
                     is TaskDSLValidator.ValidationResult.Invalid -> null
                 }
             }
@@ -148,7 +182,9 @@ class TaskClassifier @Inject constructor(
         executionMode: AiExecutionMode,
         intentConfidence: Float,
         localConfidence: Float,
-        warnings: MutableList<String>
+        warnings: MutableList<String>,
+        memorySlots: List<MemorySlot>,
+        allowClarification: Boolean
     ): TaskGenerationResult? {
         val remoteDsl = runCatching { llmService.classify(input, context) }
             .getOrElse {
@@ -158,20 +194,54 @@ class TaskClassifier @Inject constructor(
 
         return when (val validation = TaskDSLValidator.validate(remoteDsl)) {
             TaskDSLValidator.ValidationResult.Valid -> {
-                TaskGenerationResult(
-                    dsl = remoteDsl,
-                    source = TaskGenerationSource.GROQ_API,
-                    executionMode = executionMode,
-                    intentConfidence = intentConfidence,
-                    localConfidence = localConfidence,
-                    warnings = warnings.distinct()
+                postProcess(
+                    result = TaskGenerationResult(
+                        dsl = remoteDsl,
+                        source = TaskGenerationSource.GROQ_API,
+                        executionMode = executionMode,
+                        intentConfidence = intentConfidence,
+                        localConfidence = localConfidence,
+                        warnings = warnings.distinct()
+                    ),
+                    input = input,
+                    memorySlots = memorySlots,
+                    allowClarification = allowClarification
                 )
             }
+
             is TaskDSLValidator.ValidationResult.Invalid -> {
                 warnings += "Groq devolvio una estructura invalida. Se mantuvo la IA local."
                 null
             }
         }
+    }
+
+    private fun postProcess(
+        result: TaskGenerationResult,
+        input: String,
+        memorySlots: List<MemorySlot>,
+        allowClarification: Boolean
+    ): TaskGenerationResult {
+        val completeness = completenessValidator.enrich(
+            input = input,
+            dsl = result.dsl,
+            memorySlots = memorySlots
+        )
+        val nonBlockerWarnings = completeness.check.missingFields
+            .filterNot { it.isBlocker }
+            .map { it.question }
+        val fallbackWarning = if (!allowClarification && completeness.clarification != null) {
+            listOf("Se creo la estructura con algunos campos sin definir.")
+        } else {
+            emptyList()
+        }
+
+        return result.copy(
+            dsl = completeness.dsl,
+            warnings = (result.warnings + nonBlockerWarnings + fallbackWarning).distinct(),
+            completenessCheck = completeness.check,
+            clarification = completeness.clarification.takeIf { allowClarification }
+        )
     }
 
     private fun shouldEscalateToCloud(

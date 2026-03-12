@@ -42,13 +42,16 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.theveloper.aura.domain.model.ComponentType
-import com.theveloper.aura.engine.dsl.ComponentDSL
 import com.theveloper.aura.engine.classifier.TaskGenerationResult
 import com.theveloper.aura.engine.classifier.TaskGenerationSource
+import com.theveloper.aura.engine.dsl.ChecklistDslItems
+import com.theveloper.aura.engine.dsl.ComponentDSL
 import com.theveloper.aura.ui.components.ComponentPill
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 
 @Composable
 fun TaskPreviewBottomSheet(
@@ -277,6 +280,8 @@ private fun GenerationWarningsCard(preview: TaskGenerationResult) {
 
 @Composable
 private fun PreviewComponentRow(component: ComponentDSL) {
+    val metadataLine = componentMetadataLine(component)
+    val badgeLabel = componentBadgeLabel(component)
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -310,13 +315,57 @@ private fun PreviewComponentRow(component: ComponentDSL) {
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Slot ${component.sortOrder + 1}",
+                    text = metadataLine,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            ComponentPill(component.type.shortLabel())
+            ComponentPill(badgeLabel)
         }
+    }
+}
+
+private fun componentMetadataLine(component: ComponentDSL): String {
+    return when (component.type) {
+        ComponentType.CHECKLIST -> {
+            val items = ChecklistDslItems.parse(component.config)
+            val suggestedCount = items.count { it.isSuggested }
+            when {
+                component.needsClarification -> "Items pending"
+                items.isEmpty() -> "Empty list"
+                suggestedCount > 0 -> "${items.size} items · $suggestedCount suggested"
+                else -> "${items.size} items"
+            }
+        }
+
+        ComponentType.COUNTDOWN -> {
+            val targetDate = component.config["targetDate"]?.jsonPrimitive?.longOrNull ?: 0L
+            if (targetDate > 0L) {
+                "Target ${formatDate(targetDate)}"
+            } else {
+                "Date pending"
+            }
+        }
+
+        else -> "Slot ${component.sortOrder + 1}"
+    }
+}
+
+private fun componentBadgeLabel(component: ComponentDSL): String {
+    if (component.needsClarification) {
+        return "Needs info"
+    }
+
+    if (component.type == ComponentType.CHECKLIST) {
+        val suggestedCount = ChecklistDslItems.parse(component.config).count { it.isSuggested }
+        if (suggestedCount > 0) {
+            return "Suggested"
+        }
+    }
+
+    return when {
+        component.populatedFromInput -> "Filled"
+        else -> component.type.shortLabel()
     }
 }
 

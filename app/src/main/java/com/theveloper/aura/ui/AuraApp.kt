@@ -79,6 +79,7 @@ import com.theveloper.aura.ui.screen.AiSettingsScreen
 import com.theveloper.aura.ui.screen.SettingsScreen
 import com.theveloper.aura.ui.screen.TaskCreationMode
 import com.theveloper.aura.ui.screen.TaskDetailScreen
+import com.theveloper.aura.ui.screen.TaskEditScreen
 import com.theveloper.aura.ui.screen.TasksScreen
 import com.theveloper.aura.ui.theme.AuraFloatingBarColors
 import com.theveloper.aura.ui.theme.auraFloatingBarColors
@@ -87,6 +88,7 @@ import kotlinx.coroutines.launch
 private const val HOME_ROUTE = "home"
 private const val TASKS_ROUTE = "tasks"
 private const val TASK_DETAIL_ROUTE = "task_detail/{taskId}"
+private const val TASK_EDIT_ROUTE = "task_detail_edit/{taskId}"
 private const val SETTINGS_ROUTE = "settings"
 private const val SETTINGS_AI_ROUTE = "settings/ai"
 private const val SETTINGS_CLOUD_ROUTE = "settings/cloud"
@@ -123,6 +125,16 @@ fun AuraApp() {
             composable(TASK_DETAIL_ROUTE) { backStackEntry ->
                 val taskId = backStackEntry.arguments?.getString("taskId") ?: ""
                 TaskDetailScreen(
+                    taskId = taskId,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToEdit = { editableTaskId ->
+                        navController.navigate("task_detail_edit/$editableTaskId")
+                    }
+                )
+            }
+            composable(TASK_EDIT_ROUTE) { backStackEntry ->
+                val taskId = backStackEntry.arguments?.getString("taskId") ?: ""
+                TaskEditScreen(
                     taskId = taskId,
                     onNavigateBack = { navController.popBackStack() }
                 )

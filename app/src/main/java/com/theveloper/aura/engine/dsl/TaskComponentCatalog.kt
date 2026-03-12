@@ -57,7 +57,7 @@ object TaskComponentCatalog {
                     type = ComponentType.COUNTDOWN,
                     sortOrder = sortOrder,
                     config = CountdownConfig(
-                        targetDate = context.targetDateMs ?: now + DAY_IN_MILLIS * 14,
+                        targetDate = context.targetDateMs ?: 0L,
                         label = "Trip date"
                     )
                 )
@@ -75,7 +75,7 @@ object TaskComponentCatalog {
                     type = ComponentType.COUNTDOWN,
                     sortOrder = sortOrder,
                     config = CountdownConfig(
-                        targetDate = context.targetDateMs ?: now + DAY_IN_MILLIS * 7,
+                        targetDate = context.targetDateMs ?: 0L,
                         label = "Target date"
                     )
                 )
@@ -93,7 +93,7 @@ object TaskComponentCatalog {
                     type = ComponentType.COUNTDOWN,
                     sortOrder = sortOrder,
                     config = CountdownConfig(
-                        targetDate = context.targetDateMs ?: now + DAY_IN_MILLIS * 3,
+                        targetDate = context.targetDateMs ?: 0L,
                         label = "Payment due"
                     )
                 )

@@ -59,6 +59,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.theveloper.aura.domain.model.TaskType
 import com.theveloper.aura.engine.dsl.TaskComponentCatalog
 import com.theveloper.aura.engine.dsl.TaskComponentTemplate
+import com.theveloper.aura.ui.components.ClarificationCard
 import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -213,6 +214,21 @@ fun CreateTaskScreen(
                         )
                     }
                 }
+            }
+        }
+
+        uiState.clarification?.let { clarification ->
+            ModalBottomSheet(onDismissRequest = viewModel::skipClarification) {
+                ClarificationCard(
+                    title = "Entendido, voy a crear ${clarification.baseResult.dsl.title}",
+                    question = clarification.request.question,
+                    answer = clarification.answer,
+                    skipLabel = clarification.request.skipLabel,
+                    isBusy = uiState.isClassifying,
+                    onAnswerChange = viewModel::updateClarificationAnswer,
+                    onSubmit = viewModel::submitClarification,
+                    onSkip = viewModel::skipClarification
+                )
             }
         }
 

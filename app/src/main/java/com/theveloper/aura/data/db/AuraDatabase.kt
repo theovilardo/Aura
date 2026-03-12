@@ -15,9 +15,10 @@ import com.theveloper.aura.data.db.Converters
         ReminderEntity::class,
         FetcherConfigEntity::class,
         SuggestionEntity::class,
-        SyncQueueEntity::class
+        SyncQueueEntity::class,
+        MemorySlotEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -31,4 +32,5 @@ abstract class AuraDatabase : RoomDatabase() {
     abstract fun fetcherConfigDao(): FetcherConfigDao
     abstract fun suggestionDao(): SuggestionDao
     abstract fun syncQueueDao(): SyncQueueDao
+    abstract fun memorySlotDao(): MemorySlotDao
 }

@@ -8,6 +8,7 @@ import com.theveloper.aura.engine.capability.CapabilityRegistry
 import com.theveloper.aura.engine.capability.CapabilityRequest
 import com.theveloper.aura.engine.capability.CapabilityResponse
 import com.theveloper.aura.engine.classifier.AiExecutionMode
+import com.theveloper.aura.engine.classifier.ClarificationRequest
 import com.theveloper.aura.engine.classifier.TaskClassifier
 import com.theveloper.aura.engine.classifier.TaskGenerationResult
 import com.theveloper.aura.engine.classifier.TaskGenerationSource
@@ -23,8 +24,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import javax.inject.Inject
 
 @HiltViewModel
@@ -60,7 +61,9 @@ class CreateTaskViewModel @Inject constructor(
         _uiState.update { state ->
             state.copy(
                 input = value,
-                errorMessage = null
+                errorMessage = null,
+                clarification = null,
+                preview = null
             )
         }
     }
@@ -104,13 +107,18 @@ class CreateTaskViewModel @Inject constructor(
     fun toggleTemplate(templateId: String) {
         _uiState.update { state ->
             val current = state.manual.selectedTemplateIds
-            val updated = if (templateId in current) {
-                current - templateId
-            } else {
-                current + templateId
-            }
+            val updated = if (templateId in current) current - templateId else current + templateId
             state.copy(
                 manual = state.manual.copy(selectedTemplateIds = updated),
+                errorMessage = null
+            )
+        }
+    }
+
+    fun updateClarificationAnswer(value: String) {
+        _uiState.update { state ->
+            state.copy(
+                clarification = state.clarification?.copy(answer = value),
                 errorMessage = null
             )
         }
@@ -124,6 +132,71 @@ class CreateTaskViewModel @Inject constructor(
             submitPrompt()
         } else {
             submitManual()
+        }
+    }
+
+    fun submitClarification() {
+        val state = uiState.value
+        val pending = state.clarification ?: return
+        val answer = pending.answer.trim()
+        if (answer.isBlank()) {
+            _uiState.update { it.copy(errorMessage = "Respondé la aclaración o elegí crear con lo que hay.") }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isClassifying = true,
+                    errorMessage = null
+                )
+            }
+
+            val enrichedInput = buildString {
+                append(pending.classifierInput)
+                appendLine()
+                appendLine()
+                append("Aclaracion del usuario: ")
+                append(answer)
+            }
+
+            runCatching { taskClassifier.classify(enrichedInput, allowClarification = false) }
+                .onSuccess { result ->
+                    val mergedPreview = mergeManualSelections(
+                        result = result,
+                        manual = state.manual,
+                        rawInput = state.input.trim()
+                    )
+                    _uiState.update {
+                        it.copy(
+                            isClassifying = false,
+                            clarification = null,
+                            preview = mergedPreview
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            isClassifying = false,
+                            errorMessage = error.message ?: "No pudimos aplicar la aclaración."
+                        )
+                    }
+                }
+        }
+    }
+
+    fun skipClarification() {
+        val pending = uiState.value.clarification ?: return
+        _uiState.update {
+            it.copy(
+                clarification = null,
+                preview = pending.baseResult.copy(
+                    warnings = (pending.baseResult.warnings + "Podés completar los detalles más tarde.").distinct(),
+                    clarification = null
+                ),
+                errorMessage = null
+            )
         }
     }
 
@@ -144,7 +217,9 @@ class CreateTaskViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     isClassifying = true,
-                    errorMessage = null
+                    errorMessage = null,
+                    preview = null,
+                    clarification = null
                 )
             }
 
@@ -155,10 +230,18 @@ class CreateTaskViewModel @Inject constructor(
                         manual = manual,
                         rawInput = input
                     )
+                    val clarification = mergedPreview.clarification
                     _uiState.update {
                         it.copy(
                             isClassifying = false,
-                            preview = mergedPreview
+                            preview = if (clarification == null) mergedPreview else null,
+                            clarification = clarification?.let { request ->
+                                PendingClarification(
+                                    request = request,
+                                    classifierInput = classifierInput,
+                                    baseResult = mergedPreview
+                                )
+                            }
                         )
                     }
                 }
@@ -193,10 +276,9 @@ class CreateTaskViewModel @Inject constructor(
                 taskType = draft.taskType
             )
         )
-        val targetDateMs = components.firstOrNull { component -> component.type == com.theveloper.aura.domain.model.ComponentType.COUNTDOWN }
-            ?.config?.get("targetDate")
-            ?.jsonPrimitive
-            ?.longOrNull
+        val targetDateMs = components.firstOrNull { component ->
+            component.type == com.theveloper.aura.domain.model.ComponentType.COUNTDOWN
+        }?.config?.get("targetDate")?.jsonPrimitive?.longOrNull
 
         _uiState.update {
             it.copy(
@@ -214,6 +296,7 @@ class CreateTaskViewModel @Inject constructor(
                     intentConfidence = 1f,
                     localConfidence = 1f
                 ),
+                clarification = null,
                 errorMessage = null
             )
         }
@@ -230,11 +313,6 @@ class CreateTaskViewModel @Inject constructor(
             if (manual.taskType != TaskType.GENERAL) {
                 add("Task type hint: ${manual.taskType.name.lowercase()}")
             }
-            manual.selectedTemplateIds
-                .mapNotNull(TaskComponentCatalog::find)
-                .takeIf { it.isNotEmpty() }
-                ?.joinToString { "${it.title} (${it.variantLabel})" }
-                ?.let { add("Useful modules to include: $it") }
         }
 
         return if (hints.isEmpty()) {
@@ -255,11 +333,7 @@ class CreateTaskViewModel @Inject constructor(
     ): TaskGenerationResult {
         val preview = result.dsl
         val resolvedTitle = manual.title.trim().ifBlank { preview.title }
-        val resolvedType = if (manual.taskType != TaskType.GENERAL) {
-            manual.taskType
-        } else {
-            preview.type
-        }
+        val resolvedType = if (manual.taskType != TaskType.GENERAL) manual.taskType else preview.type
 
         if (manual.selectedTemplateIds.isEmpty()) {
             return result.copy(
@@ -288,9 +362,7 @@ class CreateTaskViewModel @Inject constructor(
             (component.type to component.config.toString()) !in existingSignatures
         }
         val mergedComponents = (preview.components + appendedComponents)
-            .mapIndexed { index, component ->
-                component.copy(sortOrder = index)
-            }
+            .mapIndexed { index, component -> component.copy(sortOrder = index) }
         val mergedReminders = (preview.reminders + manualReminders)
             .distinctBy { it.scheduledAtMs to it.intervalDays }
 
@@ -322,6 +394,7 @@ class CreateTaskViewModel @Inject constructor(
                     )
                     _effects.emit(CreateTaskEffect.TaskCreated(response.taskId))
                 }
+
                 CapabilityResponse.Success,
                 null -> {
                     _uiState.update {
@@ -343,7 +416,15 @@ data class CreateTaskUiState(
     val isClassifying: Boolean = false,
     val isSaving: Boolean = false,
     val errorMessage: String? = null,
-    val preview: TaskGenerationResult? = null
+    val preview: TaskGenerationResult? = null,
+    val clarification: PendingClarification? = null
+)
+
+data class PendingClarification(
+    val request: ClarificationRequest,
+    val classifierInput: String,
+    val baseResult: TaskGenerationResult,
+    val answer: String = ""
 )
 
 data class ManualTaskDraft(

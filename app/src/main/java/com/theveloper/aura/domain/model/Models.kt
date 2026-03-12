@@ -39,6 +39,7 @@ data class CountdownConfig(
 data class HabitRingConfig(
     val frequency: String = "DAILY", // "DAILY", "WEEKLY"
     val label: String = "",
+    val targetCount: Int? = null,
     val completedToday: Boolean = false,
     val streakCount: Int = 0
 ) : ComponentConfig()
@@ -57,6 +58,7 @@ data class NotesConfig(
 data class MetricTrackerConfig(
     val unit: String = "", // e.g., "kg", "km"
     val label: String = "",
+    val goal: Float? = null,
     val history: List<Float> = emptyList()
 ) : ComponentConfig()
 
@@ -99,6 +101,7 @@ data class TaskComponent(
     val type: ComponentType,
     val sortOrder: Int,
     val config: ComponentConfig,
+    val needsClarification: Boolean = false,
     val checklistItems: List<ChecklistItem> = emptyList()
 )
 
@@ -108,6 +111,7 @@ data class ChecklistItem(
     val componentId: String,
     val text: String,
     val isCompleted: Boolean = false,
+    val isSuggested: Boolean = false,
     val sortOrder: Int
 )
 
@@ -131,4 +135,15 @@ data class Suggestion(
     val reasoning: String,
     val createdAt: Long,
     val expiresAt: Long
+)
+
+@Immutable
+data class MemorySlot(
+    val id: String,
+    val category: MemoryCategory,
+    val content: String,
+    val lastUpdatedAt: Long,
+    val version: Int = 0,
+    val tokenCount: Int = 0,
+    val maxTokens: Int = 300
 )

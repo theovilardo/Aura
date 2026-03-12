@@ -23,7 +23,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class TaskDetailViewModel @Inject constructor(
-    taskRepository: TaskRepository,
+    private val taskRepository: TaskRepository,
     private val updateTaskStatusUseCase: UpdateTaskStatusUseCase,
     private val deleteTaskUseCase: DeleteTaskUseCase,
     private val habitEngine: HabitEngine,
@@ -93,6 +93,18 @@ class TaskDetailViewModel @Inject constructor(
             }
         }
     }
+
+    fun saveTaskEdits(task: Task) {
+        viewModelScope.launch {
+            runCatching {
+                taskRepository.updateTask(
+                    task.copy(updatedAt = System.currentTimeMillis())
+                )
+            }.onSuccess {
+                events.tryEmit(TaskDetailEvent.TaskSaved)
+            }
+        }
+    }
 }
 
 data class TaskDetailUiState(
@@ -103,4 +115,5 @@ data class TaskDetailUiState(
 
 sealed interface TaskDetailEvent {
     data object TaskDeleted : TaskDetailEvent
+    data object TaskSaved : TaskDetailEvent
 }

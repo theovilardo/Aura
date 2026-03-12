@@ -7,10 +7,7 @@ import com.theveloper.aura.domain.model.ComponentType
 import com.theveloper.aura.domain.model.Reminder
 import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskComponent
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.jsonPrimitive
 import java.util.UUID
 
 object TaskDslMapper {
@@ -28,12 +25,14 @@ object TaskDslMapper {
                 type = componentDsl.type,
                 sortOrder = componentDsl.sortOrder,
                 config = auraJson.decodeFromJsonElement<ComponentConfig>(componentDsl.config),
+                needsClarification = componentDsl.needsClarification,
                 checklistItems = if (componentDsl.type == ComponentType.CHECKLIST) {
-                    extractChecklistItems(componentDsl.config).mapIndexed { index, text ->
+                    extractChecklistItems(componentDsl.config).mapIndexed { index, item ->
                         ChecklistItem(
                             id = UUID.randomUUID().toString(),
                             componentId = componentId,
-                            text = text,
+                            text = item.label,
+                            isSuggested = item.isSuggested,
                             sortOrder = index
                         )
                     }
@@ -67,8 +66,7 @@ object TaskDslMapper {
         )
     }
 
-    private fun extractChecklistItems(config: kotlinx.serialization.json.JsonObject): List<String> {
-        val items = config["items"] as? JsonArray ?: return emptyList()
-        return items.mapNotNull { item -> item.jsonPrimitive.contentOrNull?.takeIf { it.isNotBlank() } }
+    private fun extractChecklistItems(config: kotlinx.serialization.json.JsonObject): List<ChecklistItemDSL> {
+        return ChecklistDslItems.parse(config)
     }
 }

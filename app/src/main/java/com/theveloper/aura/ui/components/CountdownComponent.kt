@@ -32,6 +32,34 @@ import java.util.concurrent.TimeUnit
 fun CountdownComponent(
     config: CountdownConfig
 ) {
+    if (config.targetDate <= 0L) {
+        ComponentCard(
+            title = config.label.ifBlank { "Countdown" },
+            icon = Icons.Rounded.Timer,
+            eyebrow = "Date pending",
+            subtitle = "Add the target date when you are ready",
+            trailing = {
+                ComponentPill("Pending")
+            }
+        ) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+            ) {
+                Text(
+                    text = "Todavia no hay una fecha definida para este countdown.",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        return
+    }
+
     var currentTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     LaunchedEffect(Unit) {

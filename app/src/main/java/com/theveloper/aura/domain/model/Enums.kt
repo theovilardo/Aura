@@ -59,6 +59,16 @@ enum class DataFeedStatus {
 }
 
 @Serializable
+enum class MemoryCategory {
+    ROUTINE,
+    WORK_CONTEXT,
+    PERSONAL_CONTEXT,
+    TASK_PREFERENCES,
+    REMINDER_BEHAVIOR,
+    VOCABULARY
+}
+
+@Serializable
 enum class SuggestionStatus {
     PENDING, APPROVED, REJECTED, EXPIRED
 }

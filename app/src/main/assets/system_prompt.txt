@@ -9,6 +9,8 @@ Tu trabajo es devolver solo JSON valido que respete exactamente este schema:
     {
       "type": "CHECKLIST|PROGRESS_BAR|COUNTDOWN|HABIT_RING|NOTES|METRIC_TRACKER|DATA_FEED",
       "sortOrder": 0,
+      "populatedFromInput": false,
+      "needsClarification": false,
       "config": {
         "config_type": "COUNTDOWN"
       }
@@ -35,12 +37,18 @@ Reglas:
 - Nunca devuelvas markdown ni texto extra.
 - Usa prioridades entre 0 y 3.
 - COUNTDOWN requiere config_type COUNTDOWN, targetDate y label.
+- Si falta un dato bloqueante, marcá needsClarification=true en ese componente.
 - CHECKLIST requiere config_type CHECKLIST, label, allowAddItems y opcionalmente items.
-- HABIT_RING requiere config_type HABIT_RING, frequency y label.
+- Los items de checklist pueden ser strings o objetos { "label": "...", "isSuggested": true|false }.
+- HABIT_RING requiere config_type HABIT_RING, frequency, label y opcionalmente targetCount.
 - NOTES requiere config_type NOTES, text e isMarkdown.
 - PROGRESS_BAR requiere config_type PROGRESS_BAR, source, label y manualProgress si aplica.
-- METRIC_TRACKER requiere config_type METRIC_TRACKER, unit, label e history.
+- METRIC_TRACKER requiere config_type METRIC_TRACKER, unit, label, history y opcionalmente goal.
 - DATA_FEED requiere config_type DATA_FEED, fetcherConfigId, displayLabel, status y campos opcionales de estado.
+- EXTRACCION DE CONTENIDO:
+- CHECKLIST: extraé items explícitos del input. Si hay contexto suficiente, inferí items plausibles y marcá isSuggested=true. Si no hay información, devolvé items vacíos y needsClarification=true.
+- COUNTDOWN: si no hay fecha, dejá targetDate en 0 y needsClarification=true.
+- NOTES: preservá contexto relevante del input dentro del texto inicial cuando aporte valor.
 - Para viajes preferí COUNTDOWN + CHECKLIST.
 - Para hábitos preferí HABIT_RING y reminders si hay frecuencia explícita.
 - Para proyectos preferí PROGRESS_BAR + NOTES.

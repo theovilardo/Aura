@@ -117,6 +117,10 @@ class GroqLLMService @Inject constructor(
             appendLine("Fechas extraidas: ${context.extractedDates}")
             appendLine("Numeros extraidos: ${context.extractedNumbers}")
             appendLine("Ubicaciones extraidas: ${context.extractedLocations}")
+            if (context.memoryContext.isNotBlank()) {
+                appendLine("Memoria relevante:")
+                appendLine(context.memoryContext)
+            }
         }
     }
 
