@@ -292,7 +292,7 @@ class CompletenessValidator @Inject constructor() {
             raw.split(AND_SEPARATOR_REGEX)
         }
 
-        return separators
+        val normalizedItems = separators
             .map { item ->
                 item.trim()
                     .trim('-', '*', '.', ':')
@@ -305,6 +305,38 @@ class CompletenessValidator @Inject constructor() {
                     !item.startsWith("Task type hint:", ignoreCase = true)
             }
             .distinct()
+
+        return expandTrailingCoordinatedItem(normalizedItems)
+    }
+
+    private fun expandTrailingCoordinatedItem(items: List<String>): List<String> {
+        if (items.size < 3) return items
+
+        val lastItem = items.last()
+        val match = TRAILING_COORDINATED_ITEM_REGEX.matchEntire(lastItem) ?: return items
+        val left = match.groupValues[1].trim()
+        val right = match.groupValues[2].trim()
+
+        if (!looksLikeAtomicListItem(left) || !looksLikeAtomicListItem(right)) {
+            return items
+        }
+
+        val previousItems = items.dropLast(1)
+        if (previousItems.count(::looksLikeAtomicListItem) < 2) {
+            return items
+        }
+
+        return previousItems + listOf(left, right)
+    }
+
+    private fun looksLikeAtomicListItem(item: String): Boolean {
+        val normalized = item.trim()
+        if (normalized.isBlank()) return false
+        if (TRAILING_COORDINATED_ITEM_REGEX.containsMatchIn(normalized)) return false
+
+        val tokens = normalized.split(Regex("\\s+"))
+            .filter { it.isNotBlank() }
+        return tokens.size in 1..2
     }
 
     private companion object {
@@ -315,7 +347,11 @@ class CompletenessValidator @Inject constructor() {
         val SHOPPING_MEMORY_LINE_REGEX = Regex("(?i)(?:compras\\s+frecuentes|items\\s+frecuentes)\\s*:\\s*(.+)")
         val CLARIFICATION_ANSWER_REGEX = Regex("(?i)aclaracion\\s+del\\s+usuario\\s*:\\s*(.+)")
         val ITEM_SEPARATOR_REGEX = Regex("[,;\\n]+")
-        val AND_SEPARATOR_REGEX = Regex("\\s+y\\s+")
+        val AND_SEPARATOR_REGEX = Regex("\\s+(?:y|e|and|&)\\s+", RegexOption.IGNORE_CASE)
+        val TRAILING_COORDINATED_ITEM_REGEX = Regex(
+            pattern = "(.+?)\\s+(?:y|e|and|&)\\s+(.+)",
+            option = RegexOption.IGNORE_CASE
+        )
         val GENERIC_PLACEHOLDER_ITEMS = setOf(
             "define next step",
             "execute",
