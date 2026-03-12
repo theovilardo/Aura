@@ -5,9 +5,13 @@ import com.theveloper.aura.domain.model.MemoryCategory
 import com.theveloper.aura.domain.model.MemorySlot
 import com.theveloper.aura.domain.model.TaskType
 import com.theveloper.aura.domain.repository.MemoryRepository
-import com.theveloper.aura.engine.memory.MemoryContextBuilder
 import com.theveloper.aura.engine.dsl.ComponentDSL
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
+import com.theveloper.aura.engine.llm.LLMService
+import com.theveloper.aura.engine.llm.LLMServiceFactory
+import com.theveloper.aura.engine.llm.LLMTier
+import com.theveloper.aura.engine.llm.ResolvedLLMRoute
+import com.theveloper.aura.engine.memory.MemoryContextBuilder
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -24,7 +28,8 @@ import org.junit.Test
 class TaskClassifierTest {
 
     private val entityExtractorService = mockk<EntityExtractorService>()
-    private val llmService = mockk<LLMService>()
+    private val llmServiceFactory = mockk<LLMServiceFactory>()
+    private val routedService = mockk<LLMService>()
     private val intentClassifier = IntentClassifier()
     private val onDeviceTaskDslService = mockk<OnDeviceTaskDslService>()
     private val aiExecutionModeStore = mockk<AiExecutionModeStore>()
@@ -36,7 +41,7 @@ class TaskClassifierTest {
         entityExtractorService = entityExtractorService,
         intentClassifier = intentClassifier,
         onDeviceTaskDslService = onDeviceTaskDslService,
-        llmService = llmService,
+        llmServiceFactory = llmServiceFactory,
         aiExecutionModeStore = aiExecutionModeStore,
         completenessValidator = completenessValidator,
         memoryRepository = memoryRepository,
@@ -44,92 +49,76 @@ class TaskClassifierTest {
     )
 
     @Test
-    fun `auto mode keeps local result for strong prompt`() = runTest {
-        coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities(
-            locations = listOf("Madrid")
-        )
+    fun `resolved local route is used as primary backend`() = runTest {
+        coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities(locations = listOf("Madrid"))
         coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.AUTO
         coEvery { memoryRepository.getSlots() } returns emptyList()
-        every { llmService.isAvailable() } returns true
-        coEvery { onDeviceTaskDslService.compose(any()) } returns OnDeviceTaskDslResult(
-            dsl = travelDsl(),
-            confidence = 0.91f,
-            source = TaskGenerationSource.LOCAL_AI
+        coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.AUTO) } returns route(
+            source = TaskGenerationSource.LOCAL_AI,
+            tier = LLMTier.GEMMA_3_1B
         )
+        coEvery { routedService.classify(any(), any()) } returns travelDsl()
 
         val result = subject.classify("quiero viajar a Madrid en agosto con presupuesto")
 
         assertEquals(TaskGenerationSource.LOCAL_AI, result.source)
         assertEquals(TaskType.TRAVEL, result.dsl.type)
         assertTrue(result.dsl.components.any { it.type == ComponentType.COUNTDOWN })
-        coVerify(exactly = 0) { llmService.classify(any(), any()) }
+        coVerify(exactly = 0) { onDeviceTaskDslService.compose(any()) }
     }
 
     @Test
-    fun `auto mode escalates to groq for weak local result`() = runTest {
-        coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
-        coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.AUTO
-        coEvery { memoryRepository.getSlots() } returns emptyList()
-        every { llmService.isAvailable() } returns true
-        coEvery { onDeviceTaskDslService.compose(any()) } returns OnDeviceTaskDslResult(
-            dsl = localThinDsl(),
-            confidence = 0.45f,
-            source = TaskGenerationSource.RULES
-        )
-        coEvery { llmService.classify(any(), any()) } returns groqProjectDsl()
-
-        val result = subject.classify("organizar algo importante para el equipo")
-
-        assertEquals(TaskGenerationSource.GROQ_API, result.source)
-        assertEquals(TaskType.PROJECT, result.dsl.type)
-        coVerify(exactly = 1) { llmService.classify(any(), any()) }
-    }
-
-    @Test
-    fun `cloud first uses groq before local fallback`() = runTest {
+    fun `failed groq route falls back to local composition`() = runTest {
         coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
         coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.CLOUD_FIRST
         coEvery { memoryRepository.getSlots() } returns emptyList()
-        every { llmService.isAvailable() } returns true
+        coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.CLOUD_FIRST) } returns route(
+            source = TaskGenerationSource.GROQ_API,
+            tier = LLMTier.GROQ_API
+        )
+        coEvery { routedService.classify(any(), any()) } throws IllegalStateException("boom")
         coEvery { onDeviceTaskDslService.compose(any()) } returns OnDeviceTaskDslResult(
-            dsl = travelDsl(),
-            confidence = 0.9f,
+            dsl = groqFinanceDsl(),
+            confidence = 0.73f,
             source = TaskGenerationSource.LOCAL_AI
         )
-        coEvery { llmService.classify(any(), any()) } returns groqFinanceDsl()
 
         val result = subject.classify("pagar alquiler el viernes")
 
-        assertEquals(TaskGenerationSource.GROQ_API, result.source)
+        assertEquals(TaskGenerationSource.LOCAL_AI, result.source)
         assertEquals(TaskType.FINANCE, result.dsl.type)
-        coVerify(exactly = 1) { llmService.classify(any(), any()) }
+        assertTrue(result.warnings.any { it.contains("Groq no respondió bien") })
+        coVerify(exactly = 1) { onDeviceTaskDslService.compose(any()) }
     }
 
     @Test
-    fun `missing groq config stays on local and surfaces warning`() = runTest {
+    fun `rules route surfaces reason from intelligence layer`() = runTest {
         coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
-        coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.CLOUD_FIRST
+        coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.AUTO
         coEvery { memoryRepository.getSlots() } returns emptyList()
-        every { llmService.isAvailable() } returns false
-        coEvery { onDeviceTaskDslService.compose(any()) } returns OnDeviceTaskDslResult(
-            dsl = localThinDsl(),
-            confidence = 0.71f,
-            source = TaskGenerationSource.RULES
+        coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.AUTO) } returns route(
+            source = TaskGenerationSource.RULES,
+            tier = LLMTier.RULES_ONLY,
+            reason = "Falta descargar el modelo local recomendado."
         )
+        coEvery { routedService.classify(any(), any()) } returns localThinDsl()
 
         val result = subject.classify("necesito ordenar papeles")
 
         assertEquals(TaskGenerationSource.RULES, result.source)
-        assertTrue(result.warnings.any { it.contains("Groq no esta configurado") })
-        coVerify(exactly = 0) { llmService.classify(any(), any()) }
+        assertTrue(result.warnings.any { it.contains("Falta descargar el modelo local") })
     }
 
     @Test
-    fun `shopping prompt asks for clarification when checklist has no real items`() = runTest {
+    fun `shopping prompt asks for clarification after routed failure`() = runTest {
         coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
         coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.LOCAL_ONLY
         coEvery { memoryRepository.getSlots() } returns emptyList()
-        every { llmService.isAvailable() } returns false
+        coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.LOCAL_ONLY) } returns route(
+            source = TaskGenerationSource.LOCAL_AI,
+            tier = LLMTier.GEMMA_3_1B
+        )
+        coEvery { routedService.classify(any(), any()) } throws IllegalStateException("local model unavailable")
         coEvery { onDeviceTaskDslService.compose(any()) } returns OnDeviceTaskDslResult(
             dsl = shoppingDsl(),
             confidence = 0.8f,
@@ -155,7 +144,11 @@ class TaskClassifierTest {
                 tokenCount = 4
             )
         )
-        every { llmService.isAvailable() } returns false
+        coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.LOCAL_ONLY) } returns route(
+            source = TaskGenerationSource.LOCAL_AI,
+            tier = LLMTier.GEMMA_3_1B
+        )
+        coEvery { routedService.classify(any(), any()) } throws IllegalStateException("local model unavailable")
         coEvery { onDeviceTaskDslService.compose(any()) } returns OnDeviceTaskDslResult(
             dsl = shoppingDsl(),
             confidence = 0.8f,
@@ -171,6 +164,17 @@ class TaskClassifierTest {
         assertTrue(items.contains("isSuggested"))
     }
 
+    private fun route(
+        source: TaskGenerationSource,
+        tier: LLMTier,
+        reason: String = ""
+    ) = ResolvedLLMRoute(
+        service = routedService,
+        tier = tier,
+        source = source,
+        reason = reason
+    )
+
     private fun travelDsl() = TaskDSLOutput(
         title = "Viaje a Madrid",
         type = TaskType.TRAVEL,
@@ -184,15 +188,6 @@ class TaskClassifierTest {
         title = "Organizar algo importante",
         type = TaskType.GENERAL,
         components = listOf(notesComponent(0, ""))
-    )
-
-    private fun groqProjectDsl() = TaskDSLOutput(
-        title = "Organizar entrega",
-        type = TaskType.PROJECT,
-        components = listOf(
-            progressComponent(0, "Avance general"),
-            notesComponent(1, "### Summary")
-        )
     )
 
     private fun groqFinanceDsl() = TaskDSLOutput(
@@ -252,17 +247,6 @@ class TaskClassifierTest {
             put("config_type", "NOTES")
             put("text", text)
             put("isMarkdown", true)
-        }
-    )
-
-    private fun progressComponent(sortOrder: Int, label: String) = ComponentDSL(
-        type = ComponentType.PROGRESS_BAR,
-        sortOrder = sortOrder,
-        config = buildJsonObject {
-            put("config_type", "PROGRESS_BAR")
-            put("source", "MANUAL")
-            put("label", label)
-            put("manualProgress", 0.2)
         }
     )
 }

@@ -121,6 +121,11 @@ dependencies {
 
     // ML Kit
     implementation(libs.mlkit.entity.extraction)
+    implementation(libs.mlkit.language.id)
+
+    // LiteRT-LM
+    runtimeOnly(libs.litertlm.android)
+    runtimeOnly(libs.litert.core)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

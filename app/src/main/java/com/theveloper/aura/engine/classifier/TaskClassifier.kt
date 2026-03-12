@@ -1,9 +1,9 @@
 package com.theveloper.aura.engine.classifier
 
 import com.theveloper.aura.domain.model.MemorySlot
-import com.theveloper.aura.domain.model.TaskType
 import com.theveloper.aura.domain.repository.MemoryRepository
 import com.theveloper.aura.engine.dsl.TaskDSLValidator
+import com.theveloper.aura.engine.llm.LLMServiceFactory
 import com.theveloper.aura.engine.memory.MemoryContextBuilder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -13,7 +13,7 @@ class TaskClassifier @Inject constructor(
     private val entityExtractorService: EntityExtractorService,
     private val intentClassifier: IntentClassifier,
     private val onDeviceTaskDslService: OnDeviceTaskDslService,
-    private val llmService: LLMService,
+    private val llmServiceFactory: LLMServiceFactory,
     private val aiExecutionModeStore: AiExecutionModeStore,
     private val completenessValidator: CompletenessValidator,
     private val memoryRepository: MemoryRepository,
@@ -43,78 +43,102 @@ class TaskClassifier @Inject constructor(
         )
         val executionMode = aiExecutionModeStore.getMode()
         val warnings = mutableListOf<String>()
-        val cloudAvailable = llmService.isAvailable()
-        val cloudEnabled = executionMode != AiExecutionMode.LOCAL_ONLY
+        val route = llmServiceFactory.resolvePrimaryService(executionMode)
 
-        val localResult = buildLocalResult(
+        if (route.reason.isNotBlank() && route.source == TaskGenerationSource.RULES) {
+            warnings += route.reason
+        }
+
+        buildRouteResult(
             input = normalizedInput,
-            intentResult = intentResult,
-            extractedEntities = extractedEntities,
             context = context,
             executionMode = executionMode,
+            route = route,
+            intentResult = intentResult,
+            extractedEntities = extractedEntities,
+            warnings = warnings,
+            memorySlots = memorySlots,
+            allowClarification = allowClarification
+        )?.let { return it }
+
+        return buildFallbackResult(
+            input = normalizedInput,
+            context = context,
+            executionMode = executionMode,
+            intentResult = intentResult,
+            extractedEntities = extractedEntities,
             warnings = warnings,
             memorySlots = memorySlots,
             allowClarification = allowClarification
         )
-
-        if (executionMode == AiExecutionMode.CLOUD_FIRST) {
-            if (cloudAvailable) {
-                buildCloudResult(
-                    input = normalizedInput,
-                    context = context,
-                    executionMode = executionMode,
-                    intentConfidence = intentResult.confidence,
-                    localConfidence = localResult?.localConfidence ?: 0f,
-                    warnings = warnings,
-                    memorySlots = memorySlots,
-                    allowClarification = allowClarification
-                )?.let { return it }
-            } else {
-                warnings += CLOUD_NOT_CONFIGURED_WARNING
-            }
-        }
-
-        val shouldEscalate = cloudEnabled && cloudAvailable && shouldEscalateToCloud(
-            input = normalizedInput,
-            intentResult = intentResult,
-            localResult = localResult
-        )
-
-        if (shouldEscalate) {
-            buildCloudResult(
-                input = normalizedInput,
-                context = context,
-                executionMode = executionMode,
-                intentConfidence = intentResult.confidence,
-                localConfidence = localResult?.localConfidence ?: 0f,
-                warnings = warnings,
-                memorySlots = memorySlots,
-                allowClarification = allowClarification
-            )?.let { return it }
-        } else if (cloudEnabled && !cloudAvailable) {
-            warnings += CLOUD_NOT_CONFIGURED_WARNING
-        }
-
-        localResult?.let { result ->
-            if (warnings.isEmpty()) {
-                return result
-            }
-            return result.copy(warnings = (result.warnings + warnings).distinct())
-        }
-
-        error("No pudimos generar una UI valida para esta tarea.")
     }
 
-    private suspend fun buildLocalResult(
+    private suspend fun buildRouteResult(
         input: String,
-        intentResult: IntentResult,
-        extractedEntities: ExtractedEntities,
         context: LLMClassificationContext,
         executionMode: AiExecutionMode,
+        route: com.theveloper.aura.engine.llm.ResolvedLLMRoute,
+        intentResult: IntentResult,
+        extractedEntities: ExtractedEntities,
         warnings: MutableList<String>,
         memorySlots: List<MemorySlot>,
         allowClarification: Boolean
     ): TaskGenerationResult? {
+        val routedDsl = runCatching {
+            route.service.classify(input, context)
+        }.getOrElse {
+            warnings += when (route.source) {
+                TaskGenerationSource.GROQ_API -> "Groq no respondió bien. Se usó la ruta local."
+                TaskGenerationSource.LOCAL_AI -> "El modelo local no respondió bien. Se usó la ruta heurística."
+                TaskGenerationSource.RULES,
+                TaskGenerationSource.MANUAL -> "La ruta configurada falló. Se usó la composición local."
+            }
+            return null
+        }
+
+        return when (val validation = TaskDSLValidator.validate(routedDsl)) {
+            TaskDSLValidator.ValidationResult.Valid -> {
+                postProcess(
+                    result = TaskGenerationResult(
+                        dsl = routedDsl,
+                        source = route.source,
+                        executionMode = executionMode,
+                        intentConfidence = intentResult.confidence,
+                        localConfidence = route.source.confidenceHint(intentResult.confidence),
+                        warnings = warnings.distinct()
+                    ),
+                    input = input,
+                    memorySlots = memorySlots,
+                    allowClarification = allowClarification
+                )
+            }
+
+            is TaskDSLValidator.ValidationResult.Invalid -> {
+                warnings += "La capa de inteligencia devolvió una estructura inválida. Se usó la composición local."
+                buildFallbackResult(
+                    input = input,
+                    context = context,
+                    executionMode = executionMode,
+                    intentResult = intentResult,
+                    extractedEntities = extractedEntities,
+                    warnings = warnings,
+                    memorySlots = memorySlots,
+                    allowClarification = allowClarification
+                )
+            }
+        }
+    }
+
+    private suspend fun buildFallbackResult(
+        input: String,
+        context: LLMClassificationContext,
+        executionMode: AiExecutionMode,
+        intentResult: IntentResult,
+        extractedEntities: ExtractedEntities,
+        warnings: MutableList<String>,
+        memorySlots: List<MemorySlot>,
+        allowClarification: Boolean
+    ): TaskGenerationResult {
         val onDeviceResult = runCatching {
             onDeviceTaskDslService.compose(
                 OnDeviceTaskDslRequest(
@@ -125,7 +149,7 @@ class TaskClassifier @Inject constructor(
                 )
             )
         }.getOrElse {
-            warnings += "La IA local tuvo un problema. Se uso el preset deterministico."
+            warnings += "La composición heurística falló. Se usó el preset determinístico."
             OnDeviceTaskDslResult(
                 dsl = TaskDSLBuilder.buildDeterministic(input, intentResult, extractedEntities),
                 confidence = intentResult.confidence.coerceAtLeast(0.42f),
@@ -133,87 +157,30 @@ class TaskClassifier @Inject constructor(
             )
         }
 
-        return when (val validation = TaskDSLValidator.validate(onDeviceResult.dsl)) {
+        val fallbackDsl = when (TaskDSLValidator.validate(onDeviceResult.dsl)) {
             TaskDSLValidator.ValidationResult.Valid -> {
-                postProcess(
-                    result = TaskGenerationResult(
-                        dsl = onDeviceResult.dsl,
-                        source = onDeviceResult.source,
-                        executionMode = executionMode,
-                        intentConfidence = intentResult.confidence,
-                        localConfidence = onDeviceResult.confidence,
-                        warnings = emptyList()
-                    ),
-                    input = input,
-                    memorySlots = memorySlots,
-                    allowClarification = allowClarification
-                )
+                onDeviceResult.dsl
             }
 
             is TaskDSLValidator.ValidationResult.Invalid -> {
-                warnings += "La composicion local no fue valida. Se intento una ruta mas segura."
-                val deterministic = TaskDSLBuilder.buildDeterministic(input, intentResult, extractedEntities)
-                when (TaskDSLValidator.validate(deterministic)) {
-                    TaskDSLValidator.ValidationResult.Valid -> {
-                        postProcess(
-                            result = TaskGenerationResult(
-                                dsl = deterministic,
-                                source = TaskGenerationSource.RULES,
-                                executionMode = executionMode,
-                                intentConfidence = intentResult.confidence,
-                                localConfidence = onDeviceResult.confidence,
-                                warnings = emptyList()
-                            ),
-                            input = input,
-                            memorySlots = memorySlots,
-                            allowClarification = allowClarification
-                        )
-                    }
-
-                    is TaskDSLValidator.ValidationResult.Invalid -> null
-                }
+                warnings += "La composición heurística no fue válida. Se usó el preset determinístico."
+                TaskDSLBuilder.buildDeterministic(input, intentResult, extractedEntities)
             }
         }
-    }
 
-    private suspend fun buildCloudResult(
-        input: String,
-        context: LLMClassificationContext,
-        executionMode: AiExecutionMode,
-        intentConfidence: Float,
-        localConfidence: Float,
-        warnings: MutableList<String>,
-        memorySlots: List<MemorySlot>,
-        allowClarification: Boolean
-    ): TaskGenerationResult? {
-        val remoteDsl = runCatching { llmService.classify(input, context) }
-            .getOrElse {
-                warnings += "Groq no respondio bien. Se mantuvo la IA local."
-                return null
-            }
-
-        return when (val validation = TaskDSLValidator.validate(remoteDsl)) {
-            TaskDSLValidator.ValidationResult.Valid -> {
-                postProcess(
-                    result = TaskGenerationResult(
-                        dsl = remoteDsl,
-                        source = TaskGenerationSource.GROQ_API,
-                        executionMode = executionMode,
-                        intentConfidence = intentConfidence,
-                        localConfidence = localConfidence,
-                        warnings = warnings.distinct()
-                    ),
-                    input = input,
-                    memorySlots = memorySlots,
-                    allowClarification = allowClarification
-                )
-            }
-
-            is TaskDSLValidator.ValidationResult.Invalid -> {
-                warnings += "Groq devolvio una estructura invalida. Se mantuvo la IA local."
-                null
-            }
-        }
+        return postProcess(
+            result = TaskGenerationResult(
+                dsl = fallbackDsl,
+                source = if (fallbackDsl == onDeviceResult.dsl) onDeviceResult.source else TaskGenerationSource.RULES,
+                executionMode = executionMode,
+                intentConfidence = intentResult.confidence,
+                localConfidence = onDeviceResult.confidence,
+                warnings = warnings.distinct()
+            ),
+            input = input,
+            memorySlots = memorySlots,
+            allowClarification = allowClarification
+        )
     }
 
     private fun postProcess(
@@ -244,37 +211,12 @@ class TaskClassifier @Inject constructor(
         )
     }
 
-    private fun shouldEscalateToCloud(
-        input: String,
-        intentResult: IntentResult,
-        localResult: TaskGenerationResult?
-    ): Boolean {
-        if (localResult == null) {
-            return true
+    private fun TaskGenerationSource.confidenceHint(intentConfidence: Float): Float {
+        return when (this) {
+            TaskGenerationSource.GROQ_API -> 0.92f
+            TaskGenerationSource.LOCAL_AI -> 0.86f
+            TaskGenerationSource.RULES -> intentConfidence.coerceAtLeast(0.64f)
+            TaskGenerationSource.MANUAL -> 1f
         }
-        if (localResult.source == TaskGenerationSource.GROQ_API) {
-            return false
-        }
-
-        val normalized = input.lowercase()
-        val complexPrompt = COMPLEX_PROMPT_REGEX.containsMatchIn(normalized)
-        val localDsl = localResult.dsl
-        val localLooksThin = localDsl.components.size <= 1
-        val genericThinResult = localDsl.type == TaskType.GENERAL && localLooksThin
-
-        return intentResult.confidence < INTENT_CONFIDENCE_THRESHOLD ||
-            localResult.localConfidence < LOCAL_CONFIDENCE_THRESHOLD ||
-            (complexPrompt && localLooksThin) ||
-            genericThinResult
-    }
-
-    private companion object {
-        const val INTENT_CONFIDENCE_THRESHOLD = 0.58f
-        const val LOCAL_CONFIDENCE_THRESHOLD = 0.62f
-        const val CLOUD_NOT_CONFIGURED_WARNING = "Groq no esta configurado. Se uso la IA local."
-        val COMPLEX_PROMPT_REGEX = Regex(
-            "\\bdashboard\\b|\\bflujo\\b|\\bcomparar\\b|\\bestrategia\\b|\\bitinerario\\b|\\bpresupuesto\\b|\\bplan\\s+completo\\b|\\broadmap\\b",
-            RegexOption.IGNORE_CASE
-        )
     }
 }

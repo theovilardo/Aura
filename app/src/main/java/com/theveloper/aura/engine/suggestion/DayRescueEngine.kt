@@ -7,7 +7,7 @@ import com.theveloper.aura.domain.model.TaskStatus
 import com.theveloper.aura.domain.repository.SuggestionRepository
 import com.theveloper.aura.domain.repository.TaskRepository
 import com.theveloper.aura.domain.repository.UserPatternRepository
-import com.theveloper.aura.engine.classifier.LLMService
+import com.theveloper.aura.engine.llm.LLMServiceFactory
 import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
@@ -20,7 +20,7 @@ import javax.inject.Singleton
 class DayRescueEngine @Inject constructor(
     private val taskRepository: TaskRepository,
     private val userPatternRepository: UserPatternRepository,
-    private val llmService: LLMService,
+    private val llmServiceFactory: LLMServiceFactory,
     private val suggestionRepository: SuggestionRepository
 ) {
     suspend fun runDayRescue() {
@@ -45,7 +45,13 @@ class DayRescueEngine @Inject constructor(
         val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
         val currentTime = timeFormat.format(Date())
 
-        val planJsonString = llmService.getDayRescuePlan(tasksJsonString, patternsJsonString, currentTime)
+        val route = llmServiceFactory.resolveAdvancedService()
+        if (!route.service.supportsDayRescue) return
+        val planJsonString = runCatching {
+            route.service.getDayRescuePlan(tasksJsonString, patternsJsonString, currentTime)
+        }.getOrElse {
+            return
+        }
         
         // LLM replies with a JSON array of day rescue action objects
         val planArray = try { JSONArray(planJsonString) } catch (e: Exception) { return }

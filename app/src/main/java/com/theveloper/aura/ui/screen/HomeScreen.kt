@@ -200,7 +200,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .height(68.dp)
+                    .height(78.dp)
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(

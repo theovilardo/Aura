@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.CloudDone
@@ -71,6 +72,7 @@ private val SettingsTopBarMinContentPadding = 88.dp
 
 @Composable
 fun SettingsScreen(
+    onOpenIntelligenceSettings: () -> Unit,
     onOpenAiSettings: () -> Unit,
     onOpenCloudSettings: () -> Unit,
     onOpenDeveloperSettings: () -> Unit,
@@ -91,6 +93,16 @@ fun SettingsScreen(
         }
 
         item { SettingsGroupHeader("Core") }
+
+        item {
+            SettingsNavigationCard(
+                icon = Icons.Rounded.AutoAwesome,
+                title = "Intelligence",
+                summary = "Detect device tier, manage model downloads and verify which backend is active right now.",
+                status = uiState.intelligenceStatus,
+                onClick = onOpenIntelligenceSettings
+            )
+        }
 
         item {
             SettingsNavigationCard(
@@ -276,7 +288,7 @@ fun DeveloperSettingsScreen(
 }
 
 @Composable
-private fun SettingsPageScaffold(
+internal fun SettingsPageScaffold(
     title: String,
     onNavigateBack: (() -> Unit)? = null,
     bottomPaddingExtra: Dp = 32.dp,
@@ -407,7 +419,7 @@ private fun rememberSettingsTitleStyle(): TextStyle {
 }
 
 @Composable
-private fun SettingsLeadCard(
+internal fun SettingsLeadCard(
     eyebrow: String,
     title: String,
     body: String
@@ -441,7 +453,7 @@ private fun SettingsLeadCard(
 }
 
 @Composable
-private fun SettingsGroupHeader(title: String) {
+internal fun SettingsGroupHeader(title: String) {
     Text(
         text = title,
         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -451,7 +463,7 @@ private fun SettingsGroupHeader(title: String) {
 }
 
 @Composable
-private fun SettingsNavigationCard(
+internal fun SettingsNavigationCard(
     icon: ImageVector,
     title: String,
     summary: String,
@@ -505,7 +517,7 @@ private fun SettingsNavigationCard(
 }
 
 @Composable
-private fun SettingsToggleCard(
+internal fun SettingsToggleCard(
     icon: ImageVector,
     title: String,
     body: String,
@@ -550,7 +562,7 @@ private fun SettingsToggleCard(
 }
 
 @Composable
-private fun SettingsInfoCard(
+internal fun SettingsInfoCard(
     icon: ImageVector,
     title: String,
     body: String
@@ -585,7 +597,7 @@ private fun SettingsInfoCard(
 }
 
 @Composable
-private fun SettingsIconBadge(icon: ImageVector) {
+internal fun SettingsIconBadge(icon: ImageVector) {
     Surface(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceContainerHighest
@@ -606,7 +618,7 @@ private fun SettingsIconBadge(icon: ImageVector) {
 }
 
 @Composable
-private fun SettingsStatusChip(label: String) {
+internal fun SettingsStatusChip(label: String) {
     Surface(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceContainerHighest,

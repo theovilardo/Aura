@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.theveloper.aura.BuildConfig
 import com.theveloper.aura.data.repository.AppSettingsRepository
 import com.theveloper.aura.engine.classifier.AiExecutionMode
+import com.theveloper.aura.engine.llm.LLMServiceFactory
+import com.theveloper.aura.engine.llm.LLMTier
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,12 +19,14 @@ data class SettingsUiState(
     val syncEnabled: Boolean = false,
     val aiExecutionMode: AiExecutionMode = AiExecutionMode.AUTO,
     val groqConfigured: Boolean = BuildConfig.GROQ_API_KEY.isNotBlank(),
-    val developerMockHabitDataEnabled: Boolean = false
+    val developerMockHabitDataEnabled: Boolean = false,
+    val intelligenceStatus: String = "Rules"
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val appSettingsRepository: AppSettingsRepository
+    private val appSettingsRepository: AppSettingsRepository,
+    private val llmServiceFactory: LLMServiceFactory
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -31,11 +35,17 @@ class SettingsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             appSettingsRepository.settingsFlow.collect { settings ->
+                val intelligenceStatus = runCatching {
+                    llmServiceFactory.getRuntimeStatus(settings.aiExecutionMode)
+                        .activePrimaryTier
+                        .settingsLabel()
+                }.getOrDefault(LLMTier.RULES_ONLY.settingsLabel())
                 _uiState.update {
                     it.copy(
                         syncEnabled = settings.syncEnabled,
                         aiExecutionMode = settings.aiExecutionMode,
-                        developerMockHabitDataEnabled = settings.developerMockHabitDataEnabled
+                        developerMockHabitDataEnabled = settings.developerMockHabitDataEnabled,
+                        intelligenceStatus = intelligenceStatus
                     )
                 }
             }
@@ -57,6 +67,16 @@ class SettingsViewModel @Inject constructor(
     fun setDeveloperMockHabitDataEnabled(enabled: Boolean) {
         viewModelScope.launch {
             appSettingsRepository.setDeveloperMockHabitDataEnabled(enabled)
+        }
+    }
+
+    private fun LLMTier.settingsLabel(): String {
+        return when (this) {
+            LLMTier.GEMINI_NANO -> "Gemini Nano"
+            LLMTier.GEMMA_3N_E2B -> "Gemma 3n"
+            LLMTier.GEMMA_3_1B -> "Gemma 1B"
+            LLMTier.GROQ_API -> "Groq"
+            LLMTier.RULES_ONLY -> "Rules"
         }
     }
 }

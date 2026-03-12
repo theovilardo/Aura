@@ -76,6 +76,7 @@ import com.theveloper.aura.ui.screen.CloudSettingsScreen
 import com.theveloper.aura.ui.screen.DeveloperSettingsScreen
 import com.theveloper.aura.ui.screen.HomeScreen
 import com.theveloper.aura.ui.screen.AiSettingsScreen
+import com.theveloper.aura.ui.screen.IntelligenceSettingsScreen
 import com.theveloper.aura.ui.screen.SettingsScreen
 import com.theveloper.aura.ui.screen.TaskCreationMode
 import com.theveloper.aura.ui.screen.TaskDetailScreen
@@ -90,6 +91,7 @@ private const val TASKS_ROUTE = "tasks"
 private const val TASK_DETAIL_ROUTE = "task_detail/{taskId}"
 private const val TASK_EDIT_ROUTE = "task_detail_edit/{taskId}"
 private const val SETTINGS_ROUTE = "settings"
+private const val SETTINGS_INTELLIGENCE_ROUTE = "settings/intelligence"
 private const val SETTINGS_AI_ROUTE = "settings/ai"
 private const val SETTINGS_CLOUD_ROUTE = "settings/cloud"
 private const val SETTINGS_DEVELOPER_ROUTE = "settings/developer"
@@ -162,9 +164,15 @@ fun AuraApp() {
             }
             composable(SETTINGS_ROUTE) {
                 SettingsScreen(
+                    onOpenIntelligenceSettings = { navController.navigate(SETTINGS_INTELLIGENCE_ROUTE) },
                     onOpenAiSettings = { navController.navigate(SETTINGS_AI_ROUTE) },
                     onOpenCloudSettings = { navController.navigate(SETTINGS_CLOUD_ROUTE) },
                     onOpenDeveloperSettings = { navController.navigate(SETTINGS_DEVELOPER_ROUTE) }
+                )
+            }
+            composable(SETTINGS_INTELLIGENCE_ROUTE) {
+                IntelligenceSettingsScreen(
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
             composable(SETTINGS_AI_ROUTE) {

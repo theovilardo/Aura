@@ -2,9 +2,7 @@ package com.theveloper.aura.di
 
 import com.theveloper.aura.engine.classifier.AiExecutionModeStore
 import com.theveloper.aura.engine.classifier.DataStoreAiExecutionModeStore
-import com.theveloper.aura.engine.classifier.GroqLLMService
 import com.theveloper.aura.engine.classifier.HeuristicOnDeviceTaskDslService
-import com.theveloper.aura.engine.classifier.LLMService
 import com.theveloper.aura.engine.classifier.OnDeviceTaskDslService
 import dagger.Binds
 import dagger.Module
@@ -15,12 +13,6 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class EngineModule {
-
-    @Binds
-    @Singleton
-    abstract fun bindLLMService(
-        groqLLMService: GroqLLMService
-    ): LLMService
 
     @Binds
     @Singleton

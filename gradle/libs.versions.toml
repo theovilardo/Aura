@@ -27,8 +27,14 @@ turbine = "1.2.0"
 coreKtxVersion = "1.17.0"
 mlkitEntityExtraction = "16.0.0-beta5"
 uiTextGoogleFonts = "1.7.5"
+litertLm = "0.8.0"
+litert = "2.1.0"
+mlkitLanguageId = "17.0.0"
 
 [libraries]
+litertlm-android = { group = "com.google.ai.edge.litertlm", name = "litertlm-android", version.ref = "litertLm" }
+litert-core = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "litert" }
+mlkit-language-id = { group = "com.google.mlkit", name = "language-id", version.ref = "mlkitLanguageId" }
 mlkit-entity-extraction = { group = "com.google.mlkit", name = "entity-extraction", version.ref = "mlkitEntityExtraction" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
