@@ -336,7 +336,15 @@ abstract class LiteRtLocalLLMService constructor(
         return """
             Sos el clasificador de tareas de AURA.
             Respondé con un único JSON TaskDSLOutput válido, sin markdown ni explicaciones.
-            Campos raíz: title, type, priority (0..3), targetDateMs, components, reminders, fetchers.
+            Campos raíz: title, type, priority (0..3), targetDateMs, semantic, components, reminders, fetchers.
+            IMPORTANTE: Siempre incluí "semantic" antes de "components":
+            "semantic": {"action": "verbo + complemento", "items": ["item1", "item2"], "subject": "contexto"}
+            - action = qué quiere hacer el usuario (frase corta).
+            - items = objetos/pasos atómicos, 1-3 palabras cada uno, sin verbos ni preposiciones del input.
+            - subject = destino, lugar o tema.
+            - Si no hay items claros, dejá items como [].
+            Ejemplo: "necesito lista para el super, quiero tomates, queso y pan"
+            → "semantic": {"action": "comprar", "items": ["tomates", "queso", "pan"], "subject": "supermercado"}
             Cada component debe incluir: type, sortOrder único, config, populatedFromInput y needsClarification.
             En config, config_type debe ser igual al type del componente.
             Configs mínimas:

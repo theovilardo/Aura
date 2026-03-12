@@ -10,11 +10,16 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import com.theveloper.aura.engine.dsl.ChecklistDslItems
 
 class LLMParsingTest {
 
@@ -124,6 +129,121 @@ class LLMParsingTest {
 
         assertEquals(listOf(ComponentType.CHECKLIST, ComponentType.NOTES), stabilized.components.map { it.type })
         assertEquals(listOf(0, 1), stabilized.components.map { it.sortOrder })
+    }
+
+    @Test
+    fun `normalizeTaskDslJson applies semantic items to checklist`() {
+        val raw = """
+            {
+              "semantic": {
+                "action": "buy groceries",
+                "items": ["tomatoes", "cheese", "milk", "bread"],
+                "subject": "Grocery Store"
+              },
+              "title": "Shopping List",
+              "type": "GENERAL",
+              "components": [
+                {
+                  "type": "CHECKLIST",
+                  "sortOrder": 0,
+                  "config": {
+                    "config_type": "CHECKLIST",
+                    "label": "Shopping List",
+                    "allowAddItems": true,
+                    "items": ["i want to buy tomatoes", "milk and cheese"]
+                  }
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val normalized = raw.normalizeTaskDslJson()
+        val dsl = auraJson.decodeFromString<TaskDSLOutput>(normalized)
+
+        val checklist = dsl.components.first { it.type == ComponentType.CHECKLIST }
+        val items = ChecklistDslItems.parse(checklist.config).map { it.label }
+
+        assertEquals(listOf("tomatoes", "cheese", "milk", "bread"), items)
+        assertEquals(true, checklist.populatedFromInput)
+        assertFalse(checklist.needsClarification)
+    }
+
+    @Test
+    fun `normalizeTaskDslJson discards semantic section from output`() {
+        val raw = """
+            {
+              "semantic": {"action": "test", "items": [], "subject": ""},
+              "title": "Test",
+              "type": "GENERAL",
+              "components": []
+            }
+        """.trimIndent()
+
+        val normalized = raw.normalizeTaskDslJson()
+        val jsonObject = auraJson.parseToJsonElement(normalized) as JsonObject
+
+        assertNull(jsonObject["semantic"])
+    }
+
+    @Test
+    fun `normalizeTaskDslJson gracefully handles absent semantic`() {
+        val raw = """
+            {
+              "title": "No Semantic",
+              "type": "GENERAL",
+              "components": [
+                {
+                  "type": "CHECKLIST",
+                  "sortOrder": 0,
+                  "config": {
+                    "config_type": "CHECKLIST",
+                    "label": "Things",
+                    "allowAddItems": true,
+                    "items": ["item1", "item2"]
+                  }
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val normalized = raw.normalizeTaskDslJson()
+        val dsl = auraJson.decodeFromString<TaskDSLOutput>(normalized)
+
+        val items = ChecklistDslItems.parse(dsl.components.first().config).map { it.label }
+        assertEquals(listOf("item1", "item2"), items)
+        assertFalse(dsl.components.first().populatedFromInput)
+    }
+
+    @Test
+    fun `normalizeTaskDslJson uses semantic subject as checklist label`() {
+        val raw = """
+            {
+              "semantic": {
+                "action": "buy food",
+                "items": ["rice", "beans"],
+                "subject": "Weekly Groceries"
+              },
+              "title": "Shopping",
+              "type": "GENERAL",
+              "components": [
+                {
+                  "type": "CHECKLIST",
+                  "sortOrder": 0,
+                  "config": {
+                    "config_type": "CHECKLIST",
+                    "label": "Checklist",
+                    "allowAddItems": true
+                  }
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val normalized = raw.normalizeTaskDslJson()
+        val dsl = auraJson.decodeFromString<TaskDSLOutput>(normalized)
+
+        val config = dsl.components.first().config
+        assertEquals("Weekly Groceries", config["label"]?.jsonPrimitive?.contentOrNull)
     }
 
     private fun component(type: ComponentType, sortOrder: Int): ComponentDSL {

@@ -38,7 +38,8 @@ class GroqLLMService @Inject constructor(
             )
         )
         return runCatching {
-            auraJson.decodeFromString<TaskDSLOutput>(response.stripCodeFences())
+            val normalized = response.stripCodeFences().normalizeTaskDslJson()
+            auraJson.decodeFromString<TaskDSLOutput>(normalized)
         }.getOrElse {
             throw TaskDSLParseException(response)
         }

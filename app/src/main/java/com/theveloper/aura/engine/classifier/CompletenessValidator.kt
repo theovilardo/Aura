@@ -98,6 +98,12 @@ class CompletenessValidator @Inject constructor() {
         missingFields: MutableList<MissingField>
     ): ComponentDSL {
         val currentItems = ChecklistDslItems.parse(component.config)
+
+        // If semantic layer already populated items, skip regex extraction
+        if (component.populatedFromInput && currentItems.isNotEmpty()) {
+            return component.copy(needsClarification = false)
+        }
+
         val explicitItems = extractExplicitChecklistItems(input)
         val inferredItems = inferChecklistItems(input, memorySlots)
         val shouldReplaceGeneric = shouldReplaceGenericChecklist(input, currentItems)

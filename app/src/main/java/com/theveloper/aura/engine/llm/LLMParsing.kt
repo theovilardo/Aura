@@ -5,6 +5,7 @@ import com.theveloper.aura.domain.model.ComponentType
 import com.theveloper.aura.domain.model.DataFeedStatus
 import com.theveloper.aura.domain.model.FetcherType
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.engine.dsl.SemanticFrame
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
 import java.time.Instant
 import java.time.LocalDate
@@ -101,13 +102,16 @@ private fun normalizeTaskDslObject(root: JsonObject): JsonObject {
         rootTargetDateMs = targetDateMs
     )
 
+    val semanticFrame = extractSemanticFrame(root)
+    val enrichedComponents = applySemanticToComponents(components, semanticFrame)
+
     return JsonObject(
         mapOf(
             "title" to JsonPrimitive(root["title"].stringValue().ifBlank { "Untitled task" }),
             "type" to JsonPrimitive(type.name),
             "priority" to JsonPrimitive(root["priority"].intValue(default = 0).coerceIn(0, 3)),
             "targetDateMs" to (targetDateMs?.let(::JsonPrimitive) ?: JsonNull),
-            "components" to components,
+            "components" to enrichedComponents,
             "reminders" to normalizeReminders(root["reminders"] as? JsonArray),
             "fetchers" to normalizeFetchers(root["fetchers"] as? JsonArray)
         )
@@ -428,6 +432,133 @@ private inline fun <reified T : Enum<T>> JsonElement?.enumValueOrNull(): T? {
         enumValue.name.equals(raw.trim(), ignoreCase = true)
     }
 }
+
+// ── Semantic Decomposition Layer ──────────────────────────────────────────────
+
+internal fun extractSemanticFrame(root: JsonObject): SemanticFrame {
+    val semantic = root["semantic"] as? JsonObject ?: return SemanticFrame.EMPTY
+
+    val action = semantic["action"].stringValue()
+    val subject = semantic["subject"].stringValue()
+    val items = (semantic["items"] as? JsonArray)
+        ?.mapNotNull { element ->
+            element.stringValue()
+                .trim()
+                .takeIf { it.isNotBlank() && it.length <= MAX_SEMANTIC_ITEM_LENGTH }
+        }
+        ?.distinct()
+        .orEmpty()
+
+    if (action.isBlank() && items.isEmpty() && subject.isBlank()) {
+        return SemanticFrame.EMPTY
+    }
+
+    return SemanticFrame(action = action, items = items, subject = subject)
+}
+
+internal fun applySemanticToComponents(
+    components: JsonArray,
+    frame: SemanticFrame
+): JsonArray {
+    if (frame == SemanticFrame.EMPTY || !frame.hasItems) return components
+
+    val updated = components.map { element ->
+        val component = element as? JsonObject ?: return@map element
+        val type = component["type"].stringValue()
+
+        when {
+            type == ComponentType.CHECKLIST.name -> applySemanticToChecklist(component, frame)
+            else -> component
+        }
+    }
+
+    return JsonArray(updated)
+}
+
+private fun applySemanticToChecklist(
+    component: JsonObject,
+    frame: SemanticFrame
+): JsonObject {
+    val config = component["config"] as? JsonObject ?: return component
+
+    val semanticItems = JsonArray(
+        frame.items.map { itemLabel ->
+            JsonObject(
+                mapOf(
+                    "label" to JsonPrimitive(itemLabel),
+                    "isSuggested" to JsonPrimitive(false)
+                )
+            )
+        }
+    )
+
+    val existingItems = config["items"] as? JsonArray
+    val shouldReplace = existingItems == null
+        || existingItems.isEmpty()
+        || existingItemsLookNoisy(existingItems, frame)
+
+    if (!shouldReplace) return component
+
+    val updatedLabel = if (frame.hasSubject) {
+        JsonPrimitive(frame.subject)
+    } else {
+        config["label"] ?: JsonPrimitive("Checklist")
+    }
+
+    val updatedConfig = JsonObject(
+        config + mapOf(
+            "items" to semanticItems,
+            "label" to updatedLabel
+        )
+    )
+
+    return JsonObject(
+        component + mapOf(
+            "config" to updatedConfig,
+            "populatedFromInput" to JsonPrimitive(true),
+            "needsClarification" to JsonPrimitive(false)
+        )
+    )
+}
+
+private fun existingItemsLookNoisy(
+    items: JsonArray,
+    frame: SemanticFrame
+): Boolean {
+    if (items.isEmpty()) return true
+
+    val labels = items.mapNotNull { item ->
+        when (item) {
+            is JsonPrimitive -> item.contentOrNull?.trim()
+            is JsonObject -> item["label"].stringValue().takeIf { it.isNotBlank() }
+            else -> null
+        }
+    }
+
+    if (labels.isEmpty()) return true
+
+    // If many items are long (>4 words), they likely contain description text
+    val longItemRatio = labels.count { it.split(Regex("\\s+")).size > 4 }.toFloat() / labels.size
+    if (longItemRatio >= 0.5f) return true
+
+    // If any item contains action words from the semantic frame, it's description leakage
+    val actionWords = frame.action.lowercase()
+        .split(Regex("\\s+"))
+        .filter { it.length >= 3 }
+    if (actionWords.isNotEmpty()) {
+        val leakyCount = labels.count { label ->
+            val labelLower = label.lowercase()
+            actionWords.any { verb -> labelLower.contains(verb) }
+        }
+        if (leakyCount.toFloat() / labels.size > 0.3f) return true
+    }
+
+    return false
+}
+
+private const val MAX_SEMANTIC_ITEM_LENGTH = 80
+
+// ── End Semantic Decomposition Layer ─────────────────────────────────────────
 
 private val COMPONENT_METADATA_KEYS = setOf(
     "type",
