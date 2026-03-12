@@ -37,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Repeat
@@ -233,7 +234,7 @@ fun AuraBottomBar(
 
     val items = listOf(
         BottomBarItem(key = HOME_ROUTE, label = "Home", icon = Icons.Rounded.Home),
-        BottomBarItem(key = TASKS_ROUTE, label = "Habits", icon = Icons.Rounded.Repeat),
+        BottomBarItem(key = TASKS_ROUTE, label = "Habits", icon = Icons.Rounded.CalendarMonth),
         BottomBarItem(key = SETTINGS_ROUTE, label = "Settings", icon = Icons.Rounded.Settings),
         BottomBarItem(key = "create", label = "Create", icon = Icons.Rounded.Add, accent = true)
     )

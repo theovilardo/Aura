@@ -3,13 +3,16 @@ package com.theveloper.aura.ui.renderer
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -59,6 +62,8 @@ fun TaskRenderer(
     isLoading: Boolean,
     mode: TaskRenderMode = TaskRenderMode.EDIT,
     modifier: Modifier = Modifier,
+    listState: LazyListState? = null,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
     onSignal: (SignalType) -> Unit = {}
 ) {
     when {
@@ -94,8 +99,11 @@ fun TaskRenderer(
             )
         }
         else -> {
+            val resolvedListState = listState ?: rememberLazyListState()
             LazyColumn(
+                state = resolvedListState,
                 modifier = modifier.fillMaxWidth(),
+                contentPadding = contentPadding,
                 verticalArrangement = Arrangement.spacedBy(if (mode == TaskRenderMode.INTERPRETED) 16.dp else 12.dp)
             ) {
                 item {
