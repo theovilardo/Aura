@@ -125,9 +125,7 @@ fun TaskDetailScreen(
         containerColor = Color.Transparent
     ) { paddingValues ->
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = paddingValues.calculateTopPadding())
+            modifier = Modifier.fillMaxSize()
         ) {
             TaskRenderer(
                 task = uiState.task,
@@ -135,8 +133,8 @@ fun TaskDetailScreen(
                 mode = TaskRenderMode.INTERPRETED,
                 listState = taskListState,
                 contentPadding = PaddingValues(
-                    top = 4.dp,
-                    bottom = if (uiState.task != null) 112.dp else 24.dp
+                    top = paddingValues.calculateTopPadding() + 4.dp,
+                    bottom = paddingValues.calculateBottomPadding() + if (uiState.task != null) 112.dp else 24.dp
                 ),
                 modifier = Modifier
                     .fillMaxSize()
