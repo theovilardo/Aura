@@ -5,6 +5,7 @@ import com.theveloper.aura.domain.model.ComponentType
 import com.theveloper.aura.domain.model.DataFeedStatus
 import com.theveloper.aura.domain.model.FetcherType
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.engine.dsl.TaskDSLOutput
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -43,6 +44,26 @@ internal fun String.normalizeTaskDslJson(): String {
         ?: return candidate
 
     return normalizeTaskDslObject(root).toString()
+}
+
+internal fun TaskDSLOutput.stabilizeLocalClassification(input: String): TaskDSLOutput {
+    if (!input.looksLikeShoppingListRequest()) return this
+
+    val filteredComponents = components
+        .filter { component ->
+            component.type == ComponentType.CHECKLIST || component.type == ComponentType.NOTES
+        }
+        .ifEmpty { return this }
+
+    if (filteredComponents.none { it.type == ComponentType.CHECKLIST }) {
+        return this
+    }
+
+    return copy(
+        components = filteredComponents.mapIndexed { index, component ->
+            component.copy(sortOrder = index)
+        }
+    )
 }
 
 private fun String.extractBalancedBlock(openChar: Char, closeChar: Char): String? {
@@ -415,3 +436,22 @@ private val COMPONENT_METADATA_KEYS = setOf(
     "populatedFromInput",
     "needsClarification"
 )
+
+private val SHOPPING_REQUEST_REGEX = Regex(
+    pattern = "\\b(shopping\\s+list|grocer(?:y|ies)|groceries|supermarket|market\\s+list|lista\\s+de\\s+compras|compras|supermercado)\\b",
+    option = RegexOption.IGNORE_CASE
+)
+
+private val SPECIALIZED_UI_SIGNAL_REGEX = Regex(
+    pattern = "\\b(progress|avance|progreso|habit|habito|h[aá]bito|metric|m[eé]trica|track|seguimiento|countdown|deadline|streak)\\b",
+    option = RegexOption.IGNORE_CASE
+)
+
+private fun String.looksLikeShoppingListRequest(): Boolean {
+    val normalized = trim()
+    if (normalized.isBlank()) return false
+    if (SPECIALIZED_UI_SIGNAL_REGEX.containsMatchIn(normalized)) return false
+    val wordCount = normalized.split(Regex("\\s+")).count { it.isNotBlank() }
+    if (wordCount > 8) return false
+    return SHOPPING_REQUEST_REGEX.containsMatchIn(normalized)
+}

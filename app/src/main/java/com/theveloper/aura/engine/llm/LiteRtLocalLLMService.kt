@@ -50,7 +50,7 @@ abstract class LiteRtLocalLLMService constructor(
             maxOutputTokens = defaultMaxOutputTokens,
             requestLabel = "classify"
         )
-        parseTaskDsl(rawResponse)?.let { return it }
+        parseTaskDsl(rawResponse)?.let { return it.stabilizeLocalClassification(input) }
 
         val repairedResponse = generateText(
             userPrompt = buildRepairPrompt(rawResponse),
@@ -58,7 +58,7 @@ abstract class LiteRtLocalLLMService constructor(
             maxOutputTokens = defaultMaxOutputTokens,
             requestLabel = "classify-repair"
         )
-        parseTaskDsl(repairedResponse)?.let { return it }
+        parseTaskDsl(repairedResponse)?.let { return it.stabilizeLocalClassification(input) }
 
         debugError("No se pudo parsear la respuesta del modelo local para clasificación.")
         throw TaskDSLParseException(rawResponse)
@@ -286,7 +286,12 @@ abstract class LiteRtLocalLLMService constructor(
             Double::class.javaPrimitiveType,
             Int::class.javaPrimitiveType
         )
-        return constructor.newInstance(20, 0.9, 0.0, 42)
+        return constructor.newInstance(
+            LOCAL_CLASSIFIER_TOP_K,
+            LOCAL_CLASSIFIER_TEMPERATURE,
+            LOCAL_CLASSIFIER_TOP_P,
+            LOCAL_CLASSIFIER_SEED
+        )
     }
 
     private fun Class<*>.enumConstant(name: String): Any {
@@ -347,6 +352,10 @@ abstract class LiteRtLocalLLMService constructor(
             Si parece hábito, preferí HABIT_RING.
             Si parece proyecto, preferí PROGRESS_BAR + NOTES.
             Si es ambiguo, usá GENERAL + NOTES.
+            Elegí la menor cantidad de componentes útiles.
+            No agregues componentes extra "por si acaso".
+            Para listas simples o shopping lists, usá CHECKLIST y como mucho NOTES.
+            No uses PROGRESS_BAR, HABIT_RING, METRIC_TRACKER o DATA_FEED salvo que el input pida explícitamente progreso, hábito, métricas o datos externos.
         """.trimIndent()
     }
 
@@ -388,6 +397,10 @@ abstract class LiteRtLocalLLMService constructor(
         const val TAG = "LiteRtLocalLLM"
         const val LOG_PREVIEW_LIMIT = 3_000
         const val MAX_DEBUG_FILE_BYTES = 256_000L
+        const val LOCAL_CLASSIFIER_TOP_K = 1
+        const val LOCAL_CLASSIFIER_TEMPERATURE = 0.15
+        const val LOCAL_CLASSIFIER_TOP_P = 0.0
+        const val LOCAL_CLASSIFIER_SEED = 42
         val timestampFormatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
     }
 }

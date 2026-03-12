@@ -2,6 +2,8 @@ package com.theveloper.aura.engine.llm
 
 import com.theveloper.aura.core.json.auraJson
 import com.theveloper.aura.domain.model.ComponentType
+import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.engine.dsl.ComponentDSL
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
 import com.theveloper.aura.engine.dsl.TaskDSLValidator
 import java.time.Instant
@@ -11,6 +13,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 class LLMParsingTest {
 
@@ -99,6 +103,34 @@ class LLMParsingTest {
             Instant.ofEpochMilli(dsl.targetDateMs!!)
                 .atZone(ZoneId.systemDefault())
                 .toLocalDate()
+        )
+    }
+
+    @Test
+    fun `stabilizeLocalClassification prunes noisy shopping ui extras`() {
+        val dsl = TaskDSLOutput(
+            title = "Shopping List",
+            type = TaskType.GENERAL,
+            components = listOf(
+                component(ComponentType.CHECKLIST, 0),
+                component(ComponentType.NOTES, 1),
+                component(ComponentType.PROGRESS_BAR, 2),
+                component(ComponentType.HABIT_RING, 3),
+                component(ComponentType.METRIC_TRACKER, 4)
+            )
+        )
+
+        val stabilized = dsl.stabilizeLocalClassification("shopping list for groceries")
+
+        assertEquals(listOf(ComponentType.CHECKLIST, ComponentType.NOTES), stabilized.components.map { it.type })
+        assertEquals(listOf(0, 1), stabilized.components.map { it.sortOrder })
+    }
+
+    private fun component(type: ComponentType, sortOrder: Int): ComponentDSL {
+        return ComponentDSL(
+            type = type,
+            sortOrder = sortOrder,
+            config = JsonObject(mapOf("config_type" to JsonPrimitive(type.name)))
         )
     }
 }
