@@ -41,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.ExperimentalTextApi
@@ -86,38 +87,55 @@ fun TasksScreen(
             return@Scaffold
         }
 
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                top = innerPadding.calculateTopPadding() + 12.dp,
-                end = 16.dp,
-                bottom = innerPadding.calculateBottomPadding() + 216.dp
-            )
-        ) {
-            item {
-                DateProgressHeader(
-                    today = uiState.today,
-                    doneToday = uiState.doneToday,
-                    totalActive = uiState.totalActive
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    top = innerPadding.calculateTopPadding() + 12.dp,
+                    end = 16.dp,
+                    bottom = innerPadding.calculateBottomPadding() + 216.dp
                 )
+            ) {
+                item {
+                    DateProgressHeader(
+                        today = uiState.today,
+                        doneToday = uiState.doneToday,
+                        totalActive = uiState.totalActive
+                    )
+                }
+
+                if (uiState.habitItems.isNotEmpty()) {
+                    item {
+                        HabitStreakSection(habits = uiState.habitItems)
+                    }
+                    items(uiState.habitItems, key = { it.taskId }) { habit ->
+                        HabitCard(habit = habit, today = uiState.today)
+                    }
+                } else {
+                    item {
+                        HabitEmptyState()
+                    }
+                }
             }
 
-            if (uiState.habitItems.isNotEmpty()) {
-                item {
-                    HabitStreakSection(habits = uiState.habitItems)
-                }
-                items(uiState.habitItems, key = { it.taskId }) { habit ->
-                    HabitCard(habit = habit, today = uiState.today)
-                }
-            } else {
-                item {
-                    HabitEmptyState()
-                }
-            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .height(78.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                MaterialTheme.colorScheme.background
+                            )
+                        )
+                    )
+            )
         }
     }
 }
