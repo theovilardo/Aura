@@ -31,8 +31,33 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.DirectionsWalk
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.automirrored.rounded.TrendingUp
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.AddTask
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Checklist
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.CurrencyExchange
+import androidx.compose.material.icons.rounded.DirectionsWalk
+import androidx.compose.material.icons.rounded.Event
+import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.rounded.FlightTakeoff
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.LocalDrink
+import androidx.compose.material.icons.rounded.LocalHospital
+import androidx.compose.material.icons.rounded.Map
+import androidx.compose.material.icons.rounded.Medication
+import androidx.compose.material.icons.rounded.MonitorWeight
+import androidx.compose.material.icons.rounded.NoteAlt
+import androidx.compose.material.icons.rounded.Payments
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.Savings
+import androidx.compose.material.icons.rounded.School
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -560,12 +585,23 @@ private fun SelectedTemplatePill(template: TaskComponentTemplate) {
         shape = CircleShape,
         color = MaterialTheme.colorScheme.primaryContainer
     ) {
-        Text(
-            text = "${template.title} · ${template.variantLabel}",
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = createTaskTemplateIcon(template),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp)
+            )
+            Text(
+                text = "${template.title} · ${template.variantLabel}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
     }
 }
 
@@ -602,6 +638,8 @@ private fun ManualTemplateCard(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val templateIcon = createTaskTemplateIcon(template)
+
             Surface(
                 modifier = Modifier.size(42.dp),
                 shape = CircleShape,
@@ -613,7 +651,7 @@ private fun ManualTemplateCard(
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = Icons.Default.AutoAwesome,
+                        imageVector = templateIcon,
                         contentDescription = null,
                         tint = if (selected) {
                             MaterialTheme.colorScheme.onPrimary
@@ -674,5 +712,38 @@ private fun ManualTemplateCard(
                 )
             }
         }
+    }
+}
+
+private fun createTaskTemplateIcon(template: TaskComponentTemplate): ImageVector {
+    return when (template.id) {
+        "travel_countdown" -> Icons.Rounded.FlightTakeoff
+        "deadline_countdown" -> Icons.Rounded.Event
+        "payment_countdown" -> Icons.Rounded.Payments
+        "packing_checklist" -> Icons.Rounded.Checklist
+        "travel_documents_checklist" -> Icons.Rounded.NoteAlt
+        "action_checklist" -> Icons.Rounded.Checklist
+        "finance_payment_checklist" -> Icons.Rounded.Payments
+        "medication_checklist" -> Icons.Rounded.Medication
+        "habit_daily" -> Icons.Rounded.Repeat
+        "habit_weekly" -> Icons.Rounded.CalendarMonth
+        "progress_manual" -> Icons.AutoMirrored.Rounded.TrendingUp
+        "progress_milestones" -> Icons.Rounded.Flag
+        "progress_budget" -> Icons.Rounded.Savings
+        "progress_sprint" -> Icons.Rounded.Bolt
+        "notes_brain_dump" -> Icons.Rounded.NoteAlt
+        "notes_meeting" -> Icons.Rounded.Groups
+        "travel_itinerary_notes" -> Icons.Rounded.Map
+        "study_plan_notes" -> Icons.Rounded.School
+        "budget_snapshot_notes" -> Icons.Rounded.AccountBalanceWallet
+        "journal_reflection" -> Icons.AutoMirrored.Rounded.MenuBook
+        "notes_clinic" -> Icons.Rounded.LocalHospital
+        "metric_hydration" -> Icons.Rounded.LocalDrink
+        "metric_weight" -> Icons.Rounded.MonitorWeight
+        "metric_steps" -> Icons.AutoMirrored.Rounded.DirectionsWalk
+        "metric_sleep" -> Icons.Rounded.Bedtime
+        "feed_weather" -> Icons.Rounded.Cloud
+        "feed_exchange" -> Icons.Rounded.CurrencyExchange
+        else -> Icons.Default.AutoAwesome
     }
 }

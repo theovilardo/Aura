@@ -1,7 +1,14 @@
 package com.theveloper.aura.ui
 
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.EaseOutCubic
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
@@ -11,6 +18,10 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -30,6 +41,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -47,6 +59,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,6 +80,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -99,6 +113,8 @@ private const val SETTINGS_DEVELOPER_ROUTE = "settings/developer"
 private const val CREATE_TASK_BASE_ROUTE = "create_task"
 private const val CREATE_TASK_ROUTE =
     "$CREATE_TASK_BASE_ROUTE?mode={mode}&input={input}&autoSubmit={autoSubmit}"
+private const val ROOT_TRANSITION_DURATION_MS = 430
+private const val SECONDARY_TRANSITION_DURATION_MS = 380
 
 @Composable
 fun AuraApp() {
@@ -113,7 +129,11 @@ fun AuraApp() {
         NavHost(
             navController = navController,
             startDestination = HOME_ROUTE,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            enterTransition = { auraEnterTransition() },
+            exitTransition = { auraExitTransition() },
+            popEnterTransition = { auraPopEnterTransition() },
+            popExitTransition = { auraPopExitTransition() }
         ) {
             composable(HOME_ROUTE) {
                 HomeScreen(
@@ -127,20 +147,24 @@ fun AuraApp() {
             }
             composable(TASK_DETAIL_ROUTE) { backStackEntry ->
                 val taskId = backStackEntry.arguments?.getString("taskId") ?: ""
-                TaskDetailScreen(
-                    taskId = taskId,
-                    onNavigateBack = { navController.popBackStack() },
-                    onNavigateToEdit = { editableTaskId ->
-                        navController.navigate("task_detail_edit/$editableTaskId")
-                    }
-                )
+                SecondaryScreenFrame {
+                    TaskDetailScreen(
+                        taskId = taskId,
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToEdit = { editableTaskId ->
+                            navController.navigate("task_detail_edit/$editableTaskId")
+                        }
+                    )
+                }
             }
             composable(TASK_EDIT_ROUTE) { backStackEntry ->
                 val taskId = backStackEntry.arguments?.getString("taskId") ?: ""
-                TaskEditScreen(
-                    taskId = taskId,
-                    onNavigateBack = { navController.popBackStack() }
-                )
+                SecondaryScreenFrame {
+                    TaskEditScreen(
+                        taskId = taskId,
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
             }
             composable(
                 route = CREATE_TASK_ROUTE,
@@ -159,9 +183,11 @@ fun AuraApp() {
                     }
                 )
             ) {
-                CreateTaskScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
+                SecondaryScreenFrame {
+                    CreateTaskScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
             }
             composable(SETTINGS_ROUTE) {
                 SettingsScreen(
@@ -172,24 +198,32 @@ fun AuraApp() {
                 )
             }
             composable(SETTINGS_INTELLIGENCE_ROUTE) {
-                IntelligenceSettingsScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
+                SecondaryScreenFrame {
+                    IntelligenceSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
             }
             composable(SETTINGS_AI_ROUTE) {
-                AiSettingsScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
+                SecondaryScreenFrame {
+                    AiSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
             }
             composable(SETTINGS_CLOUD_ROUTE) {
-                CloudSettingsScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
+                SecondaryScreenFrame {
+                    CloudSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
             }
             composable(SETTINGS_DEVELOPER_ROUTE) {
-                DeveloperSettingsScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
+                SecondaryScreenFrame {
+                    DeveloperSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
             }
         }
 
@@ -216,6 +250,36 @@ fun AuraApp() {
 }
 
 @Composable
+private fun SecondaryScreenFrame(
+    content: @Composable () -> Unit
+) {
+    var entered by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { entered = true }
+    val scale by animateFloatAsState(
+        targetValue = if (entered) 1f else 0.985f,
+        animationSpec = tween(durationMillis = 320, easing = EaseOutCubic),
+        label = "secondaryScreenScale"
+    )
+    val cornerRadius by animateDpAsState(
+        targetValue = if (entered) 0.dp else 26.dp,
+        animationSpec = tween(durationMillis = 360, easing = EaseOutCubic),
+        label = "secondaryScreenCorner"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(RoundedCornerShape(cornerRadius))
+    ) {
+        content()
+    }
+}
+
+@Composable
 fun AuraBottomBar(
     navController: NavHostController,
     quickPrompt: String,
@@ -227,9 +291,8 @@ fun AuraBottomBar(
     val currentRoute = navBackStackEntry?.destination?.route
     val colors = auraFloatingBarColors()
     val rootRoutes = remember { setOf(HOME_ROUTE, TASKS_ROUTE, SETTINGS_ROUTE) }
-
-    if (currentRoute == null || currentRoute !in rootRoutes) {
-        return
+    val isVisible = remember(currentRoute, rootRoutes) {
+        normalizedRoute(currentRoute) in rootRoutes
     }
 
     val items = listOf(
@@ -239,13 +302,25 @@ fun AuraBottomBar(
         BottomBarItem(key = "create", label = "Create", icon = Icons.Rounded.Add, accent = true)
     )
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 0.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+    AnimatedVisibility(
+        visible = isVisible,
+        modifier = modifier.fillMaxWidth(),
+        enter = slideInVertically(
+            animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+            initialOffsetY = { it / 2 }
+        ) + fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 40)),
+        exit = slideOutVertically(
+            animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+            targetOffsetY = { it / 2 }
+        ) + fadeOut(animationSpec = tween(durationMillis = 180))
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 0.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
 //        QuickPromptBar(
 //            prompt = quickPrompt,
 //            onPromptChange = onQuickPromptChange,
@@ -253,33 +328,34 @@ fun AuraBottomBar(
 //            colors = colors
 //        )
 
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = CircleShape,
-            color = colors.container,
-            border = BorderStroke(width = 2.dp, color = colors.outline),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = CircleShape,
+                color = colors.container,
+                border = BorderStroke(width = 2.dp, color = colors.outline),
             ) {
-                items.forEach { item ->
-                    AuraBottomBarItem(
-                        item = item,
-                        selected = item.key == currentRoute,
-                        onClick = {
-                            when (item.key) {
-                                "create" -> navController.navigate(
-                                    buildCreateTaskRoute(mode = TaskCreationMode.MANUAL)
-                                )
-                                else -> navController.navigateToRootRoute(item.key)
-                            }
-                        },
-                        colors = colors
-                    )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    items.forEach { item ->
+                        AuraBottomBarItem(
+                            item = item,
+                            selected = item.key == currentRoute,
+                            onClick = {
+                                when (item.key) {
+                                    "create" -> navController.navigate(
+                                        buildCreateTaskRoute(mode = TaskCreationMode.MANUAL)
+                                    )
+                                    else -> navController.navigateToRootRoute(item.key)
+                                }
+                            },
+                            colors = colors
+                        )
+                    }
                 }
             }
         }
@@ -543,4 +619,108 @@ private fun buildCreateTaskRoute(
     autoSubmit: Boolean = false
 ): String {
     return "$CREATE_TASK_BASE_ROUTE?mode=${mode.navValue}&input=${Uri.encode(input)}&autoSubmit=$autoSubmit"
+}
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraEnterTransition(): EnterTransition {
+    val initialRoute = normalizedRoute(initialState.destination.route)
+    val targetRoute = normalizedRoute(targetState.destination.route)
+    val rootDirection = rootSlideDirection(initialRoute, targetRoute)
+
+    return when {
+        rootDirection != null -> slideInHorizontally(
+            animationSpec = tween(durationMillis = ROOT_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+            initialOffsetX = { fullWidth -> if (rootDirection > 0) fullWidth else -fullWidth }
+        ) + fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 70))
+
+        isSecondaryRoute(targetRoute) -> slideInHorizontally(
+            animationSpec = tween(durationMillis = SECONDARY_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+            initialOffsetX = { fullWidth -> (fullWidth * 0.92f).toInt() }
+        ) + fadeIn(animationSpec = tween(durationMillis = 240, delayMillis = 50))
+
+        else -> fadeIn(animationSpec = tween(durationMillis = 180))
+    }
+}
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraExitTransition(): ExitTransition {
+    val initialRoute = normalizedRoute(initialState.destination.route)
+    val targetRoute = normalizedRoute(targetState.destination.route)
+    val rootDirection = rootSlideDirection(initialRoute, targetRoute)
+
+    return when {
+        rootDirection != null -> slideOutHorizontally(
+            animationSpec = tween(durationMillis = ROOT_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+            targetOffsetX = { fullWidth -> if (rootDirection > 0) -fullWidth else fullWidth }
+        ) + fadeOut(animationSpec = tween(durationMillis = 220))
+
+        isSecondaryRoute(targetRoute) -> slideOutHorizontally(
+            animationSpec = tween(durationMillis = SECONDARY_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+            targetOffsetX = { fullWidth -> -(fullWidth / 4) }
+        ) + fadeOut(animationSpec = tween(durationMillis = 200))
+
+        else -> fadeOut(animationSpec = tween(durationMillis = 180))
+    }
+}
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraPopEnterTransition(): EnterTransition {
+    val initialRoute = normalizedRoute(initialState.destination.route)
+    val targetRoute = normalizedRoute(targetState.destination.route)
+    val rootDirection = rootSlideDirection(targetRoute, initialRoute)
+
+    return when {
+        rootDirection != null -> slideInHorizontally(
+            animationSpec = tween(durationMillis = ROOT_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+            initialOffsetX = { fullWidth -> if (rootDirection > 0) -fullWidth else fullWidth }
+        ) + fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 70))
+
+        isSecondaryRoute(initialRoute) -> slideInHorizontally(
+            animationSpec = tween(durationMillis = SECONDARY_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+            initialOffsetX = { fullWidth -> -(fullWidth / 3) }
+        ) + fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 40))
+
+        else -> fadeIn(animationSpec = tween(durationMillis = 180))
+    }
+}
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraPopExitTransition(): ExitTransition {
+    val initialRoute = normalizedRoute(initialState.destination.route)
+    val targetRoute = normalizedRoute(targetState.destination.route)
+    val rootDirection = rootSlideDirection(targetRoute, initialRoute)
+
+    return when {
+        rootDirection != null -> slideOutHorizontally(
+            animationSpec = tween(durationMillis = ROOT_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+            targetOffsetX = { fullWidth -> if (rootDirection > 0) fullWidth else -fullWidth }
+        ) + fadeOut(animationSpec = tween(durationMillis = 220))
+
+        isSecondaryRoute(initialRoute) -> slideOutHorizontally(
+            animationSpec = tween(durationMillis = SECONDARY_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+            targetOffsetX = { fullWidth -> fullWidth }
+        ) + fadeOut(animationSpec = tween(durationMillis = 200))
+
+        else -> fadeOut(animationSpec = tween(durationMillis = 180))
+    }
+}
+
+private fun normalizedRoute(route: String?): String {
+    return route
+        ?.substringBefore("?")
+        ?.replace(Regex("/\\{[^}]+\\}"), "")
+        .orEmpty()
+}
+
+private fun isSecondaryRoute(route: String): Boolean = route.isNotBlank() && rootRouteIndex(route) == null
+
+private fun rootSlideDirection(initialRoute: String, targetRoute: String): Int? {
+    val initialIndex = rootRouteIndex(initialRoute) ?: return null
+    val targetIndex = rootRouteIndex(targetRoute) ?: return null
+    return (targetIndex - initialIndex).takeIf { it != 0 }
+}
+
+private fun rootRouteIndex(route: String): Int? {
+    return when (route) {
+        HOME_ROUTE -> 0
+        TASKS_ROUTE -> 1
+        SETTINGS_ROUTE -> 2
+        else -> null
+    }
 }
