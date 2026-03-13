@@ -21,16 +21,25 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Event
+import androidx.compose.material.icons.rounded.FlightTakeoff
+import androidx.compose.material.icons.rounded.LocalHospital
+import androidx.compose.material.icons.rounded.NoteAlt
+import androidx.compose.material.icons.rounded.Payments
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.Savings
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -48,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -135,6 +145,8 @@ fun HomeScreen(
 
         Box(modifier = Modifier.fillMaxSize()) {
             val topContentPadding = homeTopBarContentPadding(topBarHeightPx)
+            val topListPadding =
+                (innerPadding.calculateTopPadding() + topContentPadding - 14.dp).coerceAtLeast(0.dp)
 
             LazyColumn(
                 modifier = Modifier
@@ -143,7 +155,7 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(
                     start = 16.dp,
-                    top = innerPadding.calculateTopPadding() + topContentPadding,
+                    top = topListPadding,
                     end = 16.dp,
                     bottom = innerPadding.calculateBottomPadding() + 216.dp
                 )
@@ -540,78 +552,88 @@ internal fun CompactTaskBoardCard(
     onDeleteClick: () -> Unit
 ) {
     val tone = taskTone(task.type)
-    val nextReminder = task.reminders.minByOrNull { it.scheduledAt }?.scheduledAt
-    val progress = task.progressRatio()
+    val insight = remember(task) { task.boardInsight() }
+    val primaryActionLabel = remember(task.status, task.type) { task.boardPrimaryActionLabel() }
+    val primaryActionIcon = remember(task.status, task.type) {
+        when {
+            task.status != TaskStatus.ACTIVE -> Icons.Rounded.Refresh
+            task.type == TaskType.HABIT || task.type == TaskType.HEALTH -> Icons.Rounded.Repeat
+            else -> Icons.Rounded.TaskAlt
+        }
+    }
+    val isUrgent = task.status == TaskStatus.ACTIVE && task.isDueSoon()
+    val borderColor = when {
+        isUrgent -> MaterialTheme.colorScheme.error.copy(alpha = 0.34f)
+        task.status == TaskStatus.COMPLETED -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.24f)
+        else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+    }
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-        shadowElevation = 3.dp
+        border = BorderStroke(1.dp, borderColor),
+        shadowElevation = 1.dp
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.Top
             ) {
+                Surface(
+                    modifier = Modifier.size(38.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = tone.container
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = taskTypeIcon(task.type),
+                            contentDescription = null,
+                            tint = tone.content,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text(
-                        text = task.title,
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontSize = 21.sp,
-                            lineHeight = 25.sp,
-                            fontWeight = FontWeight.SemiBold
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = task.title,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 19.sp,
+                                lineHeight = 22.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        TaskStatusChip(status = task.status, isUrgent = isUrgent)
+                    }
+
                     Text(
                         text = task.boardSummaryLine(),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall.copy(lineHeight = 17.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    TaskStatusChip(status = task.status)
-                    Surface(shape = CircleShape, color = tone.container) {
-                        Text(
-                            text = task.type.label(),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = tone.content
-                        )
-                    }
-                }
-            }
-
-            progress?.let { CompactTaskProgress(it) }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                nextReminder?.let { timestamp ->
-                    CompactMetaChip(icon = Icons.Rounded.Schedule, text = tasksRelativeReminder(timestamp))
-                }
-                CompactMetaChip(icon = Icons.Rounded.TaskAlt, text = "${task.components.size}")
-                CompactMetaChip(icon = Icons.Rounded.AutoAwesome, text = task.updatedLabel())
             }
 
             Row(
@@ -619,78 +641,157 @@ internal fun CompactTaskBoardCard(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (task.status == TaskStatus.ACTIVE) {
-                    FilledTonalButton(onClick = onCompleteClick, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Rounded.TaskAlt, null, modifier = Modifier.size(18.dp))
-                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(8.dp))
-                        Text("Complete")
-                    }
-                } else {
-                    OutlinedButton(onClick = onReopenClick, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Rounded.AutoAwesome, null, modifier = Modifier.size(18.dp))
-                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(8.dp))
-                        Text("Reopen")
-                    }
-                }
-                OutlinedButton(onClick = onDeleteClick, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Rounded.DeleteOutline, null, modifier = Modifier.size(18.dp))
-                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(8.dp))
-                    Text("Delete")
-                }
+                TaskBoardInsightPill(
+                    modifier = Modifier.weight(1f),
+                    insight = insight,
+                    tone = tone
+                )
+
+                TaskPrimaryActionButton(
+                    label = primaryActionLabel,
+                    icon = primaryActionIcon,
+                    onClick = if (task.status == TaskStatus.ACTIVE) onCompleteClick else onReopenClick,
+                    tone = tone,
+                    emphasized = task.status == TaskStatus.ACTIVE
+                )
+
+                TaskDeleteActionButton(onClick = onDeleteClick)
             }
         }
     }
 }
 
-@Composable
-private fun TaskStatusChip(status: TaskStatus) {
-    val scheme = MaterialTheme.colorScheme
-    val (container, content, label) = when (status) {
-        TaskStatus.ACTIVE -> Triple(scheme.primaryContainer, scheme.onPrimaryContainer, "Active")
-        TaskStatus.COMPLETED -> Triple(scheme.tertiaryContainer, scheme.onTertiaryContainer, "Completed")
-        TaskStatus.ARCHIVED -> Triple(scheme.surfaceContainerHighest, scheme.onSurfaceVariant, "Archived")
-    }
-    Surface(shape = CircleShape, color = container) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = content
-        )
-    }
-}
+private data class TaskBoardInsight(
+    val icon: ImageVector,
+    val text: String
+)
 
 @Composable
-internal fun CompactMetaChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    text: String
+private fun TaskBoardInsightPill(
+    modifier: Modifier = Modifier,
+    insight: TaskBoardInsight,
+    tone: TaskTone
 ) {
     Surface(
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = tone.container.copy(alpha = 0.34f),
+        border = BorderStroke(1.dp, tone.content.copy(alpha = 0.12f))
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
-            Text(text = text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(
+                imageVector = insight.icon,
+                contentDescription = null,
+                tint = tone.content,
+                modifier = Modifier.size(15.dp)
+            )
+            Text(
+                text = insight.text,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
 
 @Composable
-private fun CompactTaskProgress(progress: Float) {
-    val safe = progress.coerceIn(0f, 1f)
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Momentum", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("${(safe * 100f).roundToInt()}%", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+private fun TaskStatusChip(
+    status: TaskStatus,
+    isUrgent: Boolean
+) {
+    val scheme = MaterialTheme.colorScheme
+    val chip = when {
+        isUrgent -> Triple(scheme.errorContainer, scheme.onErrorContainer, "Soon")
+        status == TaskStatus.COMPLETED -> Triple(scheme.tertiaryContainer, scheme.onTertiaryContainer, "Done")
+        status == TaskStatus.ARCHIVED -> Triple(scheme.surfaceContainerHighest, scheme.onSurfaceVariant, "Archived")
+        else -> null
+    } ?: return
+
+    Surface(shape = CircleShape, color = chip.first) {
+        Text(
+            text = chip.third,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = chip.second
+        )
+    }
+}
+
+@Composable
+private fun TaskPrimaryActionButton(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    tone: TaskTone,
+    emphasized: Boolean
+) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(14.dp)
+    val containerColor = if (emphasized) tone.container else scheme.surfaceContainerLow
+    val contentColor = if (emphasized) tone.content else scheme.onSurface
+
+    Surface(
+        shape = shape,
+        color = containerColor,
+        border = BorderStroke(
+            1.dp,
+            if (emphasized) contentColor.copy(alpha = 0.12f)
+            else scheme.outlineVariant.copy(alpha = 0.45f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(shape)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(15.dp)
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = contentColor
+            )
         }
-        Box(modifier = Modifier.fillMaxWidth().height(7.dp).background(MaterialTheme.colorScheme.surfaceContainerHighest, CircleShape)) {
-            Box(modifier = Modifier.fillMaxWidth(safe).height(7.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
+    }
+}
+
+@Composable
+private fun TaskDeleteActionButton(
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(12.dp)
+    Surface(
+        modifier = Modifier.size(38.dp),
+        shape = shape,
+        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.52f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.14f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(shape)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.DeleteOutline,
+                contentDescription = "Delete",
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
@@ -724,6 +825,15 @@ internal fun taskTone(type: TaskType): TaskTone {
         TaskType.PROJECT -> TaskTone(s.surfaceContainerHighest, s.onSurface)
         TaskType.FINANCE -> TaskTone(s.inverseSurface, s.inverseOnSurface)
     }
+}
+
+internal fun taskTypeIcon(type: TaskType): ImageVector = when (type) {
+    TaskType.GENERAL -> Icons.Rounded.AutoAwesome
+    TaskType.TRAVEL -> Icons.Rounded.FlightTakeoff
+    TaskType.HABIT -> Icons.Rounded.Repeat
+    TaskType.HEALTH -> Icons.Rounded.LocalHospital
+    TaskType.PROJECT -> Icons.Rounded.Bolt
+    TaskType.FINANCE -> Icons.Rounded.Payments
 }
 
 internal fun TaskType.label(): String = when (this) {
@@ -788,22 +898,101 @@ internal fun Task.updatedLabel(): String {
     return when { h < 1L -> "now"; h < 24L -> "${h}h"; else -> "${h / 24L}d" }
 }
 
+internal fun Task.boardPrimaryActionLabel(): String = when {
+    status != TaskStatus.ACTIVE -> "Reopen"
+    type == TaskType.HABIT || type == TaskType.HEALTH -> "Log"
+    else -> "Done"
+}
+
+internal fun Task.primaryComponentIcon(): ImageVector {
+    val primaryType = components.firstOrNull()?.type
+    return when (primaryType) {
+        ComponentType.CHECKLIST -> Icons.Rounded.Checklist
+        ComponentType.PROGRESS_BAR -> Icons.Rounded.TaskAlt
+        ComponentType.COUNTDOWN -> Icons.Rounded.Event
+        ComponentType.HABIT_RING -> Icons.Rounded.Repeat
+        ComponentType.NOTES -> Icons.Rounded.NoteAlt
+        ComponentType.METRIC_TRACKER -> when (type) {
+            TaskType.FINANCE -> Icons.Rounded.Savings
+            else -> Icons.Rounded.CalendarMonth
+        }
+        ComponentType.DATA_FEED -> when (type) {
+            TaskType.FINANCE -> Icons.Rounded.Payments
+            TaskType.TRAVEL -> Icons.Rounded.FlightTakeoff
+            else -> Icons.Rounded.AutoAwesome
+        }
+        null -> taskTypeIcon(type)
+    }
+}
+
 internal fun tasksRelativeReminder(timestamp: Long): String {
     val m = ((timestamp - System.currentTimeMillis()) / 60_000L).coerceAtLeast(0L)
     return when { m < 60L -> "in ${m}m"; m < 1_440L -> "in ${m / 60L}h"; else -> "in ${m / 1_440L}d" }
 }
 
-private fun Task.boardSummaryLine(): String = when (type) {
-    TaskType.TRAVEL -> {
-        val cl = components.firstOrNull { it.type == ComponentType.CHECKLIST }
-        "Countdown in play. Checklist at ${cl?.checklistItems?.count { it.isCompleted } ?: 0}/${cl?.checklistItems?.size ?: 0}."
+private fun Task.boardInsight(): TaskBoardInsight {
+    val checklist = components.firstOrNull { it.type == ComponentType.CHECKLIST }
+    val checklistDone = checklist?.checklistItems?.count { it.isCompleted } ?: 0
+    val checklistTotal = checklist?.checklistItems?.size ?: 0
+    val progress = progressRatio()
+    val nextTouchpoint = nextTouchpoint()
+
+    if (status == TaskStatus.COMPLETED) {
+        return TaskBoardInsight(
+            icon = Icons.Rounded.TaskAlt,
+            text = "Finished ${updatedLabel()} ago"
+        )
     }
-    TaskType.HABIT -> "Recurring rhythm with an active reminder cadence."
-    TaskType.PROJECT -> {
-        val p = components.firstOrNull { it.type == ComponentType.PROGRESS_BAR }?.config as? ProgressBarConfig
-        "Manual progress at ${(((p?.manualProgress ?: 0f) * 100f).toInt())}%."
+
+    return when {
+        isDueSoon() && nextTouchpoint != null -> TaskBoardInsight(
+            icon = Icons.Rounded.Schedule,
+            text = "Due ${tasksRelativeReminder(nextTouchpoint)}"
+        )
+        checklistTotal > 0 -> TaskBoardInsight(
+            icon = Icons.Rounded.Checklist,
+            text = "$checklistDone/$checklistTotal steps"
+        )
+        progress != null -> TaskBoardInsight(
+            icon = Icons.Rounded.TaskAlt,
+            text = "${(progress * 100f).roundToInt()}% progress"
+        )
+        nextTouchpoint != null -> TaskBoardInsight(
+            icon = Icons.Rounded.Schedule,
+            text = "Next ${tasksRelativeReminder(nextTouchpoint)}"
+        )
+        components.any { it.type == ComponentType.HABIT_RING } || type == TaskType.HABIT || type == TaskType.HEALTH -> TaskBoardInsight(
+            icon = Icons.Rounded.Repeat,
+            text = "Recurring rhythm"
+        )
+        components.any { it.type == ComponentType.DATA_FEED } -> TaskBoardInsight(
+            icon = if (type == TaskType.FINANCE) Icons.Rounded.Payments else Icons.Rounded.AutoAwesome,
+            text = when (type) {
+                TaskType.FINANCE -> "Live finance feed"
+                TaskType.TRAVEL -> "Live travel context"
+                else -> "Live data attached"
+            }
+        )
+        components.any { it.type == ComponentType.NOTES } -> TaskBoardInsight(
+            icon = Icons.Rounded.NoteAlt,
+            text = "Notes attached"
+        )
+        else -> TaskBoardInsight(
+            icon = primaryComponentIcon(),
+            text = "${components.size} module${if (components.size == 1) "" else "s"}"
+        )
     }
-    TaskType.HEALTH -> "Metrics and habits bundled into one health loop."
-    TaskType.FINANCE -> "External data watchlist ready for quick checks."
-    TaskType.GENERAL -> "Flexible task with notes, reminders and structure."
+}
+
+private fun Task.boardSummaryLine(): String = when {
+    status == TaskStatus.COMPLETED -> "Completed task kept around in case it needs another pass."
+    components.any { it.type == ComponentType.CHECKLIST } -> "Checklist-driven flow with concrete next steps."
+    progressRatio() != null -> "Measured progress makes this task easy to scan."
+    components.any { it.type == ComponentType.DATA_FEED } -> "Live context is attached for quicker decisions."
+    components.any { it.type == ComponentType.NOTES } -> "Notes and context stay attached to the work."
+    type == TaskType.HABIT || type == TaskType.HEALTH -> "Built for repeatable check-ins instead of one-off work."
+    type == TaskType.TRAVEL -> "Keeps timing, prep and trip details together."
+    type == TaskType.FINANCE -> "Tracks money movement with signals worth checking."
+    type == TaskType.PROJECT -> "Structured work with a clearer execution path."
+    else -> "Flexible task with reminders and lightweight context."
 }
