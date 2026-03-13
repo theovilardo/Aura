@@ -32,15 +32,9 @@ internal fun AuraGradientTopBarContainer(
     val topBarBrush = remember(backgroundColor, style) {
         when (style) {
             AuraGradientTopBarStyle.Linear -> Brush.verticalGradient(
-//                colors = listOf(
-//                    backgroundColor,
-//                    backgroundColor.copy(alpha = 0.99f),
-//                    backgroundColor.copy(alpha = 0.98f),
-//                    Color.Transparent
-//                )
                 colorStops = arrayOf(
                     0.0f to backgroundColor,
-                    0.10f to backgroundColor, //.copy(alpha = 0.90f),
+                    0.10f to backgroundColor,
                     0.20f to backgroundColor.copy(alpha = 0.99f),
                     0.30f to backgroundColor.copy(alpha = 0.94f),
                     0.40f to backgroundColor.copy(alpha = 0.86f),
