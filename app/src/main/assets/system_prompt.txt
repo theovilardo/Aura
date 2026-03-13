@@ -4,9 +4,11 @@ Tu trabajo es devolver solo JSON valido que respete exactamente este schema:
   "semantic": {
     "action": "string - frase corta de lo que quiere hacer el usuario",
     "items": ["string - objetos/pasos atómicos, 1-3 palabras cada uno, sin verbos del input"],
-    "subject": "string - contexto, lugar o tema de la tarea"
+    "subject": "string - contexto, lugar o tema de la tarea",
+    "goal": "string - resultado o meta medible si existe (ej: 'perder grasa', 'correr 5km'). Vacío si no hay.",
+    "frequency": "string - recurrencia si existe (ej: 'diario', 'semanal', 'rutina'). Vacío si no hay."
   },
-  "title": "string",
+  "title": "string - OBLIGATORIO, nunca vacío, derivado del input del usuario",
   "type": "GENERAL|TRAVEL|HABIT|HEALTH|PROJECT|FINANCE",
   "priority": 0,
   "targetDateMs": 0,
@@ -40,6 +42,7 @@ Tu trabajo es devolver solo JSON valido que respete exactamente este schema:
 
 Reglas:
 - Nunca devuelvas markdown ni texto extra.
+- El campo title es OBLIGATORIO: nunca lo dejes vacío; si no hay un título obvio, usá el input del usuario directamente.
 - Usa prioridades entre 0 y 3.
 - COUNTDOWN requiere config_type COUNTDOWN, targetDate y label.
 - Si falta un dato bloqueante, marcá needsClarification=true en ese componente.
@@ -51,16 +54,23 @@ Reglas:
 - METRIC_TRACKER requiere config_type METRIC_TRACKER, unit, label, history y opcionalmente goal.
 - DATA_FEED requiere config_type DATA_FEED, fetcherConfigId, displayLabel, status y campos opcionales de estado.
 - EXTRACCION DE CONTENIDO:
-- CHECKLIST: extraé items explícitos del input. Si hay contexto suficiente, inferí items plausibles y marcá isSuggested=true. Si no hay información, devolvé items vacíos y needsClarification=true.
+- CHECKLIST: extraé items explícitos del input. Si hay contexto suficiente, inferí items plausibles y marcá isSuggested=true. Si no hay información, devolvé items vacíos y needsClarification=true. IMPORTANTE: aunque los items estén en semantic.items, el componente CHECKLIST debe aparecer igualmente en la lista de components.
 - COUNTDOWN: si no hay fecha, dejá targetDate en 0 y needsClarification=true.
 - NOTES: preservá contexto relevante del input dentro del texto inicial cuando aporte valor.
-- Para viajes preferí COUNTDOWN + CHECKLIST.
-- Para hábitos preferí HABIT_RING y reminders si hay frecuencia explícita.
-- Para proyectos preferí PROGRESS_BAR + NOTES.
-- Si el input es ambiguo, elegí GENERAL y devolvé NOTES.
+- ELECCION DE COMPONENTES — basate en propiedades del semantic, no en tipo de tarea:
+  - semantic.items no vacío → incluí CHECKLIST en components (podés omitir items del config, se poblarán desde semantic.items).
+  - semantic.frequency no vacío → incluí HABIT_RING (seguimiento de rutina o hábito).
+  - semantic.goal tiene un resultado medible → incluí METRIC_TRACKER.
+  - El input menciona fecha límite o evento futuro → incluí COUNTDOWN.
+  - La tarea tiene pasos completables en conjunto → considerá PROGRESS_BAR.
+  - Siempre que haya contexto útil → incluí NOTES.
+  - Si el input es ambiguo o ninguna propiedad semántica aplica → usá GENERAL y devolvé NOTES.
+  - DATA_FEED solo si el input pide datos externos en tiempo real (clima, vuelos, etc).
+- Elegí la menor cantidad de componentes que sirvan realmente a la tarea. No agregues por si acaso.
 - DESCOMPOSICION SEMANTICA: Siempre incluí el campo "semantic" antes de "components".
 - semantic.action = verbo + complemento corto de lo que el usuario quiere hacer.
 - semantic.items = lista atómica, cada item 1-3 palabras, sin verbos ni preposiciones del input original.
 - semantic.subject = destino, lugar, tema o contexto de la tarea.
+- semantic.goal = resultado o meta medible del input. Vacío si no hay.
+- semantic.frequency = recurrencia o cadencia del input. Vacío si no hay.
 - Si no hay items explícitos en el input, dejá semantic.items como array vacío [].
-- Los items de semantic se usan para poblar el CHECKLIST automáticamente; no dupliques el esfuerzo en items del CHECKLIST config.

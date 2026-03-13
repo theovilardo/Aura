@@ -167,30 +167,35 @@ private fun TaskDetailTopBar(
     onNavigateToEdit: () -> Unit,
     showEditAction: Boolean
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    AuraGradientTopBarContainer(
+        style = AuraGradientTopBarStyle.Linear,
+        bottomFadePadding = 12.dp
     ) {
-        TaskDetailChromeIconButton(
-            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-            contentDescription = "Volver",
-            onClick = onNavigateBack
-        )
-
-        if (showEditAction) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             TaskDetailChromeIconButton(
-                imageVector = Icons.Rounded.Edit,
-                contentDescription = "Editar tarea",
-                onClick = onNavigateToEdit,
-                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.94f),
-                contentColor = MaterialTheme.colorScheme.primary
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Volver",
+                onClick = onNavigateBack
             )
-        } else {
-            Spacer(modifier = Modifier.size(48.dp))
+
+            if (showEditAction) {
+                TaskDetailChromeIconButton(
+                    imageVector = Icons.Rounded.Edit,
+                    contentDescription = "Editar tarea",
+                    onClick = onNavigateToEdit,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.94f),
+                    contentColor = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                Spacer(modifier = Modifier.size(48.dp))
+            }
         }
     }
 }

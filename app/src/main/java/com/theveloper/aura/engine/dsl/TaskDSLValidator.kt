@@ -10,8 +10,8 @@ import kotlinx.serialization.json.jsonPrimitive
 object TaskDSLValidator {
 
     fun validate(dsl: TaskDSLOutput): ValidationResult {
-        if (dsl.title.isBlank()) {
-            return ValidationResult.Invalid("Task title cannot be blank")
+        if (dsl.title.isBlank() || dsl.title == PLACEHOLDER_TITLE) {
+            return ValidationResult.Invalid("Task title cannot be blank or placeholder")
         }
 
         if (dsl.priority !in 0..3) {
@@ -60,4 +60,11 @@ object TaskDSLValidator {
         object Valid : ValidationResult()
         data class Invalid(val reason: String) : ValidationResult()
     }
+
+    /**
+     * The fallback placeholder written by the normalizer when the LLM returns a blank title.
+     * Treated as invalid so the pipeline falls through to the heuristic rather than
+     * surfacing a meaningless placeholder to the user.
+     */
+    const val PLACEHOLDER_TITLE = "Untitled task"
 }

@@ -5,6 +5,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SemanticFrameTest {
@@ -151,5 +153,107 @@ class SemanticFrameTest {
         )
 
         assertEquals(SemanticFrame.EMPTY, extractSemanticFrame(root))
+    }
+
+    @Test
+    fun `extractSemanticFrame parses goal and frequency`() {
+        val root = JsonObject(
+            mapOf(
+                "semantic" to JsonObject(
+                    mapOf(
+                        "action" to JsonPrimitive("hacer rutina"),
+                        "items" to JsonArray(
+                            listOf(
+                                JsonPrimitive("sentadillas"),
+                                JsonPrimitive("flexiones"),
+                                JsonPrimitive("burpees")
+                            )
+                        ),
+                        "subject" to JsonPrimitive("gym"),
+                        "goal" to JsonPrimitive("perder grasa"),
+                        "frequency" to JsonPrimitive("rutina")
+                    )
+                )
+            )
+        )
+
+        val frame = extractSemanticFrame(root)
+
+        assertEquals("perder grasa", frame.goal)
+        assertEquals("rutina", frame.frequency)
+        assertTrue(frame.hasGoal)
+        assertTrue(frame.hasFrequency)
+    }
+
+    @Test
+    fun `extractSemanticFrame returns EMPTY when only goal and frequency are blank`() {
+        val root = JsonObject(
+            mapOf(
+                "semantic" to JsonObject(
+                    mapOf(
+                        "action" to JsonPrimitive(""),
+                        "items" to JsonArray(emptyList()),
+                        "subject" to JsonPrimitive(""),
+                        "goal" to JsonPrimitive(""),
+                        "frequency" to JsonPrimitive("")
+                    )
+                )
+            )
+        )
+
+        assertEquals(SemanticFrame.EMPTY, extractSemanticFrame(root))
+    }
+
+    @Test
+    fun `extractSemanticFrame handles missing goal and frequency gracefully`() {
+        val root = JsonObject(
+            mapOf(
+                "semantic" to JsonObject(
+                    mapOf(
+                        "action" to JsonPrimitive("study"),
+                        "items" to JsonArray(emptyList()),
+                        "subject" to JsonPrimitive("math")
+                    )
+                )
+            )
+        )
+
+        val frame = extractSemanticFrame(root)
+
+        assertEquals("", frame.goal)
+        assertEquals("", frame.frequency)
+        assertFalse(frame.hasGoal)
+        assertFalse(frame.hasFrequency)
+    }
+
+    @Test
+    fun `SemanticFrame EMPTY has blank goal and frequency`() {
+        assertEquals("", SemanticFrame.EMPTY.goal)
+        assertEquals("", SemanticFrame.EMPTY.frequency)
+        assertFalse(SemanticFrame.EMPTY.hasGoal)
+        assertFalse(SemanticFrame.EMPTY.hasFrequency)
+    }
+
+    @Test
+    fun `extractSemanticFrame not EMPTY when only goal is present`() {
+        val root = JsonObject(
+            mapOf(
+                "semantic" to JsonObject(
+                    mapOf(
+                        "action" to JsonPrimitive(""),
+                        "items" to JsonArray(emptyList()),
+                        "subject" to JsonPrimitive(""),
+                        "goal" to JsonPrimitive("lose 5kg"),
+                        "frequency" to JsonPrimitive("")
+                    )
+                )
+            )
+        )
+
+        val frame = extractSemanticFrame(root)
+
+        assertTrue(frame.hasGoal)
+        assertFalse(frame == SemanticFrame.EMPTY)
+        assertEquals("lose 5kg", frame.goal)
     }
 }

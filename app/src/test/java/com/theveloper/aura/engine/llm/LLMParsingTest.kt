@@ -246,6 +246,46 @@ class LLMParsingTest {
         assertEquals("Weekly Groceries", config["label"]?.jsonPrimitive?.contentOrNull)
     }
 
+    @Test
+    fun `normalizeTaskDslJson parses goal and frequency from semantic and discards from output`() {
+        val raw = """
+            {
+              "semantic": {
+                "action": "hacer rutina",
+                "items": ["sentadillas", "flexiones", "burpees"],
+                "subject": "gym",
+                "goal": "perder grasa",
+                "frequency": "rutina"
+              },
+              "title": "Gym Routine",
+              "type": "HEALTH",
+              "components": [
+                {
+                  "type": "CHECKLIST",
+                  "sortOrder": 0,
+                  "config": {
+                    "config_type": "CHECKLIST",
+                    "label": "Ejercicios",
+                    "allowAddItems": true,
+                    "items": []
+                  }
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val normalized = raw.normalizeTaskDslJson()
+        val jsonObject = auraJson.parseToJsonElement(normalized) as JsonObject
+
+        // Semantic section must not leak into persisted output
+        assertNull(jsonObject["semantic"])
+
+        // Items from semantic.items should populate the checklist
+        val dsl = auraJson.decodeFromString<TaskDSLOutput>(normalized)
+        val items = ChecklistDslItems.parse(dsl.components.first().config).map { it.label }
+        assertEquals(listOf("sentadillas", "flexiones", "burpees"), items)
+    }
+
     private fun component(type: ComponentType, sortOrder: Int): ComponentDSL {
         return ComponentDSL(
             type = type,

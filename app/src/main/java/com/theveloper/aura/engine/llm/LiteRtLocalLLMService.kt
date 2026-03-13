@@ -336,15 +336,31 @@ abstract class LiteRtLocalLLMService constructor(
         return """
             Sos el clasificador de tareas de AURA.
             Respondé con un único JSON TaskDSLOutput válido, sin markdown ni explicaciones.
-            Campos raíz: title, type, priority (0..3), targetDateMs, semantic, components, reminders, fetchers.
+            Campos raíz OBLIGATORIOS: title, type, priority (0..3), targetDateMs, semantic, components, reminders, fetchers.
+            El campo title es OBLIGATORIO: nunca lo dejes vacío, usá el input del usuario como base.
             IMPORTANTE: Siempre incluí "semantic" antes de "components":
-            "semantic": {"action": "verbo + complemento", "items": ["item1", "item2"], "subject": "contexto"}
-            - action = qué quiere hacer el usuario (frase corta).
-            - items = objetos/pasos atómicos, 1-3 palabras cada uno, sin verbos ni preposiciones del input.
-            - subject = destino, lugar o tema.
-            - Si no hay items claros, dejá items como [].
-            Ejemplo: "necesito lista para el super, quiero tomates, queso y pan"
-            → "semantic": {"action": "comprar", "items": ["tomates", "queso", "pan"], "subject": "supermercado"}
+            "semantic": {"action": "verbo+complemento", "items": ["item1"], "subject": "contexto", "goal": "meta medible o vacío", "frequency": "recurrencia o vacío"}
+            - action = qué quiere hacer (verbo corto).
+            - items = objetos/pasos atómicos, 1-3 palabras cada uno, sin verbos ni preposiciones del input. [] si no hay.
+            - subject = lugar, destino o tema.
+            - goal = resultado medible (ej: "perder grasa", "correr 5km"). Vacío si no hay.
+            - frequency = recurrencia (ej: "diario", "rutina"). Vacío si no hay.
+            Ejemplo — lista: "necesito lista para el super, quiero tomates y leche"
+            → "semantic": {"action": "comprar", "items": ["tomates", "leche"], "subject": "supermercado", "goal": "", "frequency": ""}
+            → "title": "Lista del supermercado", "components": [CHECKLIST, NOTES]
+            Ejemplo — rutina: "rutina de gym para perder grasa en 30 minutos"
+            → "semantic": {"action": "hacer rutina", "items": ["sentadillas", "flexiones", "burpees"], "subject": "gym", "goal": "perder grasa", "frequency": "rutina"}
+            → "title": "Rutina de gym", "components": [CHECKLIST, HABIT_RING, METRIC_TRACKER]
+            ELECCION DE COMPONENTES — basate en propiedades del semantic:
+            - semantic.items no vacío → incluí CHECKLIST (podés omitir items del config del CHECKLIST, se poblarán automáticamente desde semantic.items).
+            - semantic.frequency no vacío → incluí HABIT_RING.
+            - semantic.goal tiene un resultado medible → incluí METRIC_TRACKER.
+            - Fecha o deadline en el input → incluí COUNTDOWN.
+            - La tarea tiene pasos completables en conjunto → considerá PROGRESS_BAR.
+            - Siempre que haya contexto útil → incluí NOTES.
+            - Si es ambiguo o ninguna regla aplica → usá GENERAL + NOTES.
+            - DATA_FEED solo si el input pide datos externos en tiempo real.
+            Elegí la menor cantidad de componentes útiles. No agregues por si acaso.
             Cada component debe incluir: type, sortOrder único, config, populatedFromInput y needsClarification.
             En config, config_type debe ser igual al type del componente.
             Configs mínimas:
@@ -356,14 +372,6 @@ abstract class LiteRtLocalLLMService constructor(
             - METRIC_TRACKER: config_type, unit, label, history, goal opcional.
             - DATA_FEED: config_type, fetcherConfigId, displayLabel, status.
             Si falta un dato bloqueante, poné needsClarification=true.
-            Si parece viaje, preferí COUNTDOWN + CHECKLIST.
-            Si parece hábito, preferí HABIT_RING.
-            Si parece proyecto, preferí PROGRESS_BAR + NOTES.
-            Si es ambiguo, usá GENERAL + NOTES.
-            Elegí la menor cantidad de componentes útiles.
-            No agregues componentes extra "por si acaso".
-            Para listas simples o shopping lists, usá CHECKLIST y como mucho NOTES.
-            No uses PROGRESS_BAR, HABIT_RING, METRIC_TRACKER o DATA_FEED salvo que el input pida explícitamente progreso, hábito, métricas o datos externos.
         """.trimIndent()
     }
 

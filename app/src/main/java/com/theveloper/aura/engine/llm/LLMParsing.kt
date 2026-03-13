@@ -7,6 +7,7 @@ import com.theveloper.aura.domain.model.FetcherType
 import com.theveloper.aura.domain.model.TaskType
 import com.theveloper.aura.engine.dsl.SemanticFrame
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
+import com.theveloper.aura.engine.dsl.TaskDSLValidator
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -107,7 +108,7 @@ private fun normalizeTaskDslObject(root: JsonObject): JsonObject {
 
     return JsonObject(
         mapOf(
-            "title" to JsonPrimitive(root["title"].stringValue().ifBlank { "Untitled task" }),
+            "title" to JsonPrimitive(root["title"].stringValue().ifBlank { TaskDSLValidator.PLACEHOLDER_TITLE }),
             "type" to JsonPrimitive(type.name),
             "priority" to JsonPrimitive(root["priority"].intValue(default = 0).coerceIn(0, 3)),
             "targetDateMs" to (targetDateMs?.let(::JsonPrimitive) ?: JsonNull),
@@ -440,6 +441,8 @@ internal fun extractSemanticFrame(root: JsonObject): SemanticFrame {
 
     val action = semantic["action"].stringValue()
     val subject = semantic["subject"].stringValue()
+    val goal = semantic["goal"].stringValue()
+    val frequency = semantic["frequency"].stringValue()
     val items = (semantic["items"] as? JsonArray)
         ?.mapNotNull { element ->
             element.stringValue()
@@ -449,11 +452,11 @@ internal fun extractSemanticFrame(root: JsonObject): SemanticFrame {
         ?.distinct()
         .orEmpty()
 
-    if (action.isBlank() && items.isEmpty() && subject.isBlank()) {
+    if (action.isBlank() && items.isEmpty() && subject.isBlank() && goal.isBlank() && frequency.isBlank()) {
         return SemanticFrame.EMPTY
     }
 
-    return SemanticFrame(action = action, items = items, subject = subject)
+    return SemanticFrame(action = action, items = items, subject = subject, goal = goal, frequency = frequency)
 }
 
 internal fun applySemanticToComponents(

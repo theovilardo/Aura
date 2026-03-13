@@ -48,7 +48,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -225,26 +224,14 @@ private fun HomeTopBar(
     modifier: Modifier = Modifier,
     onHeightChanged: (Int) -> Unit = {}
 ) {
-    val backgroundColor = MaterialTheme.colorScheme.background
-    val topBarBrush = remember(backgroundColor) {
-        Brush.verticalGradient(
-            colorStops = arrayOf(
-                0.0f to backgroundColor,
-                0.56f to backgroundColor,
-                0.78f to backgroundColor.copy(alpha = 0.92f),
-                0.9f to backgroundColor.copy(alpha = 0.54f),
-                1f to Color.Transparent
-            )
-        )
-    }
     val auraWordmarkStyle = rememberAuraWordmarkStyle()
 
-    Box(
+    AuraGradientTopBarContainer(
         modifier = modifier
-            .fillMaxWidth()
-            .background(topBarBrush)
-            .onSizeChanged { onHeightChanged(it.height) }
-            .padding(bottom = 12.dp)
+            .fillMaxWidth(),
+        style = AuraGradientTopBarStyle.Extended,
+        bottomFadePadding = 12.dp,
+        onHeightChanged = onHeightChanged
     ) {
         Column(
             modifier = Modifier

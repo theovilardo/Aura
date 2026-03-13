@@ -40,17 +40,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -59,16 +56,13 @@ import androidx.compose.ui.text.font.FontLoadingStrategy
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.theveloper.aura.R
 import com.theveloper.aura.engine.classifier.AiExecutionMode
-
-private val SettingsTopBarFallbackHeight = 112.dp
-private val SettingsTopBarContentOverlap = 12.dp
-private val SettingsTopBarMinContentPadding = 88.dp
 
 @Composable
 fun SettingsScreen(
@@ -294,33 +288,28 @@ internal fun SettingsPageScaffold(
     bottomPaddingExtra: Dp = 32.dp,
     content: LazyListScope.() -> Unit
 ) {
-    var topBarHeightPx by remember { mutableIntStateOf(0) }
-
-    Scaffold(containerColor = MaterialTheme.colorScheme.background) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize()) {
-            val topContentPadding = settingsTopBarContentPadding(topBarHeightPx)
-
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    top = innerPadding.calculateTopPadding() + topContentPadding,
-                    end = 16.dp,
-                    bottom = innerPadding.calculateBottomPadding() + bottomPaddingExtra
-                ),
-                content = content
-            )
-
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
             SettingsTopBar(
                 title = title,
-                onNavigateBack = onNavigateBack,
-                modifier = Modifier.align(Alignment.TopCenter),
-                onHeightChanged = { topBarHeightPx = it }
+                onNavigateBack = onNavigateBack
             )
         }
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = innerPadding.calculateTopPadding() + 12.dp,
+                end = 16.dp,
+                bottom = innerPadding.calculateBottomPadding() + bottomPaddingExtra
+            ),
+            content = content
+        )
     }
 }
 
@@ -328,40 +317,26 @@ internal fun SettingsPageScaffold(
 private fun SettingsTopBar(
     title: String,
     onNavigateBack: (() -> Unit)?,
-    modifier: Modifier = Modifier,
-    onHeightChanged: (Int) -> Unit = {}
+    modifier: Modifier = Modifier
 ) {
-    val backgroundColor = MaterialTheme.colorScheme.background
-    val topBarBrush = remember(backgroundColor) {
-        Brush.verticalGradient(
-            colorStops = arrayOf(
-                0.0f to backgroundColor,
-                0.62f to backgroundColor,
-                0.82f to backgroundColor.copy(alpha = 0.92f),
-                0.92f to backgroundColor.copy(alpha = 0.58f),
-                1f to Color.Transparent
-            )
-        )
-    }
     val titleStyle = rememberSettingsTitleStyle()
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(topBarBrush)
-            .onSizeChanged { onHeightChanged(it.height) }
-            .padding(bottom = 12.dp)
+    AuraGradientTopBarContainer(
+        modifier = modifier.fillMaxWidth(),
+        bottomFadePadding = 20.dp
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            contentAlignment = Alignment.Center
         ) {
             if (onNavigateBack != null) {
-                IconButton(onClick = onNavigateBack) {
+                IconButton(
+                    onClick = onNavigateBack,
+                    modifier = Modifier.align(Alignment.CenterStart)
+                ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = "Back",
@@ -373,22 +348,11 @@ private fun SettingsTopBar(
             Text(
                 text = title,
                 style = titleStyle,
-                color = MaterialTheme.colorScheme.onBackground
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center
             )
         }
     }
-}
-
-@Composable
-private fun settingsTopBarContentPadding(topBarHeightPx: Int): Dp {
-    val measuredHeight = if (topBarHeightPx == 0) {
-        SettingsTopBarFallbackHeight
-    } else {
-        with(androidx.compose.ui.platform.LocalDensity.current) {
-            topBarHeightPx.toDp()
-        }
-    }
-    return (measuredHeight - SettingsTopBarContentOverlap).coerceAtLeast(SettingsTopBarMinContentPadding)
 }
 
 @OptIn(ExperimentalTextApi::class)
