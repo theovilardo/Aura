@@ -1,5 +1,7 @@
 package com.theveloper.aura.ui.screen
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,8 +19,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,34 +31,39 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.AddTask
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.theveloper.aura.domain.model.TaskType
 import com.theveloper.aura.engine.dsl.TaskComponentCatalog
@@ -69,7 +78,6 @@ fun CreateTaskScreen(
     viewModel: CreateTaskViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val selectedTemplates = remember(uiState.manual.selectedTemplateIds) {
         uiState.manual.selectedTemplateIds.mapNotNull(TaskComponentCatalog::find)
     }
@@ -87,14 +95,10 @@ fun CreateTaskScreen(
     }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            CreateTaskTopBar(
-                onNavigateBack = onNavigateBack,
-                scrollBehavior = scrollBehavior
-            )
+            CreateTaskTopBar(onNavigateBack = onNavigateBack)
         },
         bottomBar = {
             CreateTaskPromptBar(
@@ -109,57 +113,40 @@ fun CreateTaskScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(paddingValues),
+                .background(MaterialTheme.colorScheme.background),
             contentPadding = PaddingValues(
-                start = 16.dp,
-                top = 12.dp,
-                end = 16.dp,
-                bottom = 24.dp
+                top = paddingValues.calculateTopPadding(),
+                bottom = paddingValues.calculateBottomPadding()
             ),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             item {
-                CreateTaskLeadIn(
-                    taskType = uiState.manual.taskType,
-                    selectedCount = selectedTemplates.size
-                )
-            }
-
-            item {
-                BuilderSection(title = "Title") {
-                    OutlinedTextField(
+                BuilderSection(
+                    title = "Title",
+                    titlePadding = 16.dp
+                ) {
+                    CreateTaskTitleField(
                         value = uiState.manual.title,
                         onValueChange = viewModel::updateManualTitle,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Optional title override") },
-                        placeholder = { Text("Launch summer habit reset") },
-                        singleLine = true
                     )
                 }
             }
 
             item {
-                BuilderSection(title = "Type") {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        TaskType.entries.forEach { taskType ->
-                            BuilderPill(
-                                label = taskType.name.lowercase().replaceFirstChar { it.titlecase() },
-                                selected = taskType == uiState.manual.taskType,
-                                onClick = { viewModel.selectManualTaskType(taskType) }
-                            )
-                        }
-                    }
+                BuilderSection(
+                    title = "Type",
+                    titlePadding = 16.dp
+                ) {
+                    CreateTaskTypeRow(
+                        selected = uiState.manual.taskType,
+                        onSelect = viewModel::selectManualTaskType
+                    )
                 }
             }
 
             item {
                 BuilderSection(
+                    modifier = Modifier.padding(horizontal = 16.dp),
                     title = "Modules",
                     body = if (selectedTemplates.isEmpty()) {
                         "Pick the structure you want the engine to respect."
@@ -245,78 +232,37 @@ fun CreateTaskScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CreateTaskTopBar(
-    onNavigateBack: () -> Unit,
-    scrollBehavior: androidx.compose.material3.TopAppBarScrollBehavior
+    onNavigateBack: () -> Unit
 ) {
-    CenterAlignedTopAppBar(
-        title = {
-            Text(
-                text = "Create",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
-            )
-        },
-        navigationIcon = {
-            IconButton(onClick = onNavigateBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back"
-                )
-            }
-        },
-        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-            containerColor = MaterialTheme.colorScheme.background,
-            scrolledContainerColor = MaterialTheme.colorScheme.background
-        ),
-        scrollBehavior = scrollBehavior,
-        windowInsets = TopAppBarDefaults.windowInsets
-    )
-}
-
-@Composable
-private fun CreateTaskLeadIn(
-    taskType: TaskType,
-    selectedCount: Int
-) {
-    Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+    AuraGradientTopBarContainer(
+        style = AuraGradientTopBarStyle.Linear,
+        bottomFadePadding = 12.dp
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Icon(
-                    imageVector = Icons.Default.AutoAwesome,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .padding(10.dp)
-                        .size(18.dp)
-                )
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    text = "Prompt below, shape the structure here.",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "${taskType.name.lowercase().replaceFirstChar { it.titlecase() }} · $selectedCount modules selected",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            CreateTaskChromeIconButton(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Back",
+                onClick = onNavigateBack,
+                modifier = Modifier.align(Alignment.CenterStart)
+            )
+
+            Text(
+                text = "Create",
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 30.sp,
+                    lineHeight = 30.sp
+                ),
+                color = MaterialTheme.colorScheme.onBackground
+            )
         }
     }
 }
@@ -329,20 +275,45 @@ private fun CreateTaskPromptBar(
     onPromptChange: (String) -> Unit,
     onSubmit: () -> Unit
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow
+    val backgroundColor = MaterialTheme.colorScheme.background
+    val bottomBarBrush = remember(backgroundColor) {
+        Brush.verticalGradient(
+            colorStops = arrayOf(
+                0.0f to Color.Transparent,
+                0.32f to backgroundColor.copy(alpha = 0.76f),
+                1.0f to backgroundColor
+            )
+        )
+    }
+    var promptVisualLineCount by remember { mutableIntStateOf(1) }
+    val promptCornerRadius by animateDpAsState(
+        targetValue = when {
+            promptVisualLineCount <= 1 -> 34.dp
+            promptVisualLineCount == 2 -> 28.dp
+            promptVisualLineCount == 3 -> 24.dp
+            else -> 20.dp
+        },
+        label = "createPromptCorner"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(bottomBarBrush)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                modifier = Modifier.weight(1f),
-                shape = CircleShape,
+                modifier = Modifier
+                    .weight(1f)
+                    .animateContentSize(),
+                shape = RoundedCornerShape(promptCornerRadius),
                 color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
             ) {
@@ -366,7 +337,10 @@ private fun CreateTaskPromptBar(
                         }
                     ),
                     minLines = 1,
-                    maxLines = 5,
+                    maxLines = 6,
+                    onTextLayout = { layoutResult ->
+                        promptVisualLineCount = layoutResult.lineCount.coerceIn(1, 6)
+                    },
                     decorationBox = { innerTextField ->
                         Box(
                             modifier = Modifier.fillMaxWidth(),
@@ -389,10 +363,18 @@ private fun CreateTaskPromptBar(
                 modifier = Modifier.size(56.dp),
                 shape = CircleShape,
                 color = if (canSubmit) {
-                    MaterialTheme.colorScheme.primary
+                    MaterialTheme.colorScheme.primaryContainer
                 } else {
                     MaterialTheme.colorScheme.surfaceContainerHighest
-                }
+                },
+                border = BorderStroke(
+                    1.dp,
+                    if (canSubmit) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)
+                    }
+                )
             ) {
                 Box(
                     modifier = Modifier
@@ -404,14 +386,14 @@ private fun CreateTaskPromptBar(
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),
                             strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimary
+                            color = MaterialTheme.colorScheme.primary
                         )
                     } else {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.Send,
+                            imageVector = Icons.Rounded.AddTask,
                             contentDescription = "Build task",
                             tint = if (canSubmit) {
-                                MaterialTheme.colorScheme.onPrimary
+                                MaterialTheme.colorScheme.primary
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             }
@@ -424,13 +406,95 @@ private fun CreateTaskPromptBar(
 }
 
 @Composable
+private fun CreateTaskTitleField(
+    value: String,
+    onValueChange: (String) -> Unit
+) {
+    TextField(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        value = value,
+        onValueChange = onValueChange,
+        singleLine = true,
+        textStyle = MaterialTheme.typography.titleMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+        placeholder = {
+            Text(
+                text = "Launch summer habit reset",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        shape = RoundedCornerShape(28.dp),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surface,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+            disabledContainerColor = MaterialTheme.colorScheme.surface,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            disabledIndicatorColor = Color.Transparent,
+            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+            focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            cursorColor = MaterialTheme.colorScheme.primary
+        )
+    )
+}
+
+@Composable
+private fun CreateTaskTypeRow(
+    selected: TaskType,
+    onSelect: (TaskType) -> Unit
+) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp)
+    ) {
+        TaskType.entries.forEach { taskType ->
+            val active = taskType == selected
+            item {
+                Surface(
+                    shape = CircleShape,
+                    color = if (active) MaterialTheme.colorScheme.inverseSurface
+                    else MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = if (active) MaterialTheme.colorScheme.inverseSurface
+                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
+                    ),
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { onSelect(taskType) }
+                ) {
+                    Text(
+                        text = taskType.name.lowercase().replaceFirstChar { it.titlecase() },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = if (active) MaterialTheme.colorScheme.inverseOnSurface
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun BuilderSection(
+    modifier: Modifier = Modifier,
     title: String,
+    titlePadding: Dp = 0.dp,
     body: String? = null,
     content: @Composable () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
         Text(
+            modifier = Modifier.padding(start = titlePadding),
             text = title,
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground
@@ -447,38 +511,46 @@ private fun BuilderSection(
 }
 
 @Composable
-private fun BuilderPill(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
+private fun CreateTaskChromeIconButton(
+    imageVector: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    containerColor: Color = Color.Unspecified,
+    contentColor: Color = Color.Unspecified
 ) {
+    val resolvedContainerColor = if (containerColor == Color.Unspecified) {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
+    } else {
+        containerColor
+    }
+    val resolvedContentColor = if (contentColor == Color.Unspecified) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        contentColor
+    }
+
     Surface(
+        modifier = modifier,
         shape = CircleShape,
-        color = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
+        color = resolvedContainerColor,
         border = BorderStroke(
             1.dp,
-            if (selected) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
-            } else {
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
-            }
-        ),
-        modifier = Modifier.clickable(onClick = onClick)
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            }
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)
         )
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = imageVector,
+                contentDescription = contentDescription,
+                tint = resolvedContentColor
+            )
+        }
     }
 }
 
