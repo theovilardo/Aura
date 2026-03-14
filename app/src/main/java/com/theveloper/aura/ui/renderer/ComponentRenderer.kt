@@ -153,6 +153,7 @@ fun EditableComponentRenderer(
     component: TaskComponent,
     onTaskChange: (Task) -> Unit,
     onSignal: (SignalType) -> Unit,
+    onEditNotes: (TaskComponent) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val config = component.config
@@ -196,6 +197,7 @@ fun EditableComponentRenderer(
                 onSave = { text ->
                     onTaskChange(task.updateNotesComponent(component.id, text))
                 },
+                onOpenEditor = { onEditNotes(component) },
                 saveDelayMillis = 0L
             )
         }

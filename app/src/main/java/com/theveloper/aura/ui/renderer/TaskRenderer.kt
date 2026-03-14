@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.theveloper.aura.domain.model.SignalType
 import com.theveloper.aura.domain.model.Task
+import com.theveloper.aura.domain.model.TaskComponent
 import com.theveloper.aura.domain.model.TaskStatus
 import com.theveloper.aura.domain.model.TaskType
 import com.theveloper.aura.ui.components.ComponentPill
@@ -134,7 +135,10 @@ fun EditableTaskRenderer(
     task: Task?,
     isLoading: Boolean,
     modifier: Modifier = Modifier,
+    listState: LazyListState? = null,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
     onTaskChange: (Task) -> Unit,
+    onEditNotes: (TaskComponent) -> Unit = {},
     onSignal: (SignalType) -> Unit = {}
 ) {
     when {
@@ -156,8 +160,11 @@ fun EditableTaskRenderer(
             )
         }
         else -> {
+            val resolvedListState = listState ?: rememberLazyListState()
             LazyColumn(
+                state = resolvedListState,
                 modifier = modifier.fillMaxWidth(),
+                contentPadding = contentPadding,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item {
@@ -168,6 +175,7 @@ fun EditableTaskRenderer(
                         task = task,
                         component = component,
                         onTaskChange = onTaskChange,
+                        onEditNotes = onEditNotes,
                         onSignal = onSignal
                     )
                 }

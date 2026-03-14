@@ -96,6 +96,7 @@ import com.theveloper.aura.ui.screen.SettingsScreen
 import com.theveloper.aura.ui.screen.TaskCreationMode
 import com.theveloper.aura.ui.screen.TaskDetailScreen
 import com.theveloper.aura.ui.screen.TaskEditScreen
+import com.theveloper.aura.ui.screen.TaskMarkdownEditorScreen
 import com.theveloper.aura.ui.screen.TasksScreen
 import com.theveloper.aura.ui.theme.AuraFloatingBarColors
 import com.theveloper.aura.ui.theme.auraFloatingBarColors
@@ -105,6 +106,7 @@ private const val HOME_ROUTE = "home"
 private const val TASKS_ROUTE = "tasks"
 private const val TASK_DETAIL_ROUTE = "task_detail/{taskId}"
 private const val TASK_EDIT_ROUTE = "task_detail_edit/{taskId}"
+private const val TASK_NOTE_EDITOR_ROUTE = "task_detail_edit_note/{taskId}/{componentId}"
 private const val SETTINGS_ROUTE = "settings"
 private const val SETTINGS_INTELLIGENCE_ROUTE = "settings/intelligence"
 private const val SETTINGS_AI_ROUTE = "settings/ai"
@@ -162,6 +164,22 @@ fun AuraApp() {
                 SecondaryScreenFrame {
                     TaskEditScreen(
                         taskId = taskId,
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToNotesEditor = { editableTaskId, componentId ->
+                            navController.navigate(buildTaskNoteEditorRoute(editableTaskId, componentId))
+                        },
+                        editorStateHandle = backStackEntry.savedStateHandle
+                    )
+                }
+            }
+            composable(TASK_NOTE_EDITOR_ROUTE) { backStackEntry ->
+                val taskId = backStackEntry.arguments?.getString("taskId") ?: ""
+                val componentId = backStackEntry.arguments?.getString("componentId") ?: ""
+                SecondaryScreenFrame {
+                    TaskMarkdownEditorScreen(
+                        taskId = taskId,
+                        componentId = componentId,
+                        editorStateHandle = navController.previousBackStackEntry?.savedStateHandle,
                         onNavigateBack = { navController.popBackStack() }
                     )
                 }
@@ -619,6 +637,13 @@ private fun buildCreateTaskRoute(
     autoSubmit: Boolean = false
 ): String {
     return "$CREATE_TASK_BASE_ROUTE?mode=${mode.navValue}&input=${Uri.encode(input)}&autoSubmit=$autoSubmit"
+}
+
+private fun buildTaskNoteEditorRoute(
+    taskId: String,
+    componentId: String
+): String {
+    return "task_detail_edit_note/${Uri.encode(taskId)}/${Uri.encode(componentId)}"
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraEnterTransition(): EnterTransition {
