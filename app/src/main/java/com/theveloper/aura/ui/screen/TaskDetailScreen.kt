@@ -41,17 +41,22 @@ import androidx.compose.material.icons.automirrored.rounded.ShowChart
 import androidx.compose.material.icons.rounded.Autorenew
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.DonutLarge
 import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.FormatListBulleted
+import androidx.compose.material.icons.rounded.FormatQuote
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -80,8 +85,9 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -109,7 +115,6 @@ import kotlinx.coroutines.flow.collectLatest
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
-internal const val TASK_NOTE_EDITOR_TASK_TITLE_KEY = "task_note_editor_task_title"
 internal const val TASK_NOTE_EDITOR_TEXT_KEY = "task_note_editor_text"
 internal const val TASK_NOTE_EDITOR_IS_MARKDOWN_KEY = "task_note_editor_is_markdown"
 internal const val TASK_NOTE_EDITOR_RESULT_COMPONENT_ID_KEY = "task_note_editor_result_component_id"
@@ -432,7 +437,6 @@ fun TaskEditScreen(
                 onTaskChange = { updated -> draftTask = updated },
                 onEditNotes = { component ->
                     val config = component.config as? NotesConfig ?: return@EditableTaskRenderer
-                    editorStateHandle[TASK_NOTE_EDITOR_TASK_TITLE_KEY] = currentDraft?.title.orEmpty()
                     editorStateHandle[TASK_NOTE_EDITOR_TEXT_KEY] = config.text
                     editorStateHandle[TASK_NOTE_EDITOR_IS_MARKDOWN_KEY] = config.isMarkdown
                     editorStateHandle.remove<String>(TASK_NOTE_EDITOR_RESULT_COMPONENT_ID_KEY)
@@ -769,11 +773,6 @@ fun TaskMarkdownEditorScreen(
             ?.firstOrNull { it.id == componentId }
             ?.config as? NotesConfig
     }
-    val taskTitle = remember(editorStateHandle, uiState.task?.title) {
-        editorStateHandle?.get<String>(TASK_NOTE_EDITOR_TASK_TITLE_KEY)
-            ?: uiState.task?.title
-            ?: ""
-    }
     val initialText = remember(editorStateHandle, fallbackConfig) {
         editorStateHandle?.get<String>(TASK_NOTE_EDITOR_TEXT_KEY)
             ?: fallbackConfig?.text
@@ -812,7 +811,6 @@ fun TaskMarkdownEditorScreen(
     Scaffold(
         topBar = {
             MarkdownEditorTopBar(
-                taskTitle = taskTitle,
                 isMarkdown = isMarkdown,
                 editorMode = editorMode,
                 onNavigateBack = ::finishEditor,
@@ -977,115 +975,125 @@ private fun MarkdownEditorInput(
 
 @Composable
 private fun MarkdownEditorTopBar(
-    taskTitle: String,
     isMarkdown: Boolean,
     editorMode: MarkdownEditorMode,
     onNavigateBack: () -> Unit,
     onModeSelected: (MarkdownEditorMode) -> Unit
 ) {
     AuraGradientTopBarContainer(
-        style = AuraGradientTopBarStyle.Extended,
-        bottomFadePadding = 18.dp
+        style = AuraGradientTopBarStyle.Linear,
+        bottomFadePadding = 10.dp
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TaskDetailChromeIconButton(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Volver al editor de tarea",
-                    onClick = onNavigateBack
-                )
-                TaskDetailChromeIconButton(
-                    imageVector = Icons.Rounded.Check,
-                    contentDescription = "Cerrar editor",
-                    onClick = onNavigateBack,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.96f),
-                    contentColor = MaterialTheme.colorScheme.primary
-                )
-            }
+            TaskDetailChromeIconButton(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Volver al editor de tarea",
+                onClick = onNavigateBack
+            )
 
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = if (isMarkdown) "Markdown notes" else "Notes",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = taskTitle,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
                 if (isMarkdown) {
-                    Surface(
-                        shape = RoundedCornerShape(22.dp),
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            MarkdownEditorModeChip(
-                                label = "Markdown",
-                                selected = editorMode == MarkdownEditorMode.Markdown,
-                                onClick = { onModeSelected(MarkdownEditorMode.Markdown) }
-                            )
-                            MarkdownEditorModeChip(
-                                label = "Preview",
-                                selected = editorMode == MarkdownEditorMode.Preview,
-                                onClick = { onModeSelected(MarkdownEditorMode.Preview) }
-                            )
-                        }
-                    }
+                    MarkdownEditorModeToggle(
+                        editorMode = editorMode,
+                        onModeSelected = onModeSelected
+                    )
                 }
             }
+
+            TaskDetailChromeIconButton(
+                imageVector = Icons.Rounded.Check,
+                contentDescription = "Cerrar editor",
+                onClick = onNavigateBack,
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.96f),
+                contentColor = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
 
 @Composable
-private fun MarkdownEditorModeChip(
-    label: String,
+private fun MarkdownEditorModeToggle(
+    editorMode: MarkdownEditorMode,
+    onModeSelected: (MarkdownEditorMode) -> Unit
+) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.26f)),
+        tonalElevation = 2.dp,
+        shadowElevation = 8.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            MarkdownEditorModeToggleButton(
+                icon = Icons.Rounded.Code,
+                contentDescription = "Ver markdown",
+                selected = editorMode == MarkdownEditorMode.Markdown,
+                onClick = { onModeSelected(MarkdownEditorMode.Markdown) }
+            )
+            MarkdownEditorModeToggleButton(
+                icon = Icons.Rounded.TextFields,
+                contentDescription = "Ver texto interpretado",
+                selected = editorMode == MarkdownEditorMode.Preview,
+                onClick = { onModeSelected(MarkdownEditorMode.Preview) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun MarkdownEditorModeToggleButton(
+    icon: ImageVector,
+    contentDescription: String,
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val containerColor = if (selected) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        Color.Transparent
-    }
-    val contentColor = if (selected) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
     Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = containerColor,
+        modifier = Modifier.size(48.dp),
+        shape = CircleShape,
+        color = if (selected) {
+            MaterialTheme.colorScheme.surface
+        } else {
+            Color.Transparent
+        },
+        border = BorderStroke(
+            1.dp,
+            if (selected) {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)
+            } else {
+                Color.Transparent
+            }
+        ),
         onClick = onClick
     ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-            style = MaterialTheme.typography.labelLarge,
-            color = contentColor
-        )
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = if (selected) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            )
+        }
     }
 }
 
@@ -1099,7 +1107,7 @@ private fun MarkdownEditorFloatingToolbar(
             .navigationBarsPadding()
             .imePadding()
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        shape = RoundedCornerShape(32.dp),
+        shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 6.dp,
         shadowElevation = 16.dp,
@@ -1108,13 +1116,13 @@ private fun MarkdownEditorFloatingToolbar(
         Row(
             modifier = Modifier
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 12.dp),
+                .padding(horizontal = 10.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             MarkdownShortcut.entries.forEach { shortcut ->
-                MarkdownToolbarActionChip(
-                    label = shortcut.label,
+                MarkdownToolbarActionButton(
+                    shortcut = shortcut,
                     onClick = { onApplyShortcut(shortcut) }
                 )
             }
@@ -1128,46 +1136,83 @@ private enum class MarkdownEditorMode {
 }
 
 @Composable
-private fun MarkdownToolbarActionChip(
-    label: String,
-    selected: Boolean = false,
+private fun MarkdownToolbarActionButton(
+    shortcut: MarkdownShortcut,
     onClick: () -> Unit
 ) {
-    val containerColor = if (selected) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        MaterialTheme.colorScheme.surface
-    }
-    val contentColor = if (selected) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
     Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = containerColor,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+        modifier = Modifier.size(52.dp),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
         onClick = onClick
     ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            style = MaterialTheme.typography.labelLarge,
-            color = contentColor
-        )
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            when (shortcut) {
+                MarkdownShortcut.Heading1,
+                MarkdownShortcut.Heading2,
+                MarkdownShortcut.Bold,
+                MarkdownShortcut.Italic -> {
+                    Text(
+                        text = shortcut.toolbarLabel(),
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = if (shortcut == MarkdownShortcut.Bold) FontWeight.Bold else FontWeight.SemiBold,
+                            fontStyle = if (shortcut == MarkdownShortcut.Italic) FontStyle.Italic else FontStyle.Normal
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                else -> {
+                    Icon(
+                        imageVector = shortcut.toolbarIcon(),
+                        contentDescription = shortcut.contentDescription(),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
     }
 }
 
-private enum class MarkdownShortcut(val label: String) {
-    Heading1("H1"),
-    Heading2("H2"),
-    Italic("Italic"),
-    Bullet("List"),
-    Quote("Quote"),
-    Bold("Bold"),
-    Code("Code"),
-    Link("Link")
+private enum class MarkdownShortcut {
+    Heading1,
+    Heading2,
+    Italic,
+    Bullet,
+    Quote,
+    Bold,
+    Code,
+    Link
+}
+
+private fun MarkdownShortcut.toolbarLabel(): String = when (this) {
+    MarkdownShortcut.Heading1 -> "H1"
+    MarkdownShortcut.Heading2 -> "H2"
+    MarkdownShortcut.Italic -> "I"
+    MarkdownShortcut.Bold -> "B"
+    else -> ""
+}
+
+private fun MarkdownShortcut.toolbarIcon(): ImageVector = when (this) {
+    MarkdownShortcut.Bullet -> Icons.Rounded.FormatListBulleted
+    MarkdownShortcut.Quote -> Icons.Rounded.FormatQuote
+    MarkdownShortcut.Code -> Icons.Rounded.Code
+    MarkdownShortcut.Link -> Icons.Rounded.Link
+    else -> Icons.Rounded.Code
+}
+
+private fun MarkdownShortcut.contentDescription(): String = when (this) {
+    MarkdownShortcut.Heading1 -> "Heading 1"
+    MarkdownShortcut.Heading2 -> "Heading 2"
+    MarkdownShortcut.Italic -> "Italic"
+    MarkdownShortcut.Bullet -> "List"
+    MarkdownShortcut.Quote -> "Quote"
+    MarkdownShortcut.Bold -> "Bold"
+    MarkdownShortcut.Code -> "Code"
+    MarkdownShortcut.Link -> "Link"
 }
 
 private fun applyMarkdownShortcut(
