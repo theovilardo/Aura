@@ -10,6 +10,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -31,6 +33,8 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -77,13 +81,16 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -826,6 +833,13 @@ fun TaskMarkdownEditorScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp)
+                    .let { baseModifier ->
+                        if (isMarkdown && editorMode == MarkdownEditorMode.Markdown) {
+                            baseModifier.imePadding()
+                        } else {
+                            baseModifier
+                        }
+                    }
                     .padding(
                         top = paddingValues.calculateTopPadding() + 6.dp,
                         bottom = if (isMarkdown && editorMode == MarkdownEditorMode.Markdown) 112.dp else 24.dp
@@ -856,7 +870,8 @@ fun TaskMarkdownEditorScreen(
                         } else {
                             "Write the note here."
                         },
-                        minLines = 14
+                        minLines = 14,
+                        cursorBottomPadding = if (isMarkdown) 80.dp else 28.dp
                     )
                 }
             }
@@ -912,34 +927,74 @@ private fun MarkdownEditorInput(
     modifier: Modifier = Modifier,
     isMarkdown: Boolean,
     placeholder: String,
-    minLines: Int
+    minLines: Int,
+    cursorBottomPadding: Dp
 ) {
-    BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier,
-        textStyle = MaterialTheme.typography.bodyLarge.copy(
-            color = MaterialTheme.colorScheme.onSurface,
-            fontFamily = if (isMarkdown) FontFamily.Monospace else FontFamily.Default
-        ),
-        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-        minLines = minLines,
-        decorationBox = { innerTextField ->
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.TopStart
-            ) {
-                if (value.text.isBlank()) {
-                    Text(
-                        text = placeholder,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                innerTextField()
-            }
+    BoxWithConstraints(modifier = modifier) {
+        val editorViewportHeight = maxHeight
+        val bringIntoViewRequester = remember { BringIntoViewRequester() }
+        val density = LocalDensity.current
+        val scrollState = rememberScrollState()
+        var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+
+        LaunchedEffect(value.text, value.selection, textLayoutResult, cursorBottomPadding) {
+            val layoutResult = textLayoutResult ?: return@LaunchedEffect
+            val cursorOffset = maxOf(value.selection.start, value.selection.end).coerceIn(0, value.text.length)
+            val cursorRect = layoutResult.getCursorRect(cursorOffset)
+            val extraTop = with(density) { 28.dp.toPx() }
+            val extraBottom = with(density) { cursorBottomPadding.toPx() }
+
+            bringIntoViewRequester.bringIntoView(
+                Rect(
+                    left = 0f,
+                    top = (cursorRect.top - extraTop).coerceAtLeast(0f),
+                    right = cursorRect.right.coerceAtLeast(1f),
+                    bottom = cursorRect.bottom + extraBottom
+                )
+            )
         }
-    )
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState),
+            contentAlignment = Alignment.TopStart
+        ) {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = editorViewportHeight)
+                    .bringIntoViewRequester(bringIntoViewRequester)
+                    .padding(bottom = cursorBottomPadding),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontFamily = if (isMarkdown) FontFamily.Monospace else FontFamily.Default
+                ),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                minLines = minLines,
+                onTextLayout = { layoutResult ->
+                    textLayoutResult = layoutResult
+                },
+                decorationBox = { innerTextField ->
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.TopStart
+                    ) {
+                        if (value.text.isBlank()) {
+                            Text(
+                                text = placeholder,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        innerTextField()
+                    }
+                }
+            )
+        }
+    }
 }
 
 @Composable
