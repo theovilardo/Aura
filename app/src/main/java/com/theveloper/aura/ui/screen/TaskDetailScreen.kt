@@ -133,6 +133,7 @@ fun TaskDetailScreen(
     taskId: String,
     onNavigateBack: () -> Unit,
     onNavigateToEdit: (String) -> Unit,
+    onNavigateToNotesReader: (String, String) -> Unit,
     viewModel: TaskDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -198,6 +199,11 @@ fun TaskDetailScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp),
+                onOpenNotes = { component ->
+                    uiState.task?.let { task ->
+                        onNavigateToNotesReader(task.id, component.id)
+                    }
+                },
                 onSignal = viewModel::onSignal
             )
 
@@ -359,6 +365,123 @@ private fun TaskDetailChromeIconButton(
                 contentDescription = contentDescription,
                 tint = resolvedContentColor.copy(alpha = alpha)
             )
+        }
+    }
+}
+
+@Composable
+fun TaskMarkdownReaderScreen(
+    taskId: String,
+    componentId: String,
+    onNavigateBack: () -> Unit,
+    viewModel: TaskDetailViewModel = hiltViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val notesConfig = remember(taskId, uiState.task, componentId) {
+        uiState.task?.components
+            ?.firstOrNull { it.id == componentId }
+            ?.config as? NotesConfig
+    }
+
+    Scaffold(
+        topBar = {
+            TaskMarkdownReaderTopBar(
+                isMarkdown = notesConfig?.isMarkdown ?: true,
+                onNavigateBack = onNavigateBack
+            )
+        },
+        containerColor = Color.Transparent
+    ) { paddingValues ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            TaskEditTextureBackground()
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp)
+                    .padding(
+                        top = paddingValues.calculateTopPadding() + 6.dp,
+                        bottom = paddingValues.calculateBottomPadding() + 24.dp
+                    ),
+                shape = RoundedCornerShape(34.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+                shadowElevation = 4.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                ) {
+                    if (notesConfig == null) {
+                        Text(
+                            text = "We couldn't find this note anymore.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        FullscreenRenderedNotesContent(
+                            config = notesConfig,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TaskMarkdownReaderTopBar(
+    isMarkdown: Boolean,
+    onNavigateBack: () -> Unit
+) {
+    AuraGradientTopBarContainer(
+        style = AuraGradientTopBarStyle.Linear,
+        bottomFadePadding = 10.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TaskDetailChromeIconButton(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Volver",
+                onClick = onNavigateBack
+            )
+
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.96f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.26f)),
+                tonalElevation = 2.dp,
+                shadowElevation = 8.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.Notes,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (isMarkdown) "Markdown reader" else "Note reader",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.size(48.dp))
         }
     }
 }
@@ -570,7 +693,7 @@ private fun TaskEditFloatingAction(
 
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
+        shape = CircleShape,
         color = containerColor.copy(alpha = containerColor.alpha * alpha),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
         shadowElevation = 2.dp,
@@ -589,7 +712,7 @@ private fun TaskEditFloatingAction(
                 contentDescription = null,
                 tint = contentColor.copy(alpha = alpha)
             )
-            Spacer(modifier = Modifier.size(10.dp))
+            Spacer(modifier = Modifier.size(6.dp))
             Text(
                 text = label,
                 style = MaterialTheme.typography.titleMedium,

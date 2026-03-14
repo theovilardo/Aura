@@ -65,6 +65,7 @@ fun TaskRenderer(
     modifier: Modifier = Modifier,
     listState: LazyListState? = null,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    onOpenNotes: (TaskComponent) -> Unit = {},
     onSignal: (SignalType) -> Unit = {}
 ) {
     when {
@@ -117,7 +118,8 @@ fun TaskRenderer(
                     when (mode) {
                         TaskRenderMode.INTERPRETED -> InterpretedComponentRenderer(
                             component = component,
-                            onSignal = onSignal
+                            onSignal = onSignal,
+                            onOpenNotes = onOpenNotes
                         )
                         TaskRenderMode.EDIT -> ComponentRenderer(
                             component = component,

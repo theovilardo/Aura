@@ -97,6 +97,7 @@ import com.theveloper.aura.ui.screen.TaskCreationMode
 import com.theveloper.aura.ui.screen.TaskDetailScreen
 import com.theveloper.aura.ui.screen.TaskEditScreen
 import com.theveloper.aura.ui.screen.TaskMarkdownEditorScreen
+import com.theveloper.aura.ui.screen.TaskMarkdownReaderScreen
 import com.theveloper.aura.ui.screen.TasksScreen
 import com.theveloper.aura.ui.theme.AuraFloatingBarColors
 import com.theveloper.aura.ui.theme.auraFloatingBarColors
@@ -106,6 +107,7 @@ private const val HOME_ROUTE = "home"
 private const val TASKS_ROUTE = "tasks"
 private const val TASK_DETAIL_ROUTE = "task_detail/{taskId}"
 private const val TASK_EDIT_ROUTE = "task_detail_edit/{taskId}"
+private const val TASK_NOTE_READER_ROUTE = "task_detail_note/{taskId}/{componentId}"
 private const val TASK_NOTE_EDITOR_ROUTE = "task_detail_edit_note/{taskId}/{componentId}"
 private const val SETTINGS_ROUTE = "settings"
 private const val SETTINGS_INTELLIGENCE_ROUTE = "settings/intelligence"
@@ -155,7 +157,21 @@ fun AuraApp() {
                         onNavigateBack = { navController.popBackStack() },
                         onNavigateToEdit = { editableTaskId ->
                             navController.navigate("task_detail_edit/$editableTaskId")
+                        },
+                        onNavigateToNotesReader = { readableTaskId, componentId ->
+                            navController.navigate(buildTaskNoteReaderRoute(readableTaskId, componentId))
                         }
+                    )
+                }
+            }
+            composable(TASK_NOTE_READER_ROUTE) { backStackEntry ->
+                val taskId = backStackEntry.arguments?.getString("taskId") ?: ""
+                val componentId = backStackEntry.arguments?.getString("componentId") ?: ""
+                SecondaryScreenFrame {
+                    TaskMarkdownReaderScreen(
+                        taskId = taskId,
+                        componentId = componentId,
+                        onNavigateBack = { navController.popBackStack() }
                     )
                 }
             }
@@ -644,6 +660,13 @@ private fun buildTaskNoteEditorRoute(
     componentId: String
 ): String {
     return "task_detail_edit_note/${Uri.encode(taskId)}/${Uri.encode(componentId)}"
+}
+
+private fun buildTaskNoteReaderRoute(
+    taskId: String,
+    componentId: String
+): String {
+    return "task_detail_note/${Uri.encode(taskId)}/${Uri.encode(componentId)}"
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraEnterTransition(): EnterTransition {

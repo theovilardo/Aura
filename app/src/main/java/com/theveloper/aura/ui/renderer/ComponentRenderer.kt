@@ -1,5 +1,6 @@
 package com.theveloper.aura.ui.renderer
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -95,6 +96,7 @@ fun ComponentRenderer(
 fun InterpretedComponentRenderer(
     component: TaskComponent,
     onSignal: (SignalType) -> Unit,
+    onOpenNotes: (TaskComponent) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val config = component.config
@@ -125,7 +127,10 @@ fun InterpretedComponentRenderer(
             )
         }
         component.type == ComponentType.NOTES && config is NotesConfig -> {
-            InterpretedNotesComponent(config = config)
+            InterpretedNotesComponent(
+                config = config,
+                modifier = modifier.clickable(onClick = { onOpenNotes(component) })
+            )
         }
         component.type == ComponentType.METRIC_TRACKER && config is MetricTrackerConfig -> {
             MetricTrackerComponent(
