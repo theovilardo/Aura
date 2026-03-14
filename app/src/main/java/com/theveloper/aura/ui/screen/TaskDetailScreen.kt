@@ -36,6 +36,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
 import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.automirrored.rounded.ShowChart
 import androidx.compose.material.icons.rounded.Autorenew
@@ -47,7 +48,6 @@ import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.DonutLarge
 import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.FormatListBulleted
 import androidx.compose.material.icons.rounded.FormatQuote
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Refresh
@@ -107,7 +107,7 @@ import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskComponent
 import com.theveloper.aura.domain.model.TaskStatus
 import com.theveloper.aura.ui.components.ComponentPill
-import com.theveloper.aura.ui.components.InterpretedNotesComponent
+import com.theveloper.aura.ui.components.FullscreenRenderedNotesContent
 import com.theveloper.aura.ui.renderer.EditableTaskRenderer
 import com.theveloper.aura.ui.renderer.TaskRenderMode
 import com.theveloper.aura.ui.renderer.TaskRenderer
@@ -828,7 +828,7 @@ fun TaskMarkdownEditorScreen(
                     .padding(horizontal = 16.dp)
                     .padding(
                         top = paddingValues.calculateTopPadding() + 6.dp,
-                        bottom = if (isMarkdown) 112.dp else 24.dp
+                        bottom = if (isMarkdown && editorMode == MarkdownEditorMode.Markdown) 112.dp else 24.dp
                     ),
                 shape = RoundedCornerShape(34.dp),
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
@@ -836,71 +836,10 @@ fun TaskMarkdownEditorScreen(
                 shadowElevation = 4.dp
             ) {
                 if (editorMode == MarkdownEditorMode.Preview && isMarkdown) {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .verticalScroll(rememberScrollState())
-                                .padding(horizontal = 20.dp, vertical = 18.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            Text(
-                                text = "Rendered text",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            if (editorValue.text.isBlank()) {
-                                Text(
-                                    text = "Start writing below and your markdown will render here in real time.",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            } else {
-                                InterpretedNotesComponent(
-                                    config = NotesConfig(
-                                        text = editorValue.text,
-                                        isMarkdown = true
-                                    ),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
-
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerLow,
-                            border = BorderStroke(
-                                1.dp,
-                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.26f)
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 18.dp, vertical = 16.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Text(
-                                    text = "Edit markdown",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                MarkdownEditorInput(
-                                    value = editorValue,
-                                    isMarkdown = true,
-                                    placeholder = "Refine the markdown here while you preview the rendered result.",
-                                    minLines = 5,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    onValueChange = { updatedValue ->
-                                        editorValue = updatedValue
-                                        pushResult(updatedValue.text)
-                                    }
-                                )
-                            }
-                        }
-                    }
+                    MarkdownRenderedPreview(
+                        text = editorValue.text,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 } else {
                     MarkdownEditorInput(
                         value = editorValue,
@@ -922,7 +861,7 @@ fun TaskMarkdownEditorScreen(
                 }
             }
 
-            if (isMarkdown) {
+            if (isMarkdown && editorMode == MarkdownEditorMode.Markdown) {
                 MarkdownEditorFloatingToolbar(
                     modifier = Modifier.align(Alignment.BottomCenter),
                     onApplyShortcut = { shortcut ->
@@ -932,6 +871,36 @@ fun TaskMarkdownEditorScreen(
                     }
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownRenderedPreview(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        if (text.isBlank()) {
+            Text(
+                text = "Nothing to preview yet. Switch back to markdown to keep writing.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            FullscreenRenderedNotesContent(
+                config = NotesConfig(
+                    text = text,
+                    isMarkdown = true
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
@@ -1197,7 +1166,7 @@ private fun MarkdownShortcut.toolbarLabel(): String = when (this) {
 }
 
 private fun MarkdownShortcut.toolbarIcon(): ImageVector = when (this) {
-    MarkdownShortcut.Bullet -> Icons.Rounded.FormatListBulleted
+    MarkdownShortcut.Bullet -> Icons.AutoMirrored.Rounded.FormatListBulleted
     MarkdownShortcut.Quote -> Icons.Rounded.FormatQuote
     MarkdownShortcut.Code -> Icons.Rounded.Code
     MarkdownShortcut.Link -> Icons.Rounded.Link

@@ -96,6 +96,35 @@ fun InterpretedNotesComponent(
 }
 
 @Composable
+fun FullscreenRenderedNotesContent(
+    config: NotesConfig,
+    modifier: Modifier = Modifier
+) {
+    val blocks = remember(config.text) { parseMarkdownBlocks(config.text) }
+
+    if (config.text.isBlank()) {
+        Text(
+            text = "No notes yet.",
+            modifier = modifier,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    } else if (config.isMarkdown) {
+        FullscreenMarkdownContent(
+            blocks = blocks,
+            modifier = modifier.fillMaxWidth()
+        )
+    } else {
+        Text(
+            text = config.text,
+            modifier = modifier,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
 private fun MarkdownContent(
     blocks: List<MarkdownBlock>,
     modifier: Modifier = Modifier
@@ -178,6 +207,98 @@ private fun MarkdownContent(
                             ),
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                             style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FullscreenMarkdownContent(
+    blocks: List<MarkdownBlock>,
+    modifier: Modifier = Modifier
+) {
+    val scheme = MaterialTheme.colorScheme
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        blocks.forEach { block ->
+            when (block) {
+                is MarkdownBlock.Heading -> {
+                    Text(
+                        text = buildMarkdownAnnotatedString(
+                            text = block.text,
+                            linkColor = scheme.primary,
+                            codeBackground = scheme.surfaceContainerHighest,
+                            codeColor = scheme.onSurface
+                        ),
+                        style = when (block.level) {
+                            1 -> MaterialTheme.typography.displaySmall
+                            2 -> MaterialTheme.typography.headlineMedium
+                            else -> MaterialTheme.typography.titleLarge
+                        },
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                is MarkdownBlock.Paragraph -> {
+                    Text(
+                        text = buildMarkdownAnnotatedString(
+                            text = block.text,
+                            linkColor = scheme.primary,
+                            codeBackground = scheme.surfaceContainerHighest,
+                            codeColor = scheme.onSurface
+                        ),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                is MarkdownBlock.BulletList -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        block.items.forEach { item ->
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Text(
+                                    text = "•",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = buildMarkdownAnnotatedString(
+                                        text = item,
+                                        linkColor = scheme.primary,
+                                        codeBackground = scheme.surfaceContainerHighest,
+                                        codeColor = scheme.onSurface
+                                    ),
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+                is MarkdownBlock.Quote -> {
+                    Surface(
+                        shape = RoundedCornerShape(28.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f))
+                    ) {
+                        Text(
+                            text = buildMarkdownAnnotatedString(
+                                text = block.text,
+                                linkColor = scheme.primary,
+                                codeBackground = scheme.surfaceContainerHighest,
+                                codeColor = scheme.onSurface
+                            ),
+                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                            style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
