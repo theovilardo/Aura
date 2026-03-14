@@ -871,7 +871,7 @@ fun TaskMarkdownEditorScreen(
                             "Write the note here."
                         },
                         minLines = 14,
-                        cursorBottomPadding = if (isMarkdown) 80.dp else 28.dp
+                        cursorBottomPadding = if (isMarkdown) 52.dp else 28.dp
                     )
                 }
             }
@@ -937,7 +937,7 @@ private fun MarkdownEditorInput(
         val scrollState = rememberScrollState()
         var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
-        LaunchedEffect(value.text, value.selection, textLayoutResult, cursorBottomPadding) {
+        LaunchedEffect(value.text, value.selection) {
             val layoutResult = textLayoutResult ?: return@LaunchedEffect
             val cursorOffset = maxOf(value.selection.start, value.selection.end).coerceIn(0, value.text.length)
             val cursorRect = layoutResult.getCursorRect(cursorOffset)
