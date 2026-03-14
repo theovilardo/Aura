@@ -94,14 +94,13 @@ fun TasksScreen(
                     .background(MaterialTheme.colorScheme.background),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(
-                    start = 16.dp,
-                    top = innerPadding.calculateTopPadding() + 12.dp,
-                    end = 16.dp,
+                    top = innerPadding.calculateTopPadding(),
                     bottom = innerPadding.calculateBottomPadding() + 216.dp
                 )
             ) {
                 item {
                     DateProgressHeader(
+                        modifier = Modifier.padding(horizontal = 16.dp),
                         today = uiState.today,
                         doneToday = uiState.doneToday,
                         totalActive = uiState.totalActive
@@ -113,7 +112,13 @@ fun TasksScreen(
                         HabitStreakSection(habits = uiState.habitItems)
                     }
                     items(uiState.habitItems, key = { it.taskId }) { habit ->
-                        HabitCard(habit = habit, today = uiState.today)
+                        HabitCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            habit = habit,
+                            today = uiState.today
+                        )
                     }
                 } else {
                     item {
@@ -196,6 +201,7 @@ private fun rememberHabitTrackerTitleStyle(): TextStyle {
 
 @Composable
 private fun DateProgressHeader(
+    modifier: Modifier = Modifier,
     today: LocalDate,
     doneToday: Int,
     totalActive: Int
@@ -211,7 +217,7 @@ private fun DateProgressHeader(
     val progressRatio = if (totalActive > 0) doneToday.toFloat() / totalActive.toFloat() else 0f
 
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
@@ -291,6 +297,7 @@ private fun DateProgressHeader(
 private fun HabitStreakSection(habits: List<HabitItemUiState>) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
+            modifier = Modifier.padding(start = 16.dp),
             text = "ACTIVE STREAKS",
             style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = FontWeight.SemiBold,
@@ -300,6 +307,9 @@ private fun HabitStreakSection(habits: List<HabitItemUiState>) {
         )
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(
+                horizontal = 16.dp
+            ),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             items(habits, key = { it.taskId }) { habit ->
@@ -396,12 +406,16 @@ private fun ActiveStreakBadge(habit: HabitItemUiState) {
 // ─── Per-habit card ──────────────────────────────────────────────────────────
 
 @Composable
-private fun HabitCard(habit: HabitItemUiState, today: LocalDate) {
+private fun HabitCard(
+    modifier: Modifier,
+    habit: HabitItemUiState,
+    today: LocalDate
+) {
     val accentColor = habitAccentColor(habit.type)
     val weekData = remember(habit.completionGrid30d) { habit.completionGrid30d.takeLast(7) }
 
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
@@ -610,7 +624,9 @@ private fun WeekSparkline(
 @Composable
 private fun HabitEmptyState() {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
