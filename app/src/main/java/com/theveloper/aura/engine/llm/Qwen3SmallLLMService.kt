@@ -6,12 +6,12 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class Gemma1BLLMService @Inject constructor(
+class Qwen3SmallLLMService @Inject constructor(
     @ApplicationContext context: Context
 ) : LiteRtLocalLLMService(
     context = context,
-    spec = ModelCatalog.gemma3_1B,
-    tier = LLMTier.GEMMA_3_1B,
+    spec = ModelCatalog.qwen3_0_6B,
+    tier = LLMTier.QWEN_3_0_6B,
     backendName = "CPU",
     defaultMaxOutputTokens = 768
 )

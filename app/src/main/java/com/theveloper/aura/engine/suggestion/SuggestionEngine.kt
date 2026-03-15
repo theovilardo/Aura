@@ -56,7 +56,7 @@ class SuggestionEngine @Inject constructor(
                         val payload = JSONObject().apply {
                             put("action", "reduce_components")
                         }.toString()
-                        val reasoning = "Detectamos que rara vez completas esta tarea. Podríamos simplificar los pasos necesarios para ayudarte a lograrla con menos esfuerzo."
+                        val reasoning = "We noticed you rarely complete this task. We could simplify the required steps to help you accomplish it with less effort."
                         createSuggestion(task.id, SuggestionType.SIMPLIFY_TASK, payload, reasoning)
                     }
                 }

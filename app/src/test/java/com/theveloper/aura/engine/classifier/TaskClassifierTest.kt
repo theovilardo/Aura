@@ -85,7 +85,7 @@ class TaskClassifierTest {
 
         assertEquals(TaskGenerationSource.LOCAL_AI, result.source)
         assertEquals(TaskType.FINANCE, result.dsl.type)
-        assertTrue(result.warnings.any { it.contains("Groq no respondió bien") })
+        assertTrue(result.warnings.any { it.contains("Groq did not respond correctly") })
         coVerify(exactly = 1) { onDeviceTaskDslService.compose(any()) }
     }
 
@@ -97,14 +97,14 @@ class TaskClassifierTest {
         coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.AUTO) } returns route(
             source = TaskGenerationSource.RULES,
             tier = LLMTier.RULES_ONLY,
-            reason = "Falta descargar el modelo local recomendado."
+            reason = "The recommended local model has not been downloaded yet."
         )
         coEvery { routedService.classify(any(), any()) } returns localThinDsl()
 
         val result = subject.classify("necesito ordenar papeles")
 
         assertEquals(TaskGenerationSource.RULES, result.source)
-        assertTrue(result.warnings.any { it.contains("Falta descargar el modelo local") })
+        assertTrue(result.warnings.any { it.contains("recommended local model has not been downloaded") })
     }
 
     @Test

@@ -25,7 +25,7 @@ class TaskClassifier @Inject constructor(
         allowClarification: Boolean = true
     ): TaskGenerationResult {
         val normalizedInput = input.trim()
-        require(normalizedInput.isNotBlank()) { "El texto de la tarea no puede estar vacio." }
+        require(normalizedInput.isNotBlank()) { "Task text cannot be empty." }
 
         val extractedEntities = entityExtractorService.extract(normalizedInput)
         val intentResult = intentClassifier.classify(normalizedInput)
@@ -87,10 +87,10 @@ class TaskClassifier @Inject constructor(
             route.service.classify(input, context)
         }.getOrElse {
             warnings += when (route.source) {
-                TaskGenerationSource.GROQ_API -> "Groq no respondió bien. Se usó la ruta local."
-                TaskGenerationSource.LOCAL_AI -> "El modelo local no respondió bien. Se usó la ruta heurística."
+                TaskGenerationSource.GROQ_API -> "Groq did not respond correctly. Local route was used."
+                TaskGenerationSource.LOCAL_AI -> "Local model did not respond correctly. Heuristic route was used."
                 TaskGenerationSource.RULES,
-                TaskGenerationSource.MANUAL -> "La ruta configurada falló. Se usó la composición local."
+                TaskGenerationSource.MANUAL -> "Configured route failed. Local composition was used."
             }
             return null
         }
@@ -113,7 +113,7 @@ class TaskClassifier @Inject constructor(
             }
 
             is TaskDSLValidator.ValidationResult.Invalid -> {
-                warnings += "La capa de inteligencia devolvió una estructura inválida. Se usó la composición local."
+                warnings += "The intelligence layer returned an invalid structure. Local composition was used."
                 buildFallbackResult(
                     input = input,
                     context = context,
@@ -148,7 +148,7 @@ class TaskClassifier @Inject constructor(
                 )
             )
         }.getOrElse {
-            warnings += "La composición heurística falló. Se usó el preset determinístico."
+            warnings += "Heuristic composition failed. Deterministic preset was used."
             OnDeviceTaskDslResult(
                 dsl = TaskDSLBuilder.buildDeterministic(input, intentResult, extractedEntities),
                 confidence = intentResult.confidence.coerceAtLeast(0.42f),
@@ -162,7 +162,7 @@ class TaskClassifier @Inject constructor(
             }
 
             is TaskDSLValidator.ValidationResult.Invalid -> {
-                warnings += "La composición heurística no fue válida. Se usó el preset determinístico."
+                warnings += "Heuristic composition was invalid. Deterministic preset was used."
                 TaskDSLBuilder.buildDeterministic(input, intentResult, extractedEntities)
             }
         }

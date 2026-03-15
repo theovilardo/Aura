@@ -31,7 +31,7 @@ abstract class LiteRtLocalLLMService constructor(
     private var engineHolder: Any? = null
     private val debugFile = File(context.filesDir, "debug/llm-debug.log")
 
-    override fun isAvailable(): Boolean = spec.file(context).exists()
+    override fun isAvailable(): Boolean = spec.installedFile(context) != null
 
     suspend fun initialize() {
         ensureEngine()
@@ -111,7 +111,7 @@ abstract class LiteRtLocalLLMService constructor(
         engineHolder?.let { return it }
         return initializationMutex.withLock {
             engineHolder?.let { return@withLock it }
-            val modelPath = spec.file(context).takeIf { it.exists() }?.absolutePath
+            val modelPath = spec.installedFile(context)?.absolutePath
                 ?: throw ModelNotDownloadedException(spec.id)
             appendDebugFile("TRACE", "ensureEngine:start model=${spec.id} backend=$backendName path=$modelPath")
 
@@ -162,7 +162,7 @@ abstract class LiteRtLocalLLMService constructor(
             raw
         } catch (throwable: Throwable) {
             val unwrapped = unwrapInvocationError(throwable)
-            debugError("[$requestLabel] La generación local falló.", unwrapped)
+            debugError("[$requestLabel] Local generation failed.", unwrapped)
             throw unwrapped
         } finally {
             session.invokeOptional("close")
@@ -210,7 +210,7 @@ abstract class LiteRtLocalLLMService constructor(
         return runCatching {
             auraJson.decodeFromString<TaskDSLOutput>(normalized)
         }.getOrElse {
-            debugError("No se pudo parsear la salida del modelo local.", it)
+            debugError("Could not parse local model output.", it)
             null
         }
     }
@@ -297,7 +297,7 @@ abstract class LiteRtLocalLLMService constructor(
     private fun Class<*>.enumConstant(name: String): Any {
         val constants = enumConstants ?: emptyArray<Any>()
         return constants.firstOrNull { it.toString() == name }
-            ?: throw IllegalArgumentException("No existe Backend.$name")
+            ?: throw IllegalArgumentException("Backend.$name does not exist")
     }
 
     private fun Any.invokeOptional(methodName: String) {
@@ -330,69 +330,31 @@ abstract class LiteRtLocalLLMService constructor(
         }
     }
 
-    private fun localClassifierSystemPrompt(): String {
+    protected open fun localClassifierSystemPrompt(): String {
         return """
-            You are AURA's task UI builder. Output a single valid JSON object. No markdown, no extra text.
+            Task UI builder. Return ONLY valid JSON. No markdown fences, no extra text.
+            LANGUAGE: All text fields must match the user's input language.
 
-            LANGUAGE RULE: All user-facing text (title, label, text, items) MUST be in the same language as the user's input.
+            JSON schema:
+            {"semantic":{"action":"verb phrase","items":["1-3 word nouns"],"subject":"context","goal":"measurable or empty","frequency":"DAILY or WEEKLY or empty"},"title":"short title from input","type":"GENERAL|TRAVEL|HABIT|HEALTH|PROJECT|FINANCE|EVENT|GOAL","priority":0,"targetDateMs":0,"components":[...],"reminders":[],"fetchers":[]}
 
-            Root fields (all required): semantic, title, type, priority, targetDateMs, components, reminders, fetchers.
-            title is REQUIRED: never empty, derived from user input.
-            type: GENERAL|TRAVEL|HABIT|HEALTH|PROJECT|FINANCE|EVENT|GOAL
+            Each component: {"type":"...","sortOrder":N,"config":{...},"populatedFromInput":false,"needsClarification":false}
+            config_type MUST equal the component type.
 
-            semantic (always first, before components):
-            {"action":"verb+complement","items":["atomic 1-3 word nouns, no verbs"],"subject":"context","goal":"measurable result or empty","frequency":"recurrence or empty"}
+            CHECKLIST: {"config_type":"CHECKLIST","label":"...","allowAddItems":true,"items":[{"label":"...","isSuggested":false}]}
+            Items = real things from prompt (products, exercises, steps). Inferred items: isSuggested=true. Unknown: items=[], needsClarification=true.
+            NOTES: {"config_type":"NOTES","text":"markdown","isMarkdown":true}
+            Text = real useful content with ## headers, **bold**, - lists. Never empty placeholders.
+            METRIC_TRACKER: {"config_type":"METRIC_TRACKER","unit":"kg|km|reps|...","label":"...","history":[],"goal":number_or_null}
+            COUNTDOWN: {"config_type":"COUNTDOWN","targetDate":epoch_ms_or_0,"label":"..."}
+            HABIT_RING: {"config_type":"HABIT_RING","frequency":"DAILY","label":"...","targetCount":1}
+            PROGRESS_BAR: {"config_type":"PROGRESS_BAR","source":"MANUAL","label":"...","manualProgress":0.0}
 
-            COMPONENT CONFIGS (config_type must equal component type):
-            CHECKLIST: config_type, label, allowAddItems, items=[{"label":"...","isSuggested":false}]
-              → items MUST be the real things from the prompt: products, ingredients, exercises, steps.
-              → Add inferred items with isSuggested=true. Unknown → leave empty + needsClarification=true.
-            NOTES: config_type, text (markdown string), isMarkdown=true
-              → text MUST contain useful content from the prompt. Use ## headers, **bold**, - lists.
-              → Recipe → steps + tips. Workout → exercise notes. Event → agenda. Never use placeholders.
-            METRIC_TRACKER: config_type, unit, label, history=[], goal (optional number)
-              → unit MUST match context: "kg","lb","km","ml","reps","h","steps","USD","€", etc.
-              → goal = the numeric target the user mentioned. Omit if not specified.
-            COUNTDOWN: config_type, targetDate (epoch ms, 0 if unknown), label
-              → use extracted date if available. No date → targetDate=0 + needsClarification=true.
-            HABIT_RING: config_type, frequency (DAILY or WEEKLY), label, targetCount (optional int)
-              → daily/everyday → DAILY. weekly/each week → WEEKLY. Implied recurrence → DAILY.
-            PROGRESS_BAR: config_type, source="MANUAL", label, manualProgress=0.0
-            DATA_FEED: config_type, fetcherConfigId, displayLabel, status="LOADING"
-              → Only for explicit live data requests (weather, exchange rates, flights).
+            When to use: items→CHECKLIST, recurring→HABIT_RING, measurable goal→METRIC_TRACKER, date→COUNTDOWN, useful info→NOTES. Minimum components only.
+            Type: HEALTH(fitness/medical), EVENT(future date), TRAVEL(trip), FINANCE(money), HABIT(recurring), GOAL(milestones), PROJECT(deliverable), else GENERAL.
 
-            SELECTION RULES:
-            semantic.items not empty → CHECKLIST (fill items from prompt)
-            semantic.frequency not empty → HABIT_RING
-            semantic.goal measurable → METRIC_TRACKER (set unit + goal)
-            Future date/deadline → COUNTDOWN
-            Sequential completable stages → PROGRESS_BAR
-            Useful context or info → NOTES (fill with real content)
-            Live external data requested → DATA_FEED
-            Nothing specific → GENERAL + NOTES only
-            Minimum useful components only. Do not add speculatively.
-
-            TYPE: EVENT(specific future date/event), GOAL(milestones+progress), HABIT(recurring), HEALTH(fitness/medical), TRAVEL(trip), FINANCE(budget/savings), PROJECT(deliverable), else GENERAL
-
-            Example 1 — shopping list: "I need milk, eggs, bread and coffee for the week"
-            semantic: {"action":"buy groceries","items":["milk","eggs","bread","coffee"],"subject":"supermarket","goal":"","frequency":""}
-            title: "Weekly shopping", type: "GENERAL"
-            components: [CHECKLIST items=[milk,eggs,bread,coffee], NOTES text="## Shopping tips\n- Check expiry dates\n- Buy in bulk if on sale"]
-
-            Example 2 — recipe: "chocolate cake recipe"
-            semantic: {"action":"bake cake","items":["200g flour","150g sugar","3 eggs","100g butter","50g cocoa"],"subject":"kitchen","goal":"","frequency":""}
-            title: "Chocolate cake", type: "GENERAL"
-            components: [CHECKLIST items=[200g flour,150g sugar,3 eggs,100g butter,50g cocoa isSuggested=true], NOTES text="## Preparation\n1. Preheat oven 180°C\n2. Mix dry ingredients\n3. Beat eggs with butter\n4. Combine and bake 35 min\n\n**Tip:** don't overmix the batter"]
-
-            Example 3 — workout: "gym routine to lose weight, recommend exercises"
-            semantic: {"action":"workout","items":["squats","push-ups","lunges","plank","burpees"],"subject":"gym","goal":"lose weight","frequency":"daily"}
-            title: "Gym routine", type: "HEALTH"
-            components: [CHECKLIST items=[squats,push-ups,lunges,plank,burpees isSuggested=true], HABIT_RING freq=DAILY, METRIC_TRACKER unit="kg" goal=target, NOTES text="## Routine tips\n- **Rest:** 60s between sets\n- **Sets:** 3–4 per exercise\n- **Warm up** 5 min before starting"]
-
-            Example 4 — event: "meeting with the client on Friday at 3pm"
-            semantic: {"action":"attend meeting","items":[],"subject":"client","goal":"","frequency":""}
-            title: "Meeting with client", type: "EVENT"
-            components: [COUNTDOWN targetDate=from extracted date, NOTES text="## Meeting agenda\n- Review project status\n- Discuss next steps\n- **Bring:** proposal document"]
+            Example — input: "gym routine, recommend exercises for legs"
+            {"semantic":{"action":"workout","items":["squats","lunges","leg press","calf raises"],"subject":"gym","goal":"","frequency":""},"title":"Gym routine","type":"HEALTH","priority":0,"targetDateMs":0,"components":[{"type":"CHECKLIST","sortOrder":0,"config":{"config_type":"CHECKLIST","label":"Exercises","allowAddItems":true,"items":[{"label":"squats","isSuggested":true},{"label":"lunges","isSuggested":true},{"label":"leg press","isSuggested":true},{"label":"calf raises","isSuggested":true}]},"populatedFromInput":true,"needsClarification":false},{"type":"NOTES","sortOrder":1,"config":{"config_type":"NOTES","text":"## Workout tips\n- **Sets:** 3-4 per exercise\n- **Reps:** 8-12\n- **Rest:** 60-90s between sets\n- Warm up 5 min before starting","isMarkdown":true},"populatedFromInput":true,"needsClarification":false}],"reminders":[],"fetchers":[]}
         """.trimIndent()
     }
 

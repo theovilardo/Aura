@@ -50,7 +50,7 @@ class ModelDownloadManager @Inject constructor(
         val settings = appSettingsRepository.getSnapshot()
         val accessToken = settings.huggingFaceAccessToken.trim()
         val targetFile = spec.file(context)
-        if (targetFile.exists()) {
+        if (spec.installedFile(context) != null) {
             emit(DownloadState.Complete)
             return@flow
         }
@@ -58,7 +58,7 @@ class ModelDownloadManager @Inject constructor(
         if (spec.requiresAuthentication && accessToken.isBlank()) {
             emit(
                 DownloadState.Error(
-                    reason = "Este modelo requiere aceptar la licencia de Gemma en Hugging Face y configurar un token de lectura en Settings > Intelligence.",
+                    reason = "This model requires accepted access on Hugging Face plus a read token in Settings > Intelligence.",
                     canRetry = false
                 )
             )
@@ -153,19 +153,20 @@ class ModelDownloadManager @Inject constructor(
         activeCalls.remove(spec.id)?.cancel()
     }
 
-    fun isModelDownloaded(spec: ModelSpec): Boolean = spec.file(context).exists()
+    fun isModelDownloaded(spec: ModelSpec): Boolean = spec.installedFile(context) != null
 
     fun deleteModel(spec: ModelSpec): Boolean {
         cancelDownload(spec)
-        val deletedInstalled = spec.file(context).delete()
+        val deletedInstalled = spec.allFiles(context).fold(false) { deletedAny, file ->
+            file.delete() || deletedAny
+        }
         val deletedPartial = File(spec.file(context).absolutePath + ".part").delete()
         return deletedInstalled || deletedPartial
     }
 
-    fun getModelSizeOnDisk(spec: ModelSpec): Long = spec.file(context).length()
+    fun getModelSizeOnDisk(spec: ModelSpec): Long = spec.installedFile(context)?.length() ?: 0L
 
-    fun getModelPath(spec: ModelSpec): String? = spec.file(context)
-        .takeIf { it.exists() }
+    fun getModelPath(spec: ModelSpec): String? = spec.installedFile(context)
         ?.absolutePath
 
     private fun isOnWifi(): Boolean {
@@ -179,9 +180,9 @@ class ModelDownloadManager @Inject constructor(
         return when (code) {
             401, 403 -> {
                 if (spec.requiresAuthentication) {
-                    "Hugging Face rechazó la descarga (${code}). Aceptá el acceso al modelo en ${spec.accessPageUrl} y verificá el token configurado."
+                    "Hugging Face rejected the download ($code). Accept model access at ${spec.accessPageUrl} and verify the configured token."
                 } else {
-                    "La descarga fue rechazada con HTTP $code."
+                    "Download was rejected with HTTP $code."
                 }
             }
 

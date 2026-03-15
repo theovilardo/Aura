@@ -19,8 +19,6 @@ data class LLMRuntimeStatus(
     val activeAdvancedTier: LLMTier,
     val executionMode: AiExecutionMode,
     val groqConfigured: Boolean,
-    val primaryModelDownloaded: Boolean,
-    val advancedModelDownloaded: Boolean,
     val activeReason: String
 )
 
@@ -32,7 +30,9 @@ class LLMServiceFactory @Inject constructor(
     private val rulesOnlyLLMService: RulesOnlyLLMService,
     private val groqLLMService: GroqLLMService,
     private val gemma1BLLMService: Gemma1BLLMService,
-    private val gemma3nE2BLLMService: Gemma3nE2BLLMService
+    private val gemma3nE2BLLMService: Gemma3nE2BLLMService,
+    private val qwen25InstructLLMService: Qwen25InstructLLMService,
+    private val qwen3SmallLLMService: Qwen3SmallLLMService
 ) {
 
     suspend fun resolvePrimaryService(modeOverride: AiExecutionMode? = null): ResolvedLLMRoute {
@@ -42,18 +42,22 @@ class LLMServiceFactory @Inject constructor(
             cloudFallbackAllowed = executionMode != AiExecutionMode.LOCAL_ONLY,
             groqConfigured = groqLLMService.isAvailable()
         )
-        val localRoute = resolveBestLocalRoute(detection)
+        val localRoute = resolveBestLocalRoute(
+            detection = detection,
+            preferredPrimaryModelId = settings.preferredPrimaryModelId,
+            preferredAdvancedModelId = settings.preferredAdvancedModelId
+        )
         val cloudRoute = resolveCloudRoute()
 
         return when (executionMode) {
             AiExecutionMode.CLOUD_FIRST -> cloudRoute ?: localRoute ?: buildRulesRoute(
                 detection = detection,
-                reason = "Groq no está listo y todavía no hay un modelo local descargado."
+                reason = "Groq is not ready and no local model has been downloaded yet."
             )
 
             AiExecutionMode.LOCAL_ONLY -> localRoute ?: buildRulesRoute(
                 detection = detection,
-                reason = "Modo local activo sin modelo descargado. Se usa el compositor por reglas."
+                reason = "Local-only mode active without a downloaded model. Using rules-based composer."
             )
 
             AiExecutionMode.AUTO -> localRoute ?: cloudRoute ?: buildRulesRoute(
@@ -61,9 +65,11 @@ class LLMServiceFactory @Inject constructor(
                 reason = when (detection.primaryTier) {
                     LLMTier.GEMMA_3_1B,
                     LLMTier.GEMINI_NANO,
-                    LLMTier.GEMMA_3N_E2B -> "Falta descargar el modelo local recomendado para este dispositivo."
+                    LLMTier.GEMMA_3N_E2B,
+                    LLMTier.QWEN_2_5_1_5B,
+                    LLMTier.QWEN_3_0_6B -> "The recommended local model for this device has not been downloaded yet."
 
-                    LLMTier.GROQ_API -> "Groq sería el tier recomendado, pero no está configurado."
+                    LLMTier.GROQ_API -> "Groq would be the recommended tier, but it is not configured."
                     LLMTier.RULES_ONLY -> detection.reasonForTier
                 }
             )
@@ -77,7 +83,10 @@ class LLMServiceFactory @Inject constructor(
             cloudFallbackAllowed = executionMode != AiExecutionMode.LOCAL_ONLY,
             groqConfigured = groqLLMService.isAvailable()
         )
-        val advancedRoute = resolveAdvancedLocalRoute(detection)
+        val advancedRoute = resolveAdvancedLocalRoute(
+            detection = detection,
+            preferredAdvancedModelId = settings.preferredAdvancedModelId
+        )
         val cloudRoute = resolveCloudRoute()
 
         return advancedRoute
@@ -100,40 +109,40 @@ class LLMServiceFactory @Inject constructor(
             activeAdvancedTier = advancedRoute.tier,
             executionMode = executionMode,
             groqConfigured = groqLLMService.isAvailable(),
-            primaryModelDownloaded = modelDownloadManager.isModelDownloaded(ModelCatalog.gemma3_1B),
-            advancedModelDownloaded = modelDownloadManager.isModelDownloaded(ModelCatalog.gemma3nE2B),
             activeReason = primaryRoute.reason
         )
     }
 
-    private fun resolveBestLocalRoute(detection: TierDetectionResult): ResolvedLLMRoute? {
-        return resolveAdvancedLocalRoute(detection)
-            ?: if (modelDownloadManager.isModelDownloaded(ModelCatalog.gemma3_1B)) {
-                ResolvedLLMRoute(
-                    service = gemma1BLLMService,
-                    tier = LLMTier.GEMMA_3_1B,
-                    source = TaskGenerationSource.LOCAL_AI,
-                    reason = "Gemma 3 1B está listo para clasificación local."
-                )
-            } else {
-                null
-            }
+    private fun resolveBestLocalRoute(
+        detection: TierDetectionResult,
+        preferredPrimaryModelId: String,
+        preferredAdvancedModelId: String
+    ): ResolvedLLMRoute? {
+        return resolveAdvancedLocalRoute(detection, preferredAdvancedModelId)
+            ?: resolvePrimaryLocalRoute(preferredPrimaryModelId)
     }
 
-    private fun resolveAdvancedLocalRoute(detection: TierDetectionResult): ResolvedLLMRoute? {
-        return if (
-            detection.supportsAdvancedTier &&
-            modelDownloadManager.isModelDownloaded(ModelCatalog.gemma3nE2B)
-        ) {
-            ResolvedLLMRoute(
-                service = gemma3nE2BLLMService,
-                tier = LLMTier.GEMMA_3N_E2B,
-                source = TaskGenerationSource.LOCAL_AI,
-                reason = "Gemma 3n E2B está activo para tareas avanzadas."
-            )
-        } else {
-            null
-        }
+    private fun resolvePrimaryLocalRoute(preferredPrimaryModelId: String): ResolvedLLMRoute? {
+        val preferred = ModelCatalog.primaryById(preferredPrimaryModelId)
+        return resolvePreferredRoute(
+            preferred = preferred,
+            candidates = ModelCatalog.primaryModels,
+            activeReason = { spec -> "${spec.displayName} is active for local generation." }
+        )
+    }
+
+    private fun resolveAdvancedLocalRoute(
+        detection: TierDetectionResult,
+        preferredAdvancedModelId: String
+    ): ResolvedLLMRoute? {
+        if (!detection.supportsAdvancedTier) return null
+
+        val preferred = ModelCatalog.advancedById(preferredAdvancedModelId)
+        return resolvePreferredRoute(
+            preferred = preferred,
+            candidates = ModelCatalog.advancedModels,
+            activeReason = { spec -> "${spec.displayName} is active for richer local tasks." }
+        )
     }
 
     private fun resolveCloudRoute(): ResolvedLLMRoute? {
@@ -142,7 +151,7 @@ class LLMServiceFactory @Inject constructor(
                 service = groqLLMService,
                 tier = LLMTier.GROQ_API,
                 source = TaskGenerationSource.GROQ_API,
-                reason = "Groq quedó como backend activo para esta ejecución."
+                reason = "Groq is the active backend for this execution."
             )
         } else {
             null
@@ -159,5 +168,49 @@ class LLMServiceFactory @Inject constructor(
             source = TaskGenerationSource.RULES,
             reason = reason.ifBlank { detection.reasonForTier }
         )
+    }
+
+    private fun resolvePreferredRoute(
+        preferred: ModelSpec,
+        candidates: List<ModelSpec>,
+        activeReason: (ModelSpec) -> String
+    ): ResolvedLLMRoute? {
+        if (modelDownloadManager.isModelDownloaded(preferred)) {
+            return buildLocalRoute(
+                spec = preferred,
+                reason = activeReason(preferred)
+            )
+        }
+
+        val fallback = candidates.firstOrNull { spec ->
+            spec.id != preferred.id && modelDownloadManager.isModelDownloaded(spec)
+        } ?: return null
+
+        return buildLocalRoute(
+            spec = fallback,
+            reason = "Using downloaded ${fallback.displayName} while ${preferred.displayName} is not ready yet."
+        )
+    }
+
+    private fun buildLocalRoute(
+        spec: ModelSpec,
+        reason: String
+    ): ResolvedLLMRoute {
+        return ResolvedLLMRoute(
+            service = serviceFor(spec),
+            tier = spec.tier,
+            source = TaskGenerationSource.LOCAL_AI,
+            reason = reason
+        )
+    }
+
+    private fun serviceFor(spec: ModelSpec): LLMService {
+        return when (spec.id) {
+            ModelCatalog.gemma3_1B.id -> gemma1BLLMService
+            ModelCatalog.gemma3nE2B.id -> gemma3nE2BLLMService
+            ModelCatalog.qwen2_5_1_5B.id -> qwen25InstructLLMService
+            ModelCatalog.qwen3_0_6B.id -> qwen3SmallLLMService
+            else -> rulesOnlyLLMService
+        }
     }
 }

@@ -41,7 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.theveloper.aura.engine.llm.DownloadState
 import com.theveloper.aura.engine.llm.LLMTier
-import com.theveloper.aura.engine.llm.ModelCatalog
+import com.theveloper.aura.engine.llm.LocalModelSlot
+import com.theveloper.aura.engine.llm.ModelSpec
 
 @Composable
 fun IntelligenceSettingsScreen(
@@ -78,31 +79,55 @@ fun IntelligenceSettingsScreen(
         }
 
         item {
-            ModelManagementCard(
+            SettingsInfoCard(
                 icon = Icons.Rounded.Memory,
-                title = "Gemma 3 1B",
-                description = "Clasificación principal, composición estructurada y ejecución local offline.",
-                uiState = uiState.primaryModel,
-                optionalLabel = null,
-                onDownloadWifi = { viewModel.downloadPrimaryModel(wifiOnly = true) },
-                onDownloadMobile = { viewModel.downloadPrimaryModel(wifiOnly = false) },
-                onDelete = viewModel::deletePrimaryModel,
-                onCancel = viewModel::cancelPrimaryDownload
+                title = "Primary slot",
+                body = "Choose the lighter model Aura should prefer for classification, task organization, and general writing."
             )
         }
 
+        uiState.primaryModels.forEach { model ->
+            item(key = "primary-${model.spec.id}") {
+                ModelManagementCard(
+                    icon = iconFor(model.spec),
+                    title = model.spec.displayName,
+                    description = model.spec.summary,
+                    uiState = model,
+                    optionalLabel = null,
+                    selectionLabel = "Use as primary",
+                    onSelect = { viewModel.selectPrimaryModel(model.spec) },
+                    onDownloadWifi = { viewModel.downloadModel(model.spec, wifiOnly = true) },
+                    onDownloadMobile = { viewModel.downloadModel(model.spec, wifiOnly = false) },
+                    onDelete = { viewModel.deleteModel(model.spec) },
+                    onCancel = { viewModel.cancelDownload(model.spec) }
+                )
+            }
+        }
+
         item {
-            ModelManagementCard(
+            SettingsInfoCard(
                 icon = Icons.Rounded.Speed,
-                title = "Gemma 3n E2B",
-                description = "Tier avanzado para tareas pesadas como compacción y rescates más ricos.",
-                uiState = uiState.advancedModel,
-                optionalLabel = "Optional",
-                onDownloadWifi = { viewModel.downloadAdvancedModel(wifiOnly = true) },
-                onDownloadMobile = { viewModel.downloadAdvancedModel(wifiOnly = false) },
-                onDelete = viewModel::deleteAdvancedModel,
-                onCancel = viewModel::cancelAdvancedDownload
+                title = "Advanced slot",
+                body = "These models are better for richer completions, but they ask more from the phone in RAM, thermals, and storage."
             )
+        }
+
+        uiState.advancedModels.forEach { model ->
+            item(key = "advanced-${model.spec.id}") {
+                ModelManagementCard(
+                    icon = iconFor(model.spec),
+                    title = model.spec.displayName,
+                    description = model.spec.summary,
+                    uiState = model,
+                    optionalLabel = "Optional",
+                    selectionLabel = "Use as advanced",
+                    onSelect = { viewModel.selectAdvancedModel(model.spec) },
+                    onDownloadWifi = { viewModel.downloadModel(model.spec, wifiOnly = true) },
+                    onDownloadMobile = { viewModel.downloadModel(model.spec, wifiOnly = false) },
+                    onDelete = { viewModel.deleteModel(model.spec) },
+                    onCancel = { viewModel.cancelDownload(model.spec) }
+                )
+            }
         }
 
         item { SettingsGroupHeader("Cloud") }
@@ -112,9 +137,9 @@ fun IntelligenceSettingsScreen(
                 icon = if (uiState.groqConfigured) Icons.Rounded.CloudDone else Icons.Rounded.CloudOff,
                 title = if (uiState.groqConfigured) "Groq available" else "Groq unavailable",
                 body = if (uiState.groqConfigured) {
-                    "El fallback cloud está disponible cuando el modo ${uiState.executionModeLabel} lo permite o cuando no hay modelo local descargado."
+                    "Cloud fallback is available when ${uiState.executionModeLabel} mode allows it or when no local model is downloaded."
                 } else {
-                    "No hay clave de Groq configurada. Aura va a depender del modelo local descargado o del motor por reglas."
+                    "No Groq API key configured. Aura will rely on the downloaded local model or the rules-based engine."
                 }
             )
         }
@@ -188,6 +213,8 @@ private fun ModelManagementCard(
     description: String,
     uiState: IntelligenceModelUiState,
     optionalLabel: String?,
+    selectionLabel: String,
+    onSelect: () -> Unit,
     onDownloadWifi: () -> Unit,
     onDownloadMobile: () -> Unit,
     onDelete: () -> Unit,
@@ -227,6 +254,9 @@ private fun ModelManagementCard(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         optionalLabel?.let { SettingsStatusChip(it) }
+                        if (uiState.isSelected) {
+                            SettingsStatusChip("Preferred")
+                        }
                         if (uiState.isActive) {
                             SettingsStatusChip("Active")
                         }
@@ -247,20 +277,25 @@ private fun ModelManagementCard(
                     )
                     if (!uiState.isSupported && !uiState.isDownloaded) {
                         Text(
-                            text = if (uiState.spec == ModelCatalog.gemma3nE2B) {
-                                "Este dispositivo no alcanza el tier avanzado detectado."
+                            text = if (uiState.spec.slot == LocalModelSlot.ADVANCED) {
+                                "This device does not meet the recommended advanced local tier."
                             } else {
-                                "Este dispositivo no cumple el tier mínimo recomendado para el modelo principal."
+                                "This device does not meet the recommended lightweight local tier."
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
                         )
                     } else if (uiState.spec.requiresAuthentication && !uiState.hasCredentials) {
                         Text(
-                            text = "Necesitás un token de Hugging Face con acceso a Gemma antes de descargar.",
+                            text = "Accepted access plus a Hugging Face read token are required before downloading this model.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
                         )
+                    }
+                    if (!uiState.isSelected) {
+                        TextButton(onClick = onSelect) {
+                            Text(selectionLabel)
+                        }
                     }
                 }
             }
@@ -437,7 +472,7 @@ private fun HuggingFaceAccessCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Gemma model downloads require a read token plus accepted access on the model page.",
+                        text = "Gemma repos require accepted access and a read token. Qwen downloads can run directly from Hugging Face.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -446,7 +481,7 @@ private fun HuggingFaceAccessCard(
             }
 
             Text(
-                text = "1. Abrí el repo del modelo en Hugging Face y aceptá la licencia.\n2. Creá un token de lectura.\n3. Pegalo acá para habilitar las descargas.",
+                text = "1. Open the gated model repo on Hugging Face and accept access.\n2. Create a read token.\n3. Paste it here to enable gated downloads. Ungated repos can be downloaded without this token.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -490,7 +525,16 @@ private fun LLMTier.displayName(): String {
         LLMTier.GEMINI_NANO -> "Gemini Nano"
         LLMTier.GEMMA_3N_E2B -> "Gemma 3n E2B"
         LLMTier.GEMMA_3_1B -> "Gemma 3 1B"
+        LLMTier.QWEN_2_5_1_5B -> "Qwen 2.5 1.5B"
+        LLMTier.QWEN_3_0_6B -> "Qwen 3 0.6B"
         LLMTier.GROQ_API -> "Groq API"
         LLMTier.RULES_ONLY -> "Rules only"
+    }
+}
+
+private fun iconFor(spec: ModelSpec): ImageVector {
+    return when (spec.slot) {
+        LocalModelSlot.PRIMARY -> Icons.Rounded.Memory
+        LocalModelSlot.ADVANCED -> Icons.Rounded.Speed
     }
 }

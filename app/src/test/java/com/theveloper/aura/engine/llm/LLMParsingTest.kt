@@ -286,6 +286,24 @@ class LLMParsingTest {
         assertEquals(listOf("sentadillas", "flexiones", "burpees"), items)
     }
 
+    @Test
+    fun `extractLikelyJsonBlock recovers truncated json from small model`() {
+        val truncated = """{"title":"Gym workout","type":"HEALTH","priority":0,"targetDateMs":0,"components":[{"type":"CHECKLIST","sortOrder":0,"config":{"config_type":"CHECKLIST","label":"Exercises","allowAddItems":true,"items":[{"label":"crunches","isSuggested":true},{"label":"planks","isSuggested":true}]},"populatedFromInput":true,"needsClarification":false},{"type":"NOTES","sortOrder":1,"config":{"config_type":"NOTES","text":"## Tips","is"""
+
+        val recovered = truncated.extractLikelyJsonBlock()
+
+        // Should recover a parseable JSON object
+        val parsed = auraJson.parseToJsonElement(recovered) as? JsonObject
+        assertNotNull(parsed)
+        assertEquals("Gym workout", parsed!!["title"]?.jsonPrimitive?.contentOrNull)
+    }
+
+    @Test
+    fun `extractLikelyJsonBlock returns raw when no json present`() {
+        val noJson = "This is just plain text with no JSON"
+        assertEquals(noJson, noJson.extractLikelyJsonBlock())
+    }
+
     private fun component(type: ComponentType, sortOrder: Int): ComponentDSL {
         return ComponentDSL(
             type = type,

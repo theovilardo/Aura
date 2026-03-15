@@ -37,6 +37,7 @@ internal fun String.extractLikelyJsonBlock(): String {
     val normalized = stripCodeFences()
     return normalized.extractBalancedBlock('{', '}')
         ?: normalized.extractBalancedBlock('[', ']')
+        ?: normalized.tryCompleteTruncatedJson()
         ?: normalized
 }
 
@@ -93,6 +94,78 @@ private fun String.extractBalancedBlock(openChar: Char, closeChar: Char): String
     }
 
     return null
+}
+
+/**
+ * Attempts to recover a truncated JSON object from a small model that ran out of output tokens.
+ * Finds the last position where the JSON was structurally valid (after a value boundary),
+ * trims everything after, and closes open brackets. Returns null if recovery fails.
+ */
+private fun String.tryCompleteTruncatedJson(): String? {
+    val startIndex = indexOf('{')
+    if (startIndex == -1) return null
+
+    val partial = substring(startIndex)
+    val openStack = mutableListOf<Char>()
+    var inString = false
+    var escaped = false
+    var lastSafeIndex = -1  // index of last char after a complete value
+
+    for (i in partial.indices) {
+        val char = partial[i]
+        when {
+            escaped -> escaped = false
+            char == '\\' && inString -> escaped = true
+            char == '"' -> {
+                inString = !inString
+                if (!inString) lastSafeIndex = i  // end of string value
+            }
+            !inString && (char == '{' || char == '[') -> openStack.add(char)
+            !inString && char == '}' -> {
+                if (openStack.lastOrNull() == '{') openStack.removeLastOrNull()
+                lastSafeIndex = i
+            }
+            !inString && char == ']' -> {
+                if (openStack.lastOrNull() == '[') openStack.removeLastOrNull()
+                lastSafeIndex = i
+            }
+            !inString && char in "0123456789.eE+-" -> lastSafeIndex = i // number value
+            !inString && char == 'e' || (!inString && partial.regionMatches(i, "true", 0, 4, ignoreCase = true)) -> lastSafeIndex = i + 3
+            !inString && partial.regionMatches(i, "false", 0, 5, ignoreCase = true) -> lastSafeIndex = i + 4
+            !inString && partial.regionMatches(i, "null", 0, 4, ignoreCase = true) -> lastSafeIndex = i + 3
+        }
+    }
+
+    if (openStack.isEmpty()) return null // Already balanced
+
+    // Trim back to the last structurally safe point
+    val safePart = if (lastSafeIndex > 0) {
+        partial.substring(0, lastSafeIndex + 1).trimEnd().trimEnd(',')
+    } else {
+        return null
+    }
+
+    // Recount open brackets in the safe portion
+    val safeStack = mutableListOf<Char>()
+    var safeInString = false
+    var safeEscaped = false
+    for (char in safePart) {
+        when {
+            safeEscaped -> safeEscaped = false
+            char == '\\' && safeInString -> safeEscaped = true
+            char == '"' -> safeInString = !safeInString
+            !safeInString && (char == '{' || char == '[') -> safeStack.add(char)
+            !safeInString && char == '}' -> safeStack.removeLastOrNull()
+            !safeInString && char == ']' -> safeStack.removeLastOrNull()
+        }
+    }
+
+    if (safeStack.isEmpty()) return null
+
+    val closing = safeStack.reversed().joinToString("") { if (it == '{') "}" else "]" }
+    val repaired = safePart + closing
+
+    return if (runCatching { auraJson.parseToJsonElement(repaired) }.isSuccess) repaired else null
 }
 
 private fun normalizeTaskDslObject(root: JsonObject): JsonObject {

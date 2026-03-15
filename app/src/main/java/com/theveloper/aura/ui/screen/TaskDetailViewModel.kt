@@ -47,7 +47,7 @@ class TaskDetailViewModel @Inject constructor(
                 TaskDetailUiState(
                     isLoading = false,
                     task = null,
-                    errorMessage = throwable.message ?: "No se pudo cargar el detalle."
+                    errorMessage = throwable.message ?: "Could not load task details."
                 )
             )
         }

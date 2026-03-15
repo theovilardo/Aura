@@ -75,6 +75,8 @@ class SettingsViewModel @Inject constructor(
             LLMTier.GEMINI_NANO -> "Gemini Nano"
             LLMTier.GEMMA_3N_E2B -> "Gemma 3n"
             LLMTier.GEMMA_3_1B -> "Gemma 1B"
+            LLMTier.QWEN_2_5_1_5B -> "Qwen 1.5B"
+            LLMTier.QWEN_3_0_6B -> "Qwen 0.6B"
             LLMTier.GROQ_API -> "Groq"
             LLMTier.RULES_ONLY -> "Rules"
         }

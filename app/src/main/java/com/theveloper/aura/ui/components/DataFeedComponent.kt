@@ -72,7 +72,7 @@ fun DataFeedComponent(
                         trackColor = MaterialTheme.colorScheme.surface
                     )
                     Text(
-                        text = "Consultando fuente externa...",
+                        text = "Fetching external source...",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -81,8 +81,8 @@ fun DataFeedComponent(
 
             DataFeedStatus.DATA -> {
                 FeedValueBlock(
-                    value = uiState.value ?: config.value ?: "Sin datos",
-                    supporting = uiState.lastUpdatedAt?.let(::feedTimestampText) ?: "Actualizado"
+                    value = uiState.value ?: config.value ?: "No data",
+                    supporting = uiState.lastUpdatedAt?.let(::feedTimestampText) ?: "Updated"
                 )
             }
 
@@ -97,7 +97,7 @@ fun DataFeedComponent(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = uiState.errorMessage ?: config.errorMessage ?: "No se pudo cargar el feed",
+                            text = uiState.errorMessage ?: config.errorMessage ?: "Could not load the feed",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )

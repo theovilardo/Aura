@@ -1,16 +1,16 @@
 package com.theveloper.aura.engine.llm
 
 class LLMNotInitializedException :
-    IllegalStateException("El modelo local no fue inicializado.")
+    IllegalStateException("Local model was not initialized.")
 
 class ModelNotDownloadedException(modelId: String) :
-    IllegalStateException("El modelo $modelId no fue descargado.")
+    IllegalStateException("Model $modelId has not been downloaded.")
 
 class GroqAPIKeyMissingException :
-    IllegalStateException("Groq no está configurado.")
+    IllegalStateException("Groq is not configured.")
 
 class GroqAPIException(code: Int) :
-    IllegalStateException("Groq devolvió HTTP $code.")
+    IllegalStateException("Groq returned HTTP $code.")
 
 class TaskDSLParseException(rawResponse: String) :
-    IllegalStateException("No se pudo parsear TaskDSLOutput desde: $rawResponse")
+    IllegalStateException("Could not parse TaskDSLOutput from: $rawResponse")

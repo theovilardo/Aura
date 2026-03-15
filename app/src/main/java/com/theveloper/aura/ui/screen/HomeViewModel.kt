@@ -40,7 +40,7 @@ class HomeViewModel @Inject constructor(
         taskRepository.getTasksFlow()
             .map { tasks -> tasks.filter { task -> task.status != TaskStatus.ARCHIVED } }
             .catch { throwable ->
-                errorMessage.value = throwable.message ?: "No se pudo cargar la home."
+                errorMessage.value = throwable.message ?: "Could not load the home screen."
                 emit(emptyList())
             },
         suggestionRepository.getPendingSuggestions(),

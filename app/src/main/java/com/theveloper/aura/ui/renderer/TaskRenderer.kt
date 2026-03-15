@@ -82,15 +82,15 @@ fun TaskRenderer(
         }
         task == null -> {
             ErrorStateView(
-                title = "No encontramos la tarea",
-                body = "Puede haber sido eliminada o todavía no terminó de cargarse.",
+                title = "Task not found",
+                body = "It may have been deleted or is still loading.",
                 modifier = modifier
             )
         }
         task.status == TaskStatus.ARCHIVED -> {
             EmptyStateView(
-                title = "Tarea archivada",
-                body = "Esta tarea ya no aparece como activa en la lista principal.",
+                title = "Archived task",
+                body = "This task no longer appears in the active list.",
                 modifier = modifier
             )
         }
@@ -157,8 +157,8 @@ fun EditableTaskRenderer(
         }
         task == null -> {
             ErrorStateView(
-                title = "No encontramos la tarea",
-                body = "Puede haber sido eliminada o todavía no terminó de cargarse.",
+                title = "Task not found",
+                body = "It may have been deleted or is still loading.",
                 modifier = modifier
             )
         }

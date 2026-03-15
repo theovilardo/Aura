@@ -12,6 +12,7 @@ interface LLMService {
     val supportsMemoryWriter: Boolean
         get() = tier in setOf(
             LLMTier.GEMMA_3N_E2B,
+            LLMTier.QWEN_2_5_1_5B,
             LLMTier.GEMINI_NANO,
             LLMTier.GROQ_API
         )

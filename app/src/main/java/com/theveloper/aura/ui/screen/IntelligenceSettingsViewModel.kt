@@ -7,6 +7,7 @@ import com.theveloper.aura.engine.llm.DownloadState
 import com.theveloper.aura.engine.llm.LLMRuntimeStatus
 import com.theveloper.aura.engine.llm.LLMServiceFactory
 import com.theveloper.aura.engine.llm.LLMTier
+import com.theveloper.aura.engine.llm.LocalModelSlot
 import com.theveloper.aura.engine.llm.ModelCatalog
 import com.theveloper.aura.engine.llm.ModelDownloadManager
 import com.theveloper.aura.engine.llm.ModelSpec
@@ -26,7 +27,8 @@ data class IntelligenceModelUiState(
     val downloadState: DownloadState = DownloadState.Idle,
     val isActive: Boolean = false,
     val isSupported: Boolean = true,
-    val hasCredentials: Boolean = true
+    val hasCredentials: Boolean = true,
+    val isSelected: Boolean = false
 )
 
 data class IntelligenceSettingsUiState(
@@ -40,8 +42,10 @@ data class IntelligenceSettingsUiState(
     val huggingFaceTokenConfigured: Boolean = false,
     val huggingFaceTokenInput: String = "",
     val supportsAdvancedTier: Boolean = false,
-    val primaryModel: IntelligenceModelUiState = IntelligenceModelUiState(spec = ModelCatalog.gemma3_1B),
-    val advancedModel: IntelligenceModelUiState = IntelligenceModelUiState(spec = ModelCatalog.gemma3nE2B)
+    val selectedPrimaryModelId: String = ModelCatalog.defaultPrimary.id,
+    val selectedAdvancedModelId: String = ModelCatalog.defaultAdvanced.id,
+    val primaryModels: List<IntelligenceModelUiState> = ModelCatalog.primaryModels.map { IntelligenceModelUiState(spec = it) },
+    val advancedModels: List<IntelligenceModelUiState> = ModelCatalog.advancedModels.map { IntelligenceModelUiState(spec = it) }
 )
 
 @HiltViewModel
@@ -54,8 +58,7 @@ class IntelligenceSettingsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(IntelligenceSettingsUiState())
     val uiState: StateFlow<IntelligenceSettingsUiState> = _uiState.asStateFlow()
 
-    private var primaryDownloadJob: Job? = null
-    private var advancedDownloadJob: Job? = null
+    private val downloadJobs = linkedMapOf<String, Job>()
 
     init {
         refresh()
@@ -65,6 +68,7 @@ class IntelligenceSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val runtime = llmServiceFactory.getRuntimeStatus()
             val settings = appSettingsRepository.getSnapshot()
+            val tokenConfigured = settings.huggingFaceAccessToken.isNotBlank()
             _uiState.update { state ->
                 state.copy(
                     isLoading = false,
@@ -74,18 +78,26 @@ class IntelligenceSettingsViewModel @Inject constructor(
                     recommendedReason = runtime.detection.reasonForTier,
                     executionModeLabel = runtime.executionMode.title,
                     groqConfigured = runtime.groqConfigured,
-                    huggingFaceTokenConfigured = settings.huggingFaceAccessToken.isNotBlank(),
+                    huggingFaceTokenConfigured = tokenConfigured,
                     supportsAdvancedTier = runtime.detection.supportsAdvancedTier,
-                    primaryModel = state.primaryModel.copyFrom(
-                        runtime = runtime,
-                        spec = ModelCatalog.gemma3_1B,
-                        huggingFaceTokenConfigured = settings.huggingFaceAccessToken.isNotBlank()
-                    ),
-                    advancedModel = state.advancedModel.copyFrom(
-                        runtime = runtime,
-                        spec = ModelCatalog.gemma3nE2B,
-                        huggingFaceTokenConfigured = settings.huggingFaceAccessToken.isNotBlank()
-                    )
+                    selectedPrimaryModelId = settings.preferredPrimaryModelId,
+                    selectedAdvancedModelId = settings.preferredAdvancedModelId,
+                    primaryModels = ModelCatalog.primaryModels.map { spec ->
+                        state.modelFor(spec).copyFrom(
+                            runtime = runtime,
+                            spec = spec,
+                            huggingFaceTokenConfigured = tokenConfigured,
+                            isSelected = settings.preferredPrimaryModelId == spec.id
+                        )
+                    },
+                    advancedModels = ModelCatalog.advancedModels.map { spec ->
+                        state.modelFor(spec).copyFrom(
+                            runtime = runtime,
+                            spec = spec,
+                            huggingFaceTokenConfigured = tokenConfigured,
+                            isSelected = settings.preferredAdvancedModelId == spec.id
+                        )
+                    }
                 )
             }
         }
@@ -110,80 +122,76 @@ class IntelligenceSettingsViewModel @Inject constructor(
         }
     }
 
-    fun downloadPrimaryModel(wifiOnly: Boolean = true) {
-        startDownload(
-            spec = ModelCatalog.gemma3_1B,
-            wifiOnly = wifiOnly,
-            currentJob = primaryDownloadJob,
-            assignJob = { primaryDownloadJob = it },
-            update = { state -> copy(primaryModel = state) }
-        )
+    fun selectPrimaryModel(spec: ModelSpec) {
+        viewModelScope.launch {
+            appSettingsRepository.setPreferredPrimaryModel(spec.id)
+            refresh()
+        }
     }
 
-    fun downloadAdvancedModel(wifiOnly: Boolean = true) {
-        startDownload(
-            spec = ModelCatalog.gemma3nE2B,
-            wifiOnly = wifiOnly,
-            currentJob = advancedDownloadJob,
-            assignJob = { advancedDownloadJob = it },
-            update = { state -> copy(advancedModel = state) }
-        )
+    fun selectAdvancedModel(spec: ModelSpec) {
+        viewModelScope.launch {
+            appSettingsRepository.setPreferredAdvancedModel(spec.id)
+            refresh()
+        }
     }
 
-    fun cancelPrimaryDownload() {
-        modelDownloadManager.cancelDownload(ModelCatalog.gemma3_1B)
-        primaryDownloadJob?.cancel()
-        _uiState.update { it.copy(primaryModel = it.primaryModel.copy(downloadState = DownloadState.Idle)) }
+    fun downloadModel(spec: ModelSpec, wifiOnly: Boolean = true) {
+        startDownload(spec = spec, wifiOnly = wifiOnly)
     }
 
-    fun cancelAdvancedDownload() {
-        modelDownloadManager.cancelDownload(ModelCatalog.gemma3nE2B)
-        advancedDownloadJob?.cancel()
-        _uiState.update { it.copy(advancedModel = it.advancedModel.copy(downloadState = DownloadState.Idle)) }
+    fun cancelDownload(spec: ModelSpec) {
+        modelDownloadManager.cancelDownload(spec)
+        downloadJobs.remove(spec.id)?.cancel()
+        updateModel(spec) { copy(downloadState = DownloadState.Idle) }
     }
 
-    fun deletePrimaryModel() {
-        modelDownloadManager.deleteModel(ModelCatalog.gemma3_1B)
-        refresh()
-    }
-
-    fun deleteAdvancedModel() {
-        modelDownloadManager.deleteModel(ModelCatalog.gemma3nE2B)
+    fun deleteModel(spec: ModelSpec) {
+        modelDownloadManager.deleteModel(spec)
         refresh()
     }
 
     private fun startDownload(
         spec: ModelSpec,
-        wifiOnly: Boolean,
-        currentJob: Job?,
-        assignJob: (Job) -> Unit,
-        update: IntelligenceSettingsUiState.(IntelligenceModelUiState) -> IntelligenceSettingsUiState
+        wifiOnly: Boolean
     ) {
-        currentJob?.cancel()
+        downloadJobs.remove(spec.id)?.cancel()
         val job = viewModelScope.launch {
             modelDownloadManager.downloadModel(spec, wifiOnly).collect { downloadState ->
-                _uiState.update { state ->
-                    val current = state.modelFor(spec)
-                    state.update(
-                        current.copy(
-                            downloadState = downloadState
-                        )
-                    )
+                updateModel(spec) {
+                    copy(downloadState = downloadState)
                 }
                 if (downloadState is DownloadState.Complete) {
                     refresh()
                 }
             }
         }
-        assignJob(job)
+        downloadJobs[spec.id] = job
+    }
+
+    private fun updateModel(
+        spec: ModelSpec,
+        transform: IntelligenceModelUiState.() -> IntelligenceModelUiState
+    ) {
+        _uiState.update { state ->
+            state.copy(
+                primaryModels = state.primaryModels.map { current ->
+                    if (current.spec.id == spec.id) current.transform() else current
+                },
+                advancedModels = state.advancedModels.map { current ->
+                    if (current.spec.id == spec.id) current.transform() else current
+                }
+            )
+        }
     }
 
     private fun IntelligenceModelUiState.copyFrom(
         runtime: LLMRuntimeStatus,
         spec: ModelSpec,
-        huggingFaceTokenConfigured: Boolean
+        huggingFaceTokenConfigured: Boolean,
+        isSelected: Boolean
     ): IntelligenceModelUiState {
-        val downloadState = when (downloadState) {
+        val currentDownloadState = when (downloadState) {
             is DownloadState.Downloading,
             DownloadState.Processing,
             DownloadState.WaitingForWifi -> downloadState
@@ -193,21 +201,19 @@ class IntelligenceSettingsViewModel @Inject constructor(
         return copy(
             isDownloaded = modelDownloadManager.isModelDownloaded(spec),
             sizeOnDisk = modelDownloadManager.getModelSizeOnDisk(spec),
-            downloadState = downloadState,
+            downloadState = currentDownloadState,
             isActive = runtime.activePrimaryTier == spec.tier || runtime.activeAdvancedTier == spec.tier,
             hasCredentials = !spec.requiresAuthentication || huggingFaceTokenConfigured,
-            isSupported = when (spec.tier) {
-                LLMTier.GEMMA_3_1B -> runtime.detection.primaryTier != LLMTier.RULES_ONLY
-                LLMTier.GEMMA_3N_E2B -> runtime.detection.supportsAdvancedTier
-                else -> true
+            isSelected = isSelected,
+            isSupported = when (spec.slot) {
+                LocalModelSlot.PRIMARY -> runtime.detection.primaryTier != LLMTier.RULES_ONLY
+                LocalModelSlot.ADVANCED -> runtime.detection.supportsAdvancedTier
             }
         )
     }
 
     private fun IntelligenceSettingsUiState.modelFor(spec: ModelSpec): IntelligenceModelUiState {
-        return when (spec.id) {
-            ModelCatalog.gemma3_1B.id -> primaryModel
-            else -> advancedModel
-        }
+        return (primaryModels + advancedModels).firstOrNull { it.spec.id == spec.id }
+            ?: IntelligenceModelUiState(spec = spec)
     }
 }
