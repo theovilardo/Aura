@@ -183,6 +183,7 @@ fun CreateTaskScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .clip(shape = CircleShape)
                                 .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
