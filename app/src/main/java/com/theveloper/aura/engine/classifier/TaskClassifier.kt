@@ -196,8 +196,8 @@ class TaskClassifier @Inject constructor(
         val nonBlockerWarnings = completeness.check.missingFields
             .filterNot { it.isBlocker }
             .map { it.question }
-        val fallbackWarning = if (!allowClarification && completeness.clarification != null) {
-            listOf("Se creo la estructura con algunos campos sin definir.")
+        val fallbackWarning = if (!allowClarification && completeness.clarifications.isNotEmpty()) {
+            listOf("Some fields were left undefined. You can complete them later.")
         } else {
             emptyList()
         }
@@ -206,7 +206,7 @@ class TaskClassifier @Inject constructor(
             dsl = completeness.dsl,
             warnings = (result.warnings + nonBlockerWarnings + fallbackWarning).distinct(),
             completenessCheck = completeness.check,
-            clarification = completeness.clarification.takeIf { allowClarification }
+            clarifications = if (allowClarification) completeness.clarifications else emptyList()
         )
     }
 

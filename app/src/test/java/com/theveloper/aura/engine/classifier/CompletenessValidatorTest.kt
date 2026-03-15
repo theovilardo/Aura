@@ -23,7 +23,7 @@ class CompletenessValidatorTest {
             input = """
                 shopping list for groceries
 
-                Aclaracion del usuario: tomatoes, milk, bread, Cheese and ham
+                User clarification: tomatoes, milk, bread, Cheese and ham
             """.trimIndent(),
             dsl = shoppingChecklistDsl()
         )
@@ -41,7 +41,7 @@ class CompletenessValidatorTest {
             input = """
                 empanada flavors
 
-                Aclaracion del usuario: ham and cheese, beef, chicken
+                User clarification: ham and cheese, beef, chicken
             """.trimIndent(),
             dsl = shoppingChecklistDsl()
         )

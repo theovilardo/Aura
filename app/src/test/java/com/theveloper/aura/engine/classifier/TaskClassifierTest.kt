@@ -1,8 +1,6 @@
 package com.theveloper.aura.engine.classifier
 
 import com.theveloper.aura.domain.model.ComponentType
-import com.theveloper.aura.domain.model.MemoryCategory
-import com.theveloper.aura.domain.model.MemorySlot
 import com.theveloper.aura.domain.model.TaskType
 import com.theveloper.aura.domain.repository.MemoryRepository
 import com.theveloper.aura.engine.dsl.ComponentDSL
@@ -127,23 +125,15 @@ class TaskClassifierTest {
 
         val result = subject.classify("lista de compras")
 
-        assertEquals("¿Qué ítems querés incluir?", result.clarification?.question)
+        assertEquals("What items should be included?", result.clarification?.question)
         assertTrue(result.dsl.components.any { it.needsClarification })
     }
 
     @Test
-    fun `shopping prompt reuses memory-backed items before asking`() = runTest {
+    fun `shopping prompt with bullet point items populates checklist without clarification`() = runTest {
         coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
         coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.LOCAL_ONLY
-        coEvery { memoryRepository.getSlots() } returns listOf(
-            MemorySlot(
-                id = "vocabulary",
-                category = MemoryCategory.VOCABULARY,
-                content = "Compras frecuentes: leche, pan, tomate.",
-                lastUpdatedAt = 1L,
-                tokenCount = 4
-            )
-        )
+        coEvery { memoryRepository.getSlots() } returns emptyList()
         coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.LOCAL_ONLY) } returns route(
             source = TaskGenerationSource.LOCAL_AI,
             tier = LLMTier.GEMMA_3_1B
@@ -155,13 +145,14 @@ class TaskClassifierTest {
             source = TaskGenerationSource.LOCAL_AI
         )
 
-        val result = subject.classify("lista de compras")
+        val result = subject.classify("shopping list\n- milk\n- bread\n- tomatoes")
         val checklist = result.dsl.components.first { it.type == ComponentType.CHECKLIST }
         val items = checklist.config["items"].toString()
 
         assertEquals(null, result.clarification)
-        assertTrue(items.contains("leche"))
-        assertTrue(items.contains("isSuggested"))
+        assertTrue(items.contains("milk"))
+        assertTrue(items.contains("bread"))
+        assertTrue(items.contains("tomatoes"))
     }
 
     private fun route(

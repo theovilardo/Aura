@@ -17,5 +17,8 @@ data class TaskGenerationResult(
     val localConfidence: Float,
     val warnings: List<String> = emptyList(),
     val completenessCheck: CompletenessCheck = CompletenessCheck(isComplete = true),
-    val clarification: ClarificationRequest? = null
-)
+    val clarifications: List<ClarificationRequest> = emptyList()
+) {
+    /** First pending clarification question, null if none. */
+    val clarification: ClarificationRequest? get() = clarifications.firstOrNull()
+}

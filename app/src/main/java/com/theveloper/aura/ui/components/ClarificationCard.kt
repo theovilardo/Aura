@@ -62,7 +62,7 @@ fun ClarificationCard(
                 value = answer,
                 onValueChange = onAnswerChange,
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("tomate, leche, pan...") },
+                placeholder = { Text("...") },
                 minLines = 2,
                 maxLines = 4,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -81,7 +81,7 @@ fun ClarificationCard(
                         modifier = Modifier.padding(end = 8.dp)
                     )
                 }
-                Text("Listo")
+                Text("Done")
             }
 
             OutlinedButton(

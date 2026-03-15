@@ -132,24 +132,40 @@ class CreateTaskViewModel @Inject constructor(
         val pending = state.clarification ?: return
         val answer = pending.answer.trim()
         if (answer.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Respondé la aclaración o elegí crear con lo que hay.") }
+            _uiState.update { it.copy(errorMessage = "Please answer the question or skip to create the task.") }
             return
         }
 
-        viewModelScope.launch {
+        val updatedAnswers = pending.accumulatedAnswers +
+            (pending.currentRequest.fieldName to answer)
+
+        // If more questions remain, advance to the next one without a new LLM call
+        if (pending.remainingRequests.isNotEmpty()) {
             _uiState.update {
                 it.copy(
-                    isClassifying = true,
+                    clarification = pending.copy(
+                        currentRequest = pending.remainingRequests.first(),
+                        remainingRequests = pending.remainingRequests.drop(1),
+                        accumulatedAnswers = updatedAnswers,
+                        answer = ""
+                    ),
                     errorMessage = null
                 )
             }
+            return
+        }
+
+        // All questions answered — re-classify once with all accumulated answers
+        viewModelScope.launch {
+            _uiState.update { it.copy(isClassifying = true, errorMessage = null) }
 
             val enrichedInput = buildString {
                 append(pending.classifierInput)
-                appendLine()
-                appendLine()
-                append("Aclaracion del usuario: ")
-                append(answer)
+                for ((_, ans) in updatedAnswers) {
+                    appendLine()
+                    append("User clarification: ")
+                    append(ans)
+                }
             }
 
             runCatching { taskClassifier.classify(enrichedInput, allowClarification = false) }
@@ -171,7 +187,7 @@ class CreateTaskViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isClassifying = false,
-                            errorMessage = error.message ?: "No pudimos aplicar la aclaración."
+                            errorMessage = error.message ?: "Could not apply the clarification."
                         )
                     }
                 }
@@ -184,8 +200,9 @@ class CreateTaskViewModel @Inject constructor(
             it.copy(
                 clarification = null,
                 preview = pending.baseResult.copy(
-                    warnings = (pending.baseResult.warnings + "Podés completar los detalles más tarde.").distinct(),
-                    clarification = null
+                    warnings = (pending.baseResult.warnings +
+                        "Some details were left undefined. You can complete them later.").distinct(),
+                    clarifications = emptyList()
                 ),
                 errorMessage = null
             )
@@ -196,7 +213,7 @@ class CreateTaskViewModel @Inject constructor(
         val state = uiState.value
         val input = state.input.trim()
         if (input.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Escribí una tarea antes de clasificar.") }
+            _uiState.update { it.copy(errorMessage = "Write a task before classifying.") }
             return
         }
         val manual = state.manual
@@ -222,14 +239,15 @@ class CreateTaskViewModel @Inject constructor(
                         manual = manual,
                         rawInput = input
                     ).withShapeGuidance(hasExplicitTypeOverride = manual.taskTypeOverride != null)
-                    val clarification = mergedPreview.clarification
+                    val pendingClarifications = mergedPreview.clarifications
                     _uiState.update {
                         it.copy(
                             isClassifying = false,
-                            preview = if (clarification == null) mergedPreview else null,
-                            clarification = clarification?.let { request ->
+                            preview = if (pendingClarifications.isEmpty()) mergedPreview else null,
+                            clarification = pendingClarifications.firstOrNull()?.let { firstRequest ->
                                 PendingClarification(
-                                    request = request,
+                                    currentRequest = firstRequest,
+                                    remainingRequests = pendingClarifications.drop(1),
                                     classifierInput = classifierInput,
                                     baseResult = mergedPreview
                                 )
@@ -241,7 +259,7 @@ class CreateTaskViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isClassifying = false,
-                            errorMessage = error.message ?: "No pudimos interpretar la tarea."
+                            errorMessage = error.message ?: "Could not interpret the task."
                         )
                     }
                 }
@@ -251,11 +269,11 @@ class CreateTaskViewModel @Inject constructor(
     private fun submitManual() {
         val draft = uiState.value.manual
         if (draft.title.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Poné un título para la tarea manual.") }
+            _uiState.update { it.copy(errorMessage = "Add a title for the manual task.") }
             return
         }
         if (draft.selectedTemplateIds.isEmpty()) {
-            _uiState.update { it.copy(errorMessage = "Elegí al menos un componente dinámico.") }
+            _uiState.update { it.copy(errorMessage = "Select at least one component.") }
             return
         }
 
@@ -383,7 +401,7 @@ class CreateTaskViewModel @Inject constructor(
             manual = updatedManual,
             rawInput = rawInput
         ).copy(
-            warnings = (rebuiltBase.warnings + "Forma ajustada manualmente.").distinct()
+            warnings = (rebuiltBase.warnings + "Shape adjusted manually.").distinct()
         ).withShapeGuidance(hasExplicitTypeOverride = true)
 
         _uiState.update {
@@ -427,23 +445,24 @@ class CreateTaskViewModel @Inject constructor(
 
     private fun TaskGenerationResult.withShapeGuidance(hasExplicitTypeOverride: Boolean): TaskGenerationResult {
         val guidancePrefixes = listOf(
-            "No pude detectar la forma con confianza.",
-            "Armé una primera forma con reglas locales.",
-            "La forma detectada es tentativa.",
-            "Forma ajustada manualmente."
+            "Could not detect the shape with confidence.",
+            "Built an initial shape using local rules.",
+            "The detected shape is tentative.",
+            "Shape adjusted manually."
         )
         val preservedWarnings = warnings.filterNot { warning ->
             guidancePrefixes.any(warning::startsWith)
         }
         val guidanceWarnings = buildList {
             when {
-                hasExplicitTypeOverride -> add("Forma ajustada manualmente.")
+                hasExplicitTypeOverride ->
+                    add("Shape adjusted manually.")
                 source == TaskGenerationSource.RULES && dsl.type == TaskType.GENERAL ->
-                    add("No pude detectar la forma con confianza. Elegí una antes de guardar si la nota libre no encaja.")
+                    add("Could not detect the shape with confidence. Choose one before saving if the free note doesn't fit.")
                 source == TaskGenerationSource.RULES ->
-                    add("Armé una primera forma con reglas locales. Revisala antes de guardar.")
+                    add("Built an initial shape using local rules. Review it before saving.")
                 localConfidence < 0.62f || intentConfidence < 0.55f ->
-                    add("La forma detectada es tentativa. Podés cambiarla antes de guardar.")
+                    add("The detected shape is tentative. You can change it before saving.")
             }
         }
         return copy(warnings = (preservedWarnings + guidanceWarnings).distinct())
@@ -473,7 +492,7 @@ class CreateTaskViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isSaving = false,
-                            errorMessage = result.errorMessage ?: "No pudimos guardar la tarea."
+                            errorMessage = result.errorMessage ?: "Could not save the task."
                         )
                     }
                 }
@@ -494,9 +513,11 @@ data class CreateTaskUiState(
 )
 
 data class PendingClarification(
-    val request: ClarificationRequest,
+    val currentRequest: ClarificationRequest,
+    val remainingRequests: List<ClarificationRequest> = emptyList(),
     val classifierInput: String,
     val baseResult: TaskGenerationResult,
+    val accumulatedAnswers: List<Pair<String, String>> = emptyList(),
     val answer: String = ""
 )
 

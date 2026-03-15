@@ -238,10 +238,10 @@ fun CreateTaskScreen(
         uiState.clarification?.let { clarification ->
             ModalBottomSheet(onDismissRequest = viewModel::skipClarification) {
                 ClarificationCard(
-                    title = "Entendido, voy a crear ${clarification.baseResult.dsl.title}",
-                    question = clarification.request.question,
+                    title = clarification.baseResult.dsl.title,
+                    question = clarification.currentRequest.question,
                     answer = clarification.answer,
-                    skipLabel = clarification.request.skipLabel,
+                    skipLabel = clarification.currentRequest.skipLabel,
                     isBusy = uiState.isClassifying,
                     onAnswerChange = viewModel::updateClarificationAnswer,
                     onSubmit = viewModel::submitClarification,

@@ -1,7 +1,6 @@
 package com.theveloper.aura.engine.classifier
 
 import com.theveloper.aura.domain.model.ComponentType
-import com.theveloper.aura.domain.model.MemoryCategory
 import com.theveloper.aura.domain.model.MemorySlot
 import com.theveloper.aura.engine.dsl.ChecklistDslItems
 import com.theveloper.aura.engine.dsl.ChecklistItemDSL
@@ -30,14 +29,17 @@ data class ClarificationRequest(
     val componentType: ComponentType,
     val fieldName: String,
     val question: String,
-    val skipLabel: String = "Crear con lo que hay"
+    val skipLabel: String = "Skip for now"
 )
 
 data class CompletenessValidationResult(
     val dsl: TaskDSLOutput,
     val check: CompletenessCheck,
-    val clarification: ClarificationRequest? = null
-)
+    val clarifications: List<ClarificationRequest> = emptyList()
+) {
+    /** Convenience accessor for the first pending question (backward compat). */
+    val clarification: ClarificationRequest? get() = clarifications.firstOrNull()
+}
 
 @Singleton
 class CompletenessValidator @Inject constructor() {
@@ -51,10 +53,10 @@ class CompletenessValidator @Inject constructor() {
         val missingFields = mutableListOf<MissingField>()
         val updatedComponents = dsl.components.map { component ->
             when (component.type) {
-                ComponentType.CHECKLIST -> enrichChecklist(component, cleanInput, memorySlots, missingFields)
-                ComponentType.COUNTDOWN -> enrichCountdown(component, missingFields)
+                ComponentType.CHECKLIST     -> enrichChecklist(component, input, missingFields)
+                ComponentType.COUNTDOWN     -> enrichCountdown(component, missingFields)
                 ComponentType.METRIC_TRACKER -> enrichMetricTracker(component, missingFields)
-                ComponentType.HABIT_RING -> enrichHabitRing(component, missingFields)
+                ComponentType.HABIT_RING    -> enrichHabitRing(component, missingFields)
                 else -> component.copy(needsClarification = false)
             }
         }
@@ -76,43 +78,39 @@ class CompletenessValidator @Inject constructor() {
             isComplete = missingFields.none { it.isBlocker },
             missingFields = missingFields
         )
-        val firstBlocker = missingFields.firstOrNull { it.isBlocker }
+        val clarifications = missingFields
+            .filter { it.isBlocker }
+            .map { field ->
+                ClarificationRequest(
+                    componentType = field.componentType,
+                    fieldName = field.fieldName,
+                    question = field.question
+                )
+            }
 
         return CompletenessValidationResult(
             dsl = updatedDsl,
             check = check,
-            clarification = firstBlocker?.let {
-                ClarificationRequest(
-                    componentType = it.componentType,
-                    fieldName = it.fieldName,
-                    question = it.question
-                )
-            }
+            clarifications = clarifications
         )
     }
 
     private fun enrichChecklist(
         component: ComponentDSL,
         input: String,
-        memorySlots: List<MemorySlot>,
         missingFields: MutableList<MissingField>
     ): ComponentDSL {
         val currentItems = ChecklistDslItems.parse(component.config)
 
-        // If semantic layer already populated items, skip regex extraction
+        // Semantic layer already populated items — nothing to do
         if (component.populatedFromInput && currentItems.isNotEmpty()) {
             return component.copy(needsClarification = false)
         }
 
         val explicitItems = extractExplicitChecklistItems(input)
-        val inferredItems = inferChecklistItems(input, memorySlots)
-        val shouldReplaceGeneric = shouldReplaceGenericChecklist(input, currentItems)
-
         val resolvedItems = when {
             explicitItems.isNotEmpty() -> explicitItems.map { ChecklistItemDSL(label = it) }
-            currentItems.isNotEmpty() && !shouldReplaceGeneric -> currentItems
-            inferredItems.isNotEmpty() -> inferredItems
-            currentItems.isNotEmpty() && !requiresSpecificChecklistContent(input) -> currentItems
+            currentItems.isNotEmpty() && !shouldReplaceGenericItems(currentItems) -> currentItems
             else -> emptyList()
         }
 
@@ -121,14 +119,14 @@ class CompletenessValidator @Inject constructor() {
             missingFields += MissingField(
                 componentType = ComponentType.CHECKLIST,
                 fieldName = "items",
-                question = "¿Qué ítems querés incluir?",
+                question = "What items should be included?",
                 isBlocker = true
             )
         }
 
         return component.copy(
             config = ChecklistDslItems.withItems(component.config, resolvedItems),
-            populatedFromInput = explicitItems.isNotEmpty() || inferredItems.isNotEmpty() || component.populatedFromInput,
+            populatedFromInput = explicitItems.isNotEmpty() || component.populatedFromInput,
             needsClarification = needsClarification
         )
     }
@@ -143,7 +141,7 @@ class CompletenessValidator @Inject constructor() {
             missingFields += MissingField(
                 componentType = ComponentType.COUNTDOWN,
                 fieldName = "targetDate",
-                question = "¿Para cuándo es?",
+                question = "When is this due?",
                 isBlocker = true
             )
         }
@@ -159,7 +157,7 @@ class CompletenessValidator @Inject constructor() {
             missingFields += MissingField(
                 componentType = ComponentType.METRIC_TRACKER,
                 fieldName = "goal",
-                question = "¿Tenés un objetivo? Podés dejarlo sin definir.",
+                question = "Do you have a numeric target? You can leave this undefined.",
                 isBlocker = false
             )
         }
@@ -175,7 +173,7 @@ class CompletenessValidator @Inject constructor() {
             missingFields += MissingField(
                 componentType = ComponentType.HABIT_RING,
                 fieldName = "targetCount",
-                question = "¿Cuántas veces por día o por semana?",
+                question = "How many times per day or week?",
                 isBlocker = false
             )
         }
@@ -187,178 +185,99 @@ class CompletenessValidator @Inject constructor() {
             .lineSequence()
             .filterNot { line ->
                 line.startsWith("Preferred title:", ignoreCase = true) ||
-                    line.startsWith("Task type hint:", ignoreCase = true)
+                    line.startsWith("Task type hint:", ignoreCase = true) ||
+                    line.startsWith(CLARIFICATION_ANSWER_PREFIX, ignoreCase = true)
             }
             .joinToString("\n")
             .trim()
     }
 
-    private fun extractExplicitChecklistItems(input: String): List<String> {
-        extractClarificationAnswer(input)?.let { answer ->
-            splitItems(answer).takeIf { it.isNotEmpty() }?.let { return it }
-        }
+    /**
+     * Extracts items from the input using language-agnostic structural signals:
+     *   1. Lines previously submitted as a user clarification answer
+     *   2. Bullet-point lines (-, *, •) — work in any language
+     */
+    private fun extractExplicitChecklistItems(rawInput: String): List<String> {
+        // 1. Extract from clarification answer prefix (language-neutral protocol)
+        rawInput.lineSequence()
+            .filter { it.startsWith(CLARIFICATION_ANSWER_PREFIX, ignoreCase = true) }
+            .map { it.removePrefix(CLARIFICATION_ANSWER_PREFIX).trim() }
+            .filter { it.isNotBlank() }
+            .flatMap(::splitItems)
+            .toList()
+            .takeIf { it.isNotEmpty() }
+            ?.let { return it }
 
-        val bulletItems = input.lineSequence()
+        // 2. Bullet-point structure (language-agnostic)
+        val bulletItems = rawInput.lineSequence()
             .map { it.trim() }
-            .filter { it.startsWith("-") || it.startsWith("*") }
-            .map { it.removePrefix("-").removePrefix("*").trim() }
+            .filter { it.startsWith("-") || it.startsWith("*") || it.startsWith("•") }
+            .map { it.removePrefix("-").removePrefix("*").removePrefix("•").trim() }
             .filter { it.isNotBlank() }
             .toList()
-        if (bulletItems.size >= 2) {
-            return bulletItems
-        }
-
-        val colonMatch = LIST_WITH_DETAILS_REGEX.find(input)
-        if (colonMatch != null) {
-            return splitItems(colonMatch.groupValues[1])
-        }
-
-        val shoppingTail = SHOPPING_WITH_ITEMS_REGEX.find(input)?.groupValues?.getOrNull(1).orEmpty()
-        if (shoppingTail.isNotBlank()) {
-            return splitItems(shoppingTail)
-        }
+        if (bulletItems.size >= 2) return bulletItems
 
         return emptyList()
     }
 
-    private fun inferChecklistItems(
-        input: String,
-        memorySlots: List<MemorySlot>
-    ): List<ChecklistItemDSL> {
-        when {
-            ASADO_REGEX.containsMatchIn(input) -> {
-                return listOf(
-                    ChecklistItemDSL("Carne", isSuggested = true),
-                    ChecklistItemDSL("Carbon", isSuggested = true),
-                    ChecklistItemDSL("Chimichurri", isSuggested = true),
-                    ChecklistItemDSL("Pan", isSuggested = true)
-                )
-            }
-
-            SHOPPING_CONTEXT_REGEX.containsMatchIn(input) -> {
-                val memoryItems = extractShoppingMemoryItems(memorySlots)
-                if (memoryItems.isNotEmpty()) {
-                    return memoryItems.map { ChecklistItemDSL(it, isSuggested = true) }
-                }
-            }
+    private fun shouldReplaceGenericItems(items: List<ChecklistItemDSL>): Boolean {
+        return items.isNotEmpty() && items.all { item ->
+            item.label.trim().lowercase() in GENERIC_PLACEHOLDER_LABELS
         }
-
-        return emptyList()
-    }
-
-    private fun extractShoppingMemoryItems(memorySlots: List<MemorySlot>): List<String> {
-        val relevantSlots = memorySlots.filter { slot ->
-            slot.category == MemoryCategory.VOCABULARY || slot.category == MemoryCategory.TASK_PREFERENCES
-        }
-
-        val fromLabeledLine = relevantSlots
-            .flatMap { slot ->
-                slot.content.lineSequence().map(String::trim).toList()
-            }
-            .mapNotNull { line ->
-                SHOPPING_MEMORY_LINE_REGEX.find(line)?.groupValues?.getOrNull(1)
-            }
-            .flatMap(::splitItems)
-            .distinct()
-        if (fromLabeledLine.isNotEmpty()) {
-            return fromLabeledLine.take(6)
-        }
-
-        return emptyList()
-    }
-
-    private fun shouldReplaceGenericChecklist(
-        input: String,
-        currentItems: List<ChecklistItemDSL>
-    ): Boolean {
-        if (!requiresSpecificChecklistContent(input)) {
-            return false
-        }
-        if (currentItems.isEmpty()) {
-            return true
-        }
-        return currentItems.all { item ->
-            item.label.lowercase() in GENERIC_PLACEHOLDER_ITEMS
-        }
-    }
-
-    private fun requiresSpecificChecklistContent(input: String): Boolean {
-        return SHOPPING_CONTEXT_REGEX.containsMatchIn(input) ||
-            ASADO_REGEX.containsMatchIn(input)
-    }
-
-    private fun extractClarificationAnswer(input: String): String? {
-        return CLARIFICATION_ANSWER_REGEX.find(input)?.groupValues?.getOrNull(1)?.trim()
     }
 
     private fun splitItems(raw: String): List<String> {
-        val separators = if (raw.contains(",") || raw.contains(";") || raw.contains("\n")) {
+        val parts = if (raw.contains(",") || raw.contains(";") || raw.contains("\n")) {
             raw.split(ITEM_SEPARATOR_REGEX)
         } else {
             raw.split(AND_SEPARATOR_REGEX)
         }
 
-        val normalizedItems = separators
-            .map { item ->
-                item.trim()
-                    .trim('-', '*', '.', ':')
-                    .replace(Regex("\\s+"), " ")
-            }
-            .filter { item ->
-                item.isNotBlank() &&
-                    item.length > 1 &&
-                    !item.startsWith("Preferred title:", ignoreCase = true) &&
-                    !item.startsWith("Task type hint:", ignoreCase = true)
-            }
+        val normalized = parts
+            .map { it.trim().trim('-', '*', '•', '.', ':').replace(Regex("\\s+"), " ") }
+            .filter { it.isNotBlank() && it.length > 1 }
             .distinct()
 
-        return expandTrailingCoordinatedItem(normalizedItems)
+        return expandTrailingCoordinatedItem(normalized)
     }
 
     private fun expandTrailingCoordinatedItem(items: List<String>): List<String> {
         if (items.size < 3) return items
-
         val lastItem = items.last()
-        val match = TRAILING_COORDINATED_ITEM_REGEX.matchEntire(lastItem) ?: return items
+        val match = TRAILING_AND_REGEX.matchEntire(lastItem) ?: return items
         val left = match.groupValues[1].trim()
         val right = match.groupValues[2].trim()
-
-        if (!looksLikeAtomicListItem(left) || !looksLikeAtomicListItem(right)) {
-            return items
-        }
-
-        val previousItems = items.dropLast(1)
-        if (previousItems.count(::looksLikeAtomicListItem) < 2) {
-            return items
-        }
-
-        return previousItems + listOf(left, right)
+        if (!looksLikeAtomicItem(left) || !looksLikeAtomicItem(right)) return items
+        val prev = items.dropLast(1)
+        if (prev.count(::looksLikeAtomicItem) < 2) return items
+        return prev + listOf(left, right)
     }
 
-    private fun looksLikeAtomicListItem(item: String): Boolean {
-        val normalized = item.trim()
-        if (normalized.isBlank()) return false
-        if (TRAILING_COORDINATED_ITEM_REGEX.containsMatchIn(normalized)) return false
-
-        val tokens = normalized.split(Regex("\\s+"))
-            .filter { it.isNotBlank() }
-        return tokens.size in 1..2
+    private fun looksLikeAtomicItem(item: String): Boolean {
+        val tokens = item.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        return tokens.size in 1..3 && !TRAILING_AND_REGEX.containsMatchIn(item)
     }
 
     private companion object {
-        val LIST_WITH_DETAILS_REGEX = Regex("(?i)(?:lista|items?|ítems?|compras?|ingredientes?)\\s*[:\\-]\\s*(.+)")
-        val SHOPPING_WITH_ITEMS_REGEX = Regex("(?i)(?:comprar|compras?)\\s+(.+)")
-        val SHOPPING_CONTEXT_REGEX = Regex("(?i)\\b(lista\\s+de\\s+compras?|compras?|super|supermercado|mercado|ingredientes?)\\b")
-        val ASADO_REGEX = Regex("(?i)\\basado\\b")
-        val SHOPPING_MEMORY_LINE_REGEX = Regex("(?i)(?:compras\\s+frecuentes|items\\s+frecuentes)\\s*:\\s*(.+)")
-        val CLARIFICATION_ANSWER_REGEX = Regex("(?i)aclaracion\\s+del\\s+usuario\\s*:\\s*(.+)")
+        const val CLARIFICATION_ANSWER_PREFIX = "User clarification: "
+
+        /** Comma, semicolon, or newline — universal separators. */
         val ITEM_SEPARATOR_REGEX = Regex("[,;\\n]+")
-        val AND_SEPARATOR_REGEX = Regex("\\s+(?:y|e|and|&)\\s+", RegexOption.IGNORE_CASE)
-        val TRAILING_COORDINATED_ITEM_REGEX = Regex(
-            pattern = "(.+?)\\s+(?:y|e|and|&)\\s+(.+)",
+
+        /** "and" or "&" — widely used in English and international contexts; no language-specific conjunctions. */
+        val AND_SEPARATOR_REGEX = Regex("\\s+(?:and|&)\\s+", RegexOption.IGNORE_CASE)
+
+        /** Trailing "X and Y" pattern for expanding the last item. */
+        val TRAILING_AND_REGEX = Regex(
+            pattern = "(.+?)\\s+(?:and|&)\\s+(.+)",
             option = RegexOption.IGNORE_CASE
         )
-        val GENERIC_PLACEHOLDER_ITEMS = setOf(
+
+        /**
+         * Generic placeholder labels that were formerly injected by the catalog as scaffolding.
+         * If a checklist consists entirely of these, it should be replaced.
+         */
+        val GENERIC_PLACEHOLDER_LABELS = setOf(
             "define next step",
             "execute",
             "review result"
