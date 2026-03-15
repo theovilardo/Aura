@@ -55,10 +55,10 @@ class GroqLLMService @Inject constructor(
         }
 
         val prompt = buildString {
-            appendLine("Hora actual: $currentTime")
-            appendLine("Tareas activas: $tasksJson")
-            appendLine("Patrones del usuario: $patternsJson")
-            appendLine("Respondé únicamente con un array JSON válido.")
+            appendLine("Current time: $currentTime")
+            appendLine("Active tasks: $tasksJson")
+            appendLine("User patterns: $patternsJson")
+            appendLine("Return only a valid JSON array.")
         }
         return callGroq(
             messages = listOf(
@@ -108,14 +108,18 @@ class GroqLLMService @Inject constructor(
 
     private fun buildClassifierPrompt(input: String, context: LLMClassificationContext): String {
         return buildString {
-            appendLine("Input del usuario: $input")
-            appendLine("Intent hint: ${context.intentHint?.name ?: "UNKNOWN"}")
-            appendLine("Confidence: ${context.intentConfidence}")
-            appendLine("Fechas extraídas: ${context.extractedDates}")
-            appendLine("Números extraídos: ${context.extractedNumbers}")
-            appendLine("Ubicaciones extraídas: ${context.extractedLocations}")
+            appendLine("User input: $input")
+            context.extractedDates.takeIf { it.isNotEmpty() }?.let {
+                appendLine("Extracted dates (epoch ms): $it")
+            }
+            context.extractedNumbers.takeIf { it.isNotEmpty() }?.let {
+                appendLine("Extracted numbers: $it")
+            }
+            context.extractedLocations.takeIf { it.isNotEmpty() }?.let {
+                appendLine("Extracted locations: $it")
+            }
             if (context.memoryContext.isNotBlank()) {
-                appendLine("Memoria relevante:")
+                appendLine("Relevant memory:")
                 appendLine(context.memoryContext)
             }
         }

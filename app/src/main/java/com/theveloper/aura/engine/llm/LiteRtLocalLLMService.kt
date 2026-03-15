@@ -54,13 +54,13 @@ abstract class LiteRtLocalLLMService constructor(
 
         val repairedResponse = generateText(
             userPrompt = buildRepairPrompt(rawResponse),
-            systemPrompt = "Convertí la salida en un único JSON válido. No agregues texto extra.",
+            systemPrompt = "Convert the output into a single valid JSON object. No extra text.",
             maxOutputTokens = defaultMaxOutputTokens,
             requestLabel = "classify-repair"
         )
         parseTaskDsl(repairedResponse)?.let { return it.stabilizeLocalClassification(input) }
 
-        debugError("No se pudo parsear la respuesta del modelo local para clasificación.")
+        debugError("Failed to parse local model response for classification.")
         throw TaskDSLParseException(rawResponse)
     }
 
@@ -70,10 +70,10 @@ abstract class LiteRtLocalLLMService constructor(
         currentTime: String
     ): String {
         val prompt = buildString {
-            appendLine("Hora actual: $currentTime")
-            appendLine("Tareas activas: $tasksJson")
-            appendLine("Patrones del usuario: $patternsJson")
-            appendLine("Respondé únicamente con un array JSON válido.")
+            appendLine("Current time: $currentTime")
+            appendLine("Active tasks: $tasksJson")
+            appendLine("User patterns: $patternsJson")
+            appendLine("Return only a valid JSON array.")
         }
         return generateText(
             userPrompt = prompt,
@@ -94,10 +94,10 @@ abstract class LiteRtLocalLLMService constructor(
 
     override suspend fun generateClarification(taskContext: String, missingField: MissingField): String {
         val prompt = """
-            Contexto de tarea: "$taskContext"
-            Campo faltante: ${missingField.fieldName}
-            Escribí una sola pregunta corta y amigable en español.
-            Solo la pregunta.
+            Task context: "$taskContext"
+            Missing field: ${missingField.fieldName}
+            Write a single short, friendly question in the same language as the task context.
+            Return only the question, nothing else.
         """.trimIndent()
         return generateText(
             userPrompt = prompt,
@@ -155,7 +155,7 @@ abstract class LiteRtLocalLLMService constructor(
                 "createSession",
                 sessionConfig.javaClass
             ).invoke(engine, sessionConfig)
-        ) { "LiteRT-LM devolvió una sesión nula." }
+        ) { "LiteRT-LM returned a null session." }
         try {
             val raw = generateContent(session, prompt)
             debugLog("[$requestLabel] raw=${raw.take(LOG_PREVIEW_LIMIT)}")
@@ -184,7 +184,7 @@ abstract class LiteRtLocalLLMService constructor(
                 }
             appendLine(userPrompt.trim())
             appendLine()
-            append("Devolvé solo JSON válido y mantenete dentro de $maxOutputTokens tokens de salida.")
+            append("Return only valid JSON. Stay within $maxOutputTokens output tokens.")
         }
     }
 
@@ -217,9 +217,9 @@ abstract class LiteRtLocalLLMService constructor(
 
     private fun buildRepairPrompt(rawResponse: String): String {
         return """
-            Convertí la siguiente salida en un único JSON válido que cumpla exactamente el schema TaskDSLOutput.
-            No agregues texto, markdown ni explicaciones.
-            Salida original:
+            Convert the following output into a single valid JSON object matching the TaskDSLOutput schema.
+            No extra text, no markdown, no explanations.
+            Original output:
             $rawResponse
         """.trimIndent()
     }
@@ -313,73 +313,86 @@ abstract class LiteRtLocalLLMService constructor(
 
     private fun buildClassifierPrompt(input: String, context: LLMClassificationContext): String {
         return buildString {
-            appendLine("Input del usuario: $input")
-            appendLine("Intent hint: ${context.intentHint?.name ?: "UNKNOWN"}")
+            appendLine("User input: $input")
             context.extractedDates.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Fechas extraídas: $it")
+                appendLine("Extracted dates (epoch ms): $it")
             }
             context.extractedNumbers.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Números extraídos: $it")
+                appendLine("Extracted numbers: $it")
             }
             context.extractedLocations.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Ubicaciones extraídas: $it")
+                appendLine("Extracted locations: $it")
             }
             if (context.memoryContext.isNotBlank()) {
-                appendLine("Memoria relevante:")
+                appendLine("Relevant memory:")
                 appendLine(context.memoryContext.trim().take(400))
             }
-            appendLine("Devolvé exactamente un objeto JSON TaskDSLOutput válido, sin texto extra.")
         }
     }
 
     private fun localClassifierSystemPrompt(): String {
         return """
-            Sos el clasificador de tareas de AURA.
-            Respondé con un único JSON TaskDSLOutput válido, sin markdown ni explicaciones.
-            Campos raíz OBLIGATORIOS: title, type, priority (0..3), targetDateMs, semantic, components, reminders, fetchers.
-            El campo title es OBLIGATORIO: nunca lo dejes vacío, usá el input del usuario como base.
-            IMPORTANTE: Siempre incluí "semantic" antes de "components":
-            "semantic": {"action": "verbo+complemento", "items": ["item1"], "subject": "contexto", "goal": "meta medible o vacío", "frequency": "recurrencia o vacío"}
-            - action = qué quiere hacer (verbo corto).
-            - items = objetos/pasos atómicos, 1-3 palabras cada uno, sin verbos ni preposiciones del input. [] si no hay.
-            - subject = lugar, destino o tema.
-            - goal = resultado medible (ej: "perder grasa", "correr 5km"). Vacío si no hay.
-            - frequency = recurrencia (ej: "diario", "rutina"). Vacío si no hay.
-            Ejemplo — lista: "necesito lista para el super, quiero tomates y leche"
-            → "semantic": {"action": "comprar", "items": ["tomates", "leche"], "subject": "supermercado", "goal": "", "frequency": ""}
-            → "title": "Lista del supermercado", "components": [CHECKLIST, NOTES]
-            Ejemplo — rutina: "rutina de gym para perder grasa en 30 minutos"
-            → "semantic": {"action": "hacer rutina", "items": ["sentadillas", "flexiones", "burpees"], "subject": "gym", "goal": "perder grasa", "frequency": "rutina"}
-            → "title": "Rutina de gym", "components": [CHECKLIST, HABIT_RING, METRIC_TRACKER]
-            Ejemplo - evento: "reunion con el cliente el jueves"
-            → "semantic": {"action": "asistir reunion", "items": [], "subject": "cliente", "goal": "", "frequency": ""}
-            → "title": "Reunion con el cliente", "type": "EVENT", "components": [COUNTDOWN, NOTES]
-            Ejemplo - meta: "quiero terminar el curso de Kotlin"
-            → "semantic": {"action": "terminar curso", "items": ["modulo 1", "proyecto final"], "subject": "Kotlin", "goal": "terminar curso", "frequency": ""}
-            → "title": "Terminar el curso de Kotlin", "type": "GOAL", "components": [PROGRESS_BAR, CHECKLIST, NOTES]
-            ELECCION DE COMPONENTES — basate en propiedades del semantic:
-            - Si el input describe una fecha puntual o evento futuro, usá EVENT.
-            - Si el input describe una meta de mediano plazo con hitos, usá GOAL.
-            - semantic.items no vacío → incluí CHECKLIST (podés omitir items del config del CHECKLIST, se poblarán automáticamente desde semantic.items).
-            - semantic.frequency no vacío → incluí HABIT_RING.
-            - semantic.goal tiene un resultado medible → incluí METRIC_TRACKER.
-            - Fecha o deadline en el input → incluí COUNTDOWN.
-            - La tarea tiene pasos completables en conjunto → considerá PROGRESS_BAR.
-            - Siempre que haya contexto útil → incluí NOTES.
-            - Si es ambiguo o ninguna regla aplica → usá GENERAL + NOTES.
-            - DATA_FEED solo si el input pide datos externos en tiempo real.
-            Elegí la menor cantidad de componentes útiles. No agregues por si acaso.
-            Cada component debe incluir: type, sortOrder único, config, populatedFromInput y needsClarification.
-            En config, config_type debe ser igual al type del componente.
-            Configs mínimas:
-            - CHECKLIST: config_type, label, allowAddItems, items opcional.
-            - COUNTDOWN: config_type, targetDate, label.
-            - NOTES: config_type, text, isMarkdown.
-            - PROGRESS_BAR: config_type, source, label, manualProgress opcional.
-            - HABIT_RING: config_type, frequency, label, targetCount opcional.
-            - METRIC_TRACKER: config_type, unit, label, history, goal opcional.
-            - DATA_FEED: config_type, fetcherConfigId, displayLabel, status.
-            Si falta un dato bloqueante, poné needsClarification=true.
+            You are AURA's task UI builder. Output a single valid JSON object. No markdown, no extra text.
+
+            LANGUAGE RULE: All user-facing text (title, label, text, items) MUST be in the same language as the user's input.
+
+            Root fields (all required): semantic, title, type, priority, targetDateMs, components, reminders, fetchers.
+            title is REQUIRED: never empty, derived from user input.
+            type: GENERAL|TRAVEL|HABIT|HEALTH|PROJECT|FINANCE|EVENT|GOAL
+
+            semantic (always first, before components):
+            {"action":"verb+complement","items":["atomic 1-3 word nouns, no verbs"],"subject":"context","goal":"measurable result or empty","frequency":"recurrence or empty"}
+
+            COMPONENT CONFIGS (config_type must equal component type):
+            CHECKLIST: config_type, label, allowAddItems, items=[{"label":"...","isSuggested":false}]
+              → items MUST be the real things from the prompt: products, ingredients, exercises, steps.
+              → Add inferred items with isSuggested=true. Unknown → leave empty + needsClarification=true.
+            NOTES: config_type, text (markdown string), isMarkdown=true
+              → text MUST contain useful content from the prompt. Use ## headers, **bold**, - lists.
+              → Recipe → steps + tips. Workout → exercise notes. Event → agenda. Never use placeholders.
+            METRIC_TRACKER: config_type, unit, label, history=[], goal (optional number)
+              → unit MUST match context: "kg","lb","km","ml","reps","h","steps","USD","€", etc.
+              → goal = the numeric target the user mentioned. Omit if not specified.
+            COUNTDOWN: config_type, targetDate (epoch ms, 0 if unknown), label
+              → use extracted date if available. No date → targetDate=0 + needsClarification=true.
+            HABIT_RING: config_type, frequency (DAILY or WEEKLY), label, targetCount (optional int)
+              → daily/everyday → DAILY. weekly/each week → WEEKLY. Implied recurrence → DAILY.
+            PROGRESS_BAR: config_type, source="MANUAL", label, manualProgress=0.0
+            DATA_FEED: config_type, fetcherConfigId, displayLabel, status="LOADING"
+              → Only for explicit live data requests (weather, exchange rates, flights).
+
+            SELECTION RULES:
+            semantic.items not empty → CHECKLIST (fill items from prompt)
+            semantic.frequency not empty → HABIT_RING
+            semantic.goal measurable → METRIC_TRACKER (set unit + goal)
+            Future date/deadline → COUNTDOWN
+            Sequential completable stages → PROGRESS_BAR
+            Useful context or info → NOTES (fill with real content)
+            Live external data requested → DATA_FEED
+            Nothing specific → GENERAL + NOTES only
+            Minimum useful components only. Do not add speculatively.
+
+            TYPE: EVENT(specific future date/event), GOAL(milestones+progress), HABIT(recurring), HEALTH(fitness/medical), TRAVEL(trip), FINANCE(budget/savings), PROJECT(deliverable), else GENERAL
+
+            Example 1 — shopping list: "I need milk, eggs, bread and coffee for the week"
+            semantic: {"action":"buy groceries","items":["milk","eggs","bread","coffee"],"subject":"supermarket","goal":"","frequency":""}
+            title: "Weekly shopping", type: "GENERAL"
+            components: [CHECKLIST items=[milk,eggs,bread,coffee], NOTES text="## Shopping tips\n- Check expiry dates\n- Buy in bulk if on sale"]
+
+            Example 2 — recipe: "chocolate cake recipe"
+            semantic: {"action":"bake cake","items":["200g flour","150g sugar","3 eggs","100g butter","50g cocoa"],"subject":"kitchen","goal":"","frequency":""}
+            title: "Chocolate cake", type: "GENERAL"
+            components: [CHECKLIST items=[200g flour,150g sugar,3 eggs,100g butter,50g cocoa isSuggested=true], NOTES text="## Preparation\n1. Preheat oven 180°C\n2. Mix dry ingredients\n3. Beat eggs with butter\n4. Combine and bake 35 min\n\n**Tip:** don't overmix the batter"]
+
+            Example 3 — workout: "gym routine to lose weight, recommend exercises"
+            semantic: {"action":"workout","items":["squats","push-ups","lunges","plank","burpees"],"subject":"gym","goal":"lose weight","frequency":"daily"}
+            title: "Gym routine", type: "HEALTH"
+            components: [CHECKLIST items=[squats,push-ups,lunges,plank,burpees isSuggested=true], HABIT_RING freq=DAILY, METRIC_TRACKER unit="kg" goal=target, NOTES text="## Routine tips\n- **Rest:** 60s between sets\n- **Sets:** 3–4 per exercise\n- **Warm up** 5 min before starting"]
+
+            Example 4 — event: "meeting with the client on Friday at 3pm"
+            semantic: {"action":"attend meeting","items":[],"subject":"client","goal":"","frequency":""}
+            title: "Meeting with client", type: "EVENT"
+            components: [COUNTDOWN targetDate=from extracted date, NOTES text="## Meeting agenda\n- Review project status\n- Discuss next steps\n- **Bring:** proposal document"]
         """.trimIndent()
     }
 
