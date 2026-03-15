@@ -12,7 +12,6 @@ import com.theveloper.aura.domain.model.MetricTrackerConfig
 import com.theveloper.aura.domain.model.NotesConfig
 import com.theveloper.aura.domain.model.ProgressBarConfig
 import com.theveloper.aura.domain.model.TaskType
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -45,6 +44,9 @@ data class TaskComponentTemplate(
 object TaskComponentCatalog {
 
     val templates: List<TaskComponentTemplate> = listOf(
+
+        // ── Countdown ────────────────────────────────────────────────────────
+
         TaskComponentTemplate(
             id = "travel_countdown",
             title = "Countdown",
@@ -52,7 +54,7 @@ object TaskComponentCatalog {
             subtitle = "Travel date with urgency and remaining time.",
             type = ComponentType.COUNTDOWN,
             supportedTaskTypes = setOf(TaskType.TRAVEL, TaskType.GENERAL),
-            build = { sortOrder, now, context ->
+            build = { sortOrder, _, context ->
                 builtComponent(
                     type = ComponentType.COUNTDOWN,
                     sortOrder = sortOrder,
@@ -70,7 +72,7 @@ object TaskComponentCatalog {
             subtitle = "Delivery target for projects and general goals.",
             type = ComponentType.COUNTDOWN,
             supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.GENERAL, TaskType.HEALTH, TaskType.EVENT, TaskType.GOAL),
-            build = { sortOrder, now, context ->
+            build = { sortOrder, _, context ->
                 builtComponent(
                     type = ComponentType.COUNTDOWN,
                     sortOrder = sortOrder,
@@ -88,7 +90,7 @@ object TaskComponentCatalog {
             subtitle = "Due date for invoices, rent and other payments.",
             type = ComponentType.COUNTDOWN,
             supportedTaskTypes = setOf(TaskType.FINANCE, TaskType.GENERAL),
-            build = { sortOrder, now, context ->
+            build = { sortOrder, _, context ->
                 builtComponent(
                     type = ComponentType.COUNTDOWN,
                     sortOrder = sortOrder,
@@ -117,6 +119,10 @@ object TaskComponentCatalog {
                 )
             }
         ),
+
+        // ── Checklist ─────────────────────────────────────────────────────────
+        // Items are intentionally empty — populated by the LLM semantic bridge or by the user.
+
         TaskComponentTemplate(
             id = "packing_checklist",
             title = "Checklist",
@@ -128,13 +134,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.CHECKLIST,
                     sortOrder = sortOrder,
-                    config = ChecklistConfig(
-                        label = "Travel prep",
-                        allowAddItems = true
-                    ),
-                    extras = mapOf(
-                        "items" to jsonArrayOf("Passport", "Insurance", "Packing list")
-                    )
+                    config = ChecklistConfig(label = "Travel prep", allowAddItems = true)
                 )
             }
         ),
@@ -149,13 +149,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.CHECKLIST,
                     sortOrder = sortOrder,
-                    config = ChecklistConfig(
-                        label = "Travel documents",
-                        allowAddItems = true
-                    ),
-                    extras = mapOf(
-                        "items" to jsonArrayOf("Passport", "Boarding pass", "Insurance", "Local reservations")
-                    )
+                    config = ChecklistConfig(label = "Travel documents", allowAddItems = true)
                 )
             }
         ),
@@ -170,13 +164,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.CHECKLIST,
                     sortOrder = sortOrder,
-                    config = ChecklistConfig(
-                        label = "Key steps",
-                        allowAddItems = true
-                    ),
-                    extras = mapOf(
-                        "items" to jsonArrayOf("Define next step", "Execute", "Review result")
-                    )
+                    config = ChecklistConfig(label = "Key steps", allowAddItems = true)
                 )
             }
         ),
@@ -191,13 +179,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.CHECKLIST,
                     sortOrder = sortOrder,
-                    config = ChecklistConfig(
-                        label = "Event prep",
-                        allowAddItems = true
-                    ),
-                    extras = mapOf(
-                        "items" to jsonArrayOf("Confirm time", "Prepare materials", "Share agenda")
-                    )
+                    config = ChecklistConfig(label = "Event prep", allowAddItems = true)
                 )
             }
         ),
@@ -212,13 +194,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.CHECKLIST,
                     sortOrder = sortOrder,
-                    config = ChecklistConfig(
-                        label = "Milestones",
-                        allowAddItems = true
-                    ),
-                    extras = mapOf(
-                        "items" to jsonArrayOf("Define milestone 1", "Schedule practice block", "Review progress")
-                    )
+                    config = ChecklistConfig(label = "Milestones", allowAddItems = true)
                 )
             }
         ),
@@ -233,13 +209,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.CHECKLIST,
                     sortOrder = sortOrder,
-                    config = ChecklistConfig(
-                        label = "Payment steps",
-                        allowAddItems = true
-                    ),
-                    extras = mapOf(
-                        "items" to jsonArrayOf("Verify amount", "Schedule transfer", "Save receipt")
-                    )
+                    config = ChecklistConfig(label = "Payment steps", allowAddItems = true)
                 )
             }
         ),
@@ -254,16 +224,13 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.CHECKLIST,
                     sortOrder = sortOrder,
-                    config = ChecklistConfig(
-                        label = "Medication cycle",
-                        allowAddItems = true
-                    ),
-                    extras = mapOf(
-                        "items" to jsonArrayOf("Take dose", "Drink water", "Track side effects", "Schedule follow-up")
-                    )
+                    config = ChecklistConfig(label = "Medication cycle", allowAddItems = true)
                 )
             }
         ),
+
+        // ── Habit Ring ────────────────────────────────────────────────────────
+
         TaskComponentTemplate(
             id = "habit_daily",
             title = "Habit Ring",
@@ -271,18 +238,15 @@ object TaskComponentCatalog {
             subtitle = "Simple daily streak with recurring reminder.",
             type = ComponentType.HABIT_RING,
             supportedTaskTypes = setOf(TaskType.HABIT, TaskType.HEALTH, TaskType.GENERAL),
-            build = { sortOrder, now, context ->
+            build = { sortOrder, now, _ ->
                 builtComponent(
                     type = ComponentType.HABIT_RING,
                     sortOrder = sortOrder,
-                    config = HabitRingConfig(
-                        frequency = "DAILY",
-                        label = "Daily streak"
-                    ),
+                    config = HabitRingConfig(frequency = "DAILY", label = "Daily streak"),
                     reminders = listOf(
                         ReminderDSL(
-                            scheduledAtMs = now + recurringHours(context.input) * HOUR_IN_MILLIS,
-                            intervalDays = recurringHours(context.input) / 24f
+                            scheduledAtMs = now + DAY_IN_MILLIS,
+                            intervalDays = 1f
                         )
                     )
                 )
@@ -299,10 +263,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.HABIT_RING,
                     sortOrder = sortOrder,
-                    config = HabitRingConfig(
-                        frequency = "WEEKLY",
-                        label = "Weekly rhythm"
-                    ),
+                    config = HabitRingConfig(frequency = "WEEKLY", label = "Weekly rhythm"),
                     reminders = listOf(
                         ReminderDSL(
                             scheduledAtMs = now + DAY_IN_MILLIS,
@@ -312,6 +273,9 @@ object TaskComponentCatalog {
                 )
             }
         ),
+
+        // ── Progress Bar ──────────────────────────────────────────────────────
+
         TaskComponentTemplate(
             id = "progress_manual",
             title = "Progress Bar",
@@ -323,11 +287,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.PROGRESS_BAR,
                     sortOrder = sortOrder,
-                    config = ProgressBarConfig(
-                        source = "MANUAL",
-                        label = "Overall progress",
-                        manualProgress = 0.15f
-                    )
+                    config = ProgressBarConfig(source = "MANUAL", label = "Overall progress")
                 )
             }
         ),
@@ -342,11 +302,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.PROGRESS_BAR,
                     sortOrder = sortOrder,
-                    config = ProgressBarConfig(
-                        source = "MANUAL",
-                        label = "Milestone progress",
-                        manualProgress = 0.35f
-                    )
+                    config = ProgressBarConfig(source = "MANUAL", label = "Milestone progress")
                 )
             }
         ),
@@ -361,11 +317,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.PROGRESS_BAR,
                     sortOrder = sortOrder,
-                    config = ProgressBarConfig(
-                        source = "MANUAL",
-                        label = "Budget target",
-                        manualProgress = 0.25f
-                    )
+                    config = ProgressBarConfig(source = "MANUAL", label = "Budget target")
                 )
             }
         ),
@@ -380,11 +332,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.PROGRESS_BAR,
                     sortOrder = sortOrder,
-                    config = ProgressBarConfig(
-                        source = "MANUAL",
-                        label = "Execution sprint",
-                        manualProgress = 0.2f
-                    )
+                    config = ProgressBarConfig(source = "MANUAL", label = "Execution sprint")
                 )
             }
         ),
@@ -399,14 +347,14 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.PROGRESS_BAR,
                     sortOrder = sortOrder,
-                    config = ProgressBarConfig(
-                        source = "MANUAL",
-                        label = "Goal progress",
-                        manualProgress = 0.12f
-                    )
+                    config = ProgressBarConfig(source = "MANUAL", label = "Goal progress")
                 )
             }
         ),
+
+        // ── Notes ─────────────────────────────────────────────────────────────
+        // Text is intentionally empty — populated by the LLM semantic bridge or by the user.
+
         TaskComponentTemplate(
             id = "notes_brain_dump",
             title = "Notes",
@@ -414,14 +362,11 @@ object TaskComponentCatalog {
             subtitle = "Open markdown space for context and loose ideas.",
             type = ComponentType.NOTES,
             supportedTaskTypes = TaskType.entries.toSet(),
-            build = { sortOrder, _, context ->
+            build = { sortOrder, _, _ ->
                 builtComponent(
                     type = ComponentType.NOTES,
                     sortOrder = sortOrder,
-                    config = NotesConfig(
-                        text = if (context.title.isBlank()) "" else "### ${context.title}\n- Context\n- Next step\n- Notes",
-                        isMarkdown = true
-                    )
+                    config = NotesConfig(text = "", isMarkdown = true)
                 )
             }
         ),
@@ -436,10 +381,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.NOTES,
                     sortOrder = sortOrder,
-                    config = NotesConfig(
-                        text = "### Summary\n- Decision\n- Owner\n- Next checkpoint",
-                        isMarkdown = true
-                    )
+                    config = NotesConfig(text = "", isMarkdown = true)
                 )
             }
         ),
@@ -454,10 +396,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.NOTES,
                     sortOrder = sortOrder,
-                    config = NotesConfig(
-                        text = "### Event notes\n- Time and place\n- People involved\n- What to bring",
-                        isMarkdown = true
-                    )
+                    config = NotesConfig(text = "", isMarkdown = true)
                 )
             }
         ),
@@ -468,15 +407,11 @@ object TaskComponentCatalog {
             subtitle = "Flights, stays, transfers and local contacts.",
             type = ComponentType.NOTES,
             supportedTaskTypes = setOf(TaskType.TRAVEL, TaskType.GENERAL),
-            build = { sortOrder, _, context ->
-                val place = context.locations.firstOrNull()?.let { " - $it" }.orEmpty()
+            build = { sortOrder, _, _ ->
                 builtComponent(
                     type = ComponentType.NOTES,
                     sortOrder = sortOrder,
-                    config = NotesConfig(
-                        text = "### Itinerary$place\n- Flight / route\n- Stay\n- Transfers\n- Must-have contacts",
-                        isMarkdown = true
-                    )
+                    config = NotesConfig(text = "", isMarkdown = true)
                 )
             }
         ),
@@ -491,10 +426,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.NOTES,
                     sortOrder = sortOrder,
-                    config = NotesConfig(
-                        text = "### Study plan\n- Goal\n- Topics\n- Practice block\n- Open questions",
-                        isMarkdown = true
-                    )
+                    config = NotesConfig(text = "", isMarkdown = true)
                 )
             }
         ),
@@ -509,10 +441,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.NOTES,
                     sortOrder = sortOrder,
-                    config = NotesConfig(
-                        text = "### Goal context\n- Why this matters\n- Current blocker\n- Next milestone",
-                        isMarkdown = true
-                    )
+                    config = NotesConfig(text = "", isMarkdown = true)
                 )
             }
         ),
@@ -527,10 +456,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.NOTES,
                     sortOrder = sortOrder,
-                    config = NotesConfig(
-                        text = "### Budget snapshot\n- Fixed costs\n- Variable costs\n- Risks\n- Next checkpoint",
-                        isMarkdown = true
-                    )
+                    config = NotesConfig(text = "", isMarkdown = true)
                 )
             }
         ),
@@ -545,10 +471,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.NOTES,
                     sortOrder = sortOrder,
-                    config = NotesConfig(
-                        text = "### Reflection\n- Win of the day\n- Friction\n- Next adjustment",
-                        isMarkdown = true
-                    )
+                    config = NotesConfig(text = "", isMarkdown = true)
                 )
             }
         ),
@@ -563,13 +486,14 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.NOTES,
                     sortOrder = sortOrder,
-                    config = NotesConfig(
-                        text = "### Health follow-up\n- Symptoms\n- Medication response\n- Questions for doctor",
-                        isMarkdown = true
-                    )
+                    config = NotesConfig(text = "", isMarkdown = true)
                 )
             }
         ),
+
+        // ── Metric Tracker ────────────────────────────────────────────────────
+        // History is intentionally empty — populated by real user entries over time.
+
         TaskComponentTemplate(
             id = "metric_hydration",
             title = "Metric Tracker",
@@ -581,11 +505,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.METRIC_TRACKER,
                     sortOrder = sortOrder,
-                    config = MetricTrackerConfig(
-                        unit = "ml",
-                        label = "Hydration",
-                        history = listOf(350f, 700f, 1100f, 1450f, 1800f)
-                    )
+                    config = MetricTrackerConfig(unit = "ml", label = "Hydration")
                 )
             }
         ),
@@ -600,11 +520,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.METRIC_TRACKER,
                     sortOrder = sortOrder,
-                    config = MetricTrackerConfig(
-                        unit = "kg",
-                        label = "Weight trend",
-                        history = listOf(82.4f, 82.1f, 81.9f, 81.6f, 81.3f)
-                    )
+                    config = MetricTrackerConfig(unit = "kg", label = "Weight trend")
                 )
             }
         ),
@@ -619,11 +535,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.METRIC_TRACKER,
                     sortOrder = sortOrder,
-                    config = MetricTrackerConfig(
-                        unit = "steps",
-                        label = "Daily activity",
-                        history = listOf(4200f, 6100f, 7800f, 8600f, 10200f)
-                    )
+                    config = MetricTrackerConfig(unit = "steps", label = "Daily activity")
                 )
             }
         ),
@@ -638,11 +550,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.METRIC_TRACKER,
                     sortOrder = sortOrder,
-                    config = MetricTrackerConfig(
-                        unit = "h",
-                        label = "Sleep trend",
-                        history = listOf(6.2f, 6.8f, 7.1f, 7.4f, 7.0f)
-                    )
+                    config = MetricTrackerConfig(unit = "h", label = "Sleep trend")
                 )
             }
         ),
@@ -657,12 +565,7 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.METRIC_TRACKER,
                     sortOrder = sortOrder,
-                    config = MetricTrackerConfig(
-                        unit = "USD",
-                        label = "Budget target",
-                        goal = 1500f,
-                        history = listOf(150f, 320f, 540f, 810f, 980f)
-                    )
+                    config = MetricTrackerConfig(unit = "USD", label = "Budget target")
                 )
             }
         ),
@@ -677,15 +580,13 @@ object TaskComponentCatalog {
                 builtComponent(
                     type = ComponentType.METRIC_TRACKER,
                     sortOrder = sortOrder,
-                    config = MetricTrackerConfig(
-                        unit = "%",
-                        label = "Momentum",
-                        goal = 100f,
-                        history = listOf(18f, 24f, 31f, 45f, 57f)
-                    )
+                    config = MetricTrackerConfig(unit = "%", label = "Momentum")
                 )
             }
         ),
+
+        // ── Data Feed ─────────────────────────────────────────────────────────
+
         TaskComponentTemplate(
             id = "feed_weather",
             title = "Data Feed",
@@ -713,16 +614,14 @@ object TaskComponentCatalog {
             subtitle = "Exchange rate or external finance indicator.",
             type = ComponentType.DATA_FEED,
             supportedTaskTypes = setOf(TaskType.FINANCE, TaskType.TRAVEL, TaskType.GENERAL),
-            build = { sortOrder, now, _ ->
+            build = { sortOrder, _, _ ->
                 builtComponent(
                     type = ComponentType.DATA_FEED,
                     sortOrder = sortOrder,
                     config = DataFeedConfig(
                         fetcherConfigId = "usd_ars",
                         displayLabel = "USD / ARS",
-                        status = DataFeedStatus.STALE,
-                        lastValue = "1 USD = 1,045 ARS",
-                        lastUpdatedAt = now - HOUR_IN_MILLIS
+                        status = DataFeedStatus.LOADING
                     )
                 )
             }
@@ -828,19 +727,6 @@ object TaskComponentCatalog {
             ),
             reminders = reminders
         )
-    }
-
-    private fun jsonArrayOf(vararg values: String): JsonArray {
-        return JsonArray(values.map(::JsonPrimitive))
-    }
-
-    private fun recurringHours(input: String): Long {
-        val explicit = Regex("\\bcada\\s+(\\d+)\\s+hor", RegexOption.IGNORE_CASE)
-            .find(input)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.toLongOrNull()
-        return explicit ?: 24L
     }
 
     private const val HOUR_IN_MILLIS = 60 * 60 * 1000L
