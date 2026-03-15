@@ -73,15 +73,11 @@ class IntentClassifier @Inject constructor() {
                 Regex("\\broadmap\\b", RegexOption.IGNORE_CASE),
                 Regex("\\bentrega\\b", RegexOption.IGNORE_CASE),
                 Regex("\\bapp\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bestudiar\\b", RegexOption.IGNORE_CASE),
-                Regex("\\baprender\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bcurso\\b", RegexOption.IGNORE_CASE),
                 Regex("\\btesis\\b", RegexOption.IGNORE_CASE),
                 Regex("\\binforme\\b", RegexOption.IGNORE_CASE),
                 Regex("\\bpresentaci[oó]n\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bexamen\\b", RegexOption.IGNORE_CASE),
                 Regex("\\bdesarrollar\\b", RegexOption.IGNORE_CASE),
-                Regex("\\breuni[oó]n\\b", RegexOption.IGNORE_CASE),
+                Regex("\\bimplementar\\b", RegexOption.IGNORE_CASE),
                 Regex("\\binvestigar\\b", RegexOption.IGNORE_CASE),
                 Regex("\\blanzamiento\\b", RegexOption.IGNORE_CASE)
             )
@@ -105,6 +101,39 @@ class IntentClassifier @Inject constructor() {
                 Regex("\\balquiler\\b", RegexOption.IGNORE_CASE),
                 Regex("\\bfactura\\b", RegexOption.IGNORE_CASE),
                 Regex("\\bvencim\\w*", RegexOption.IGNORE_CASE)
+            )
+        ),
+        ClassificationRule(
+            taskType = TaskType.EVENT,
+            confidence = 0.91f,
+            patterns = listOf(
+                Regex("\\bevento\\b", RegexOption.IGNORE_CASE),
+                Regex("\\breuni[oó]n\\b", RegexOption.IGNORE_CASE),
+                Regex("\\bmeeting\\b", RegexOption.IGNORE_CASE),
+                Regex("\\bcita\\b", RegexOption.IGNORE_CASE),
+                Regex("\\bturno\\b", RegexOption.IGNORE_CASE),
+                Regex("\\bcumplea[ñn]os\\b", RegexOption.IGNORE_CASE),
+                Regex("\\bdeadline\\b", RegexOption.IGNORE_CASE),
+                Regex("\\bvencim\\w*", RegexOption.IGNORE_CASE),
+                Regex("\\bfecha\\b", RegexOption.IGNORE_CASE),
+                Regex("\\bviernes\\b|\\blunes\\b|\\bmartes\\b|\\bmi[eé]rcoles\\b|\\bjueves\\b|\\bs[aá]bado\\b|\\bdomingo\\b", RegexOption.IGNORE_CASE)
+            )
+        ),
+        ClassificationRule(
+            taskType = TaskType.GOAL,
+            confidence = 0.9f,
+            patterns = listOf(
+                Regex("\\bmeta\\b", RegexOption.IGNORE_CASE),
+                Regex("\\bobjetivo\\b", RegexOption.IGNORE_CASE),
+                Regex("\\bhito\\w*", RegexOption.IGNORE_CASE),
+                Regex("\\bmilestone\\b", RegexOption.IGNORE_CASE),
+                Regex("\\bquiero\\s+(aprender|terminar|mejorar|lograr|dominar|completar)", RegexOption.IGNORE_CASE),
+                Regex("\\baprender\\b", RegexOption.IGNORE_CASE),
+                Regex("\\bmejorar\\b", RegexOption.IGNORE_CASE),
+                Regex("\\blograr\\b", RegexOption.IGNORE_CASE),
+                Regex("\\bdominar\\b", RegexOption.IGNORE_CASE),
+                Regex("\\bterminar\\b", RegexOption.IGNORE_CASE),
+                Regex("\\bcompletar\\b", RegexOption.IGNORE_CASE)
             )
         )
     )

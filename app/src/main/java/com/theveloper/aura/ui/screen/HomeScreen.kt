@@ -77,6 +77,7 @@ import com.theveloper.aura.domain.model.ProgressBarConfig
 import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskStatus
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.domain.model.toTaskShape
 import kotlin.math.roundToInt
 
 private val HomeTopBarFallbackHeight = 152.dp
@@ -108,7 +109,7 @@ fun HomeScreen(
     val systemCount = remember(uiState.tasks) {
         uiState.tasks.count {
             it.status == TaskStatus.ACTIVE &&
-                (it.type == TaskType.PROJECT || it.type == TaskType.FINANCE || it.type == TaskType.TRAVEL)
+                (it.type == TaskType.PROJECT || it.type == TaskType.FINANCE || it.type == TaskType.TRAVEL || it.type == TaskType.GOAL)
         }
     }
 
@@ -824,6 +825,8 @@ internal fun taskTone(type: TaskType): TaskTone {
         TaskType.HEALTH -> TaskTone(s.errorContainer, s.onErrorContainer)
         TaskType.PROJECT -> TaskTone(s.surfaceContainerHighest, s.onSurface)
         TaskType.FINANCE -> TaskTone(s.inverseSurface, s.inverseOnSurface)
+        TaskType.EVENT -> TaskTone(s.tertiaryContainer.copy(alpha = 0.78f), s.onTertiaryContainer)
+        TaskType.GOAL -> TaskTone(s.primaryContainer.copy(alpha = 0.82f), s.onPrimaryContainer)
     }
 }
 
@@ -834,16 +837,11 @@ internal fun taskTypeIcon(type: TaskType): ImageVector = when (type) {
     TaskType.HEALTH -> Icons.Rounded.LocalHospital
     TaskType.PROJECT -> Icons.Rounded.Bolt
     TaskType.FINANCE -> Icons.Rounded.Payments
+    TaskType.EVENT -> Icons.Rounded.Event
+    TaskType.GOAL -> Icons.Rounded.TaskAlt
 }
 
-internal fun TaskType.label(): String = when (this) {
-    TaskType.GENERAL -> "General"
-    TaskType.TRAVEL -> "Travel"
-    TaskType.HABIT -> "Habit"
-    TaskType.HEALTH -> "Health"
-    TaskType.PROJECT -> "Project"
-    TaskType.FINANCE -> "Finance"
-}
+internal fun TaskType.label(): String = toTaskShape().displayName
 
 internal enum class TaskFilter(val key: String, val label: String) {
     ALL("all", "All"),
@@ -859,7 +857,10 @@ internal enum class TaskFilter(val key: String, val label: String) {
         COMPLETED -> tasks.filter { it.status == TaskStatus.COMPLETED }
         DUE_SOON -> tasks.filter { it.status == TaskStatus.ACTIVE && it.isDueSoon() }
         RITUALS -> tasks.filter { it.status == TaskStatus.ACTIVE && (it.type == TaskType.HABIT || it.type == TaskType.HEALTH) }
-        SYSTEMS -> tasks.filter { it.status == TaskStatus.ACTIVE && (it.type == TaskType.PROJECT || it.type == TaskType.FINANCE || it.type == TaskType.TRAVEL) }
+        SYSTEMS -> tasks.filter {
+            it.status == TaskStatus.ACTIVE &&
+                (it.type == TaskType.PROJECT || it.type == TaskType.FINANCE || it.type == TaskType.TRAVEL || it.type == TaskType.GOAL)
+        }
     }
 
     companion object {
@@ -994,5 +995,7 @@ private fun Task.boardSummaryLine(): String = when {
     type == TaskType.TRAVEL -> "Keeps timing, prep and trip details together."
     type == TaskType.FINANCE -> "Tracks money movement with signals worth checking."
     type == TaskType.PROJECT -> "Structured work with a clearer execution path."
-    else -> "Flexible task with reminders and lightweight context."
+    type == TaskType.EVENT -> "Anchored to a date with the prep around it."
+    type == TaskType.GOAL -> "Tracks momentum and milestones over time."
+    else -> type.toTaskShape().shortDescription
 }

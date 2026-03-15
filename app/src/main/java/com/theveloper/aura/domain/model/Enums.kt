@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 enum class TaskType {
-    GENERAL, TRAVEL, HABIT, HEALTH, PROJECT, FINANCE
+    GENERAL, TRAVEL, HABIT, HEALTH, PROJECT, FINANCE, EVENT, GOAL
 }
 
 @Serializable

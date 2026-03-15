@@ -69,7 +69,7 @@ object TaskComponentCatalog {
             variantLabel = "Deadline",
             subtitle = "Delivery target for projects and general goals.",
             type = ComponentType.COUNTDOWN,
-            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.GENERAL, TaskType.HEALTH),
+            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.GENERAL, TaskType.HEALTH, TaskType.EVENT, TaskType.GOAL),
             build = { sortOrder, now, context ->
                 builtComponent(
                     type = ComponentType.COUNTDOWN,
@@ -95,6 +95,24 @@ object TaskComponentCatalog {
                     config = CountdownConfig(
                         targetDate = context.targetDateMs ?: 0L,
                         label = "Payment due"
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "event_countdown",
+            title = "Countdown",
+            variantLabel = "Event",
+            subtitle = "Fixed date for meetings, appointments and key moments.",
+            type = ComponentType.COUNTDOWN,
+            supportedTaskTypes = setOf(TaskType.EVENT),
+            build = { sortOrder, _, context ->
+                builtComponent(
+                    type = ComponentType.COUNTDOWN,
+                    sortOrder = sortOrder,
+                    config = CountdownConfig(
+                        targetDate = context.targetDateMs ?: 0L,
+                        label = "Event date"
                     )
                 )
             }
@@ -147,7 +165,7 @@ object TaskComponentCatalog {
             variantLabel = "Execution",
             subtitle = "Action plan, milestones and final review.",
             type = ComponentType.CHECKLIST,
-            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.GENERAL, TaskType.HEALTH),
+            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.GENERAL, TaskType.HEALTH, TaskType.EVENT, TaskType.GOAL),
             build = { sortOrder, _, _ ->
                 builtComponent(
                     type = ComponentType.CHECKLIST,
@@ -158,6 +176,48 @@ object TaskComponentCatalog {
                     ),
                     extras = mapOf(
                         "items" to jsonArrayOf("Define next step", "Execute", "Review result")
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "event_runbook_checklist",
+            title = "Checklist",
+            variantLabel = "Prep",
+            subtitle = "Simple prep list for a fixed event or meeting.",
+            type = ComponentType.CHECKLIST,
+            supportedTaskTypes = setOf(TaskType.EVENT),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.CHECKLIST,
+                    sortOrder = sortOrder,
+                    config = ChecklistConfig(
+                        label = "Event prep",
+                        allowAddItems = true
+                    ),
+                    extras = mapOf(
+                        "items" to jsonArrayOf("Confirm time", "Prepare materials", "Share agenda")
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "goal_milestones_checklist",
+            title = "Checklist",
+            variantLabel = "Milestones",
+            subtitle = "Milestones and next steps for a medium-term goal.",
+            type = ComponentType.CHECKLIST,
+            supportedTaskTypes = setOf(TaskType.GOAL),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.CHECKLIST,
+                    sortOrder = sortOrder,
+                    config = ChecklistConfig(
+                        label = "Milestones",
+                        allowAddItems = true
+                    ),
+                    extras = mapOf(
+                        "items" to jsonArrayOf("Define milestone 1", "Schedule practice block", "Review progress")
                     )
                 )
             }
@@ -258,7 +318,7 @@ object TaskComponentCatalog {
             variantLabel = "Manual",
             subtitle = "Percentage driven manually by the user.",
             type = ComponentType.PROGRESS_BAR,
-            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.GENERAL, TaskType.TRAVEL),
+            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.GENERAL, TaskType.TRAVEL, TaskType.HEALTH),
             build = { sortOrder, _, _ ->
                 builtComponent(
                     type = ComponentType.PROGRESS_BAR,
@@ -277,7 +337,7 @@ object TaskComponentCatalog {
             variantLabel = "Milestones",
             subtitle = "Progress framed around stages or deliverables.",
             type = ComponentType.PROGRESS_BAR,
-            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.TRAVEL, TaskType.GENERAL),
+            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.TRAVEL, TaskType.GENERAL, TaskType.GOAL),
             build = { sortOrder, _, _ ->
                 builtComponent(
                     type = ComponentType.PROGRESS_BAR,
@@ -296,7 +356,7 @@ object TaskComponentCatalog {
             variantLabel = "Budget",
             subtitle = "Savings or budget target tracked as a percentage.",
             type = ComponentType.PROGRESS_BAR,
-            supportedTaskTypes = setOf(TaskType.FINANCE, TaskType.TRAVEL, TaskType.PROJECT, TaskType.GENERAL),
+            supportedTaskTypes = setOf(TaskType.FINANCE, TaskType.TRAVEL, TaskType.PROJECT, TaskType.GENERAL, TaskType.GOAL),
             build = { sortOrder, _, _ ->
                 builtComponent(
                     type = ComponentType.PROGRESS_BAR,
@@ -315,7 +375,7 @@ object TaskComponentCatalog {
             variantLabel = "Sprint",
             subtitle = "Fast-moving execution progress for launches and studies.",
             type = ComponentType.PROGRESS_BAR,
-            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.GENERAL, TaskType.HABIT),
+            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.GENERAL, TaskType.HABIT, TaskType.GOAL),
             build = { sortOrder, _, _ ->
                 builtComponent(
                     type = ComponentType.PROGRESS_BAR,
@@ -324,6 +384,25 @@ object TaskComponentCatalog {
                         source = "MANUAL",
                         label = "Execution sprint",
                         manualProgress = 0.2f
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "goal_progress",
+            title = "Progress Bar",
+            variantLabel = "Goal",
+            subtitle = "Top-line progress for a medium-term personal goal.",
+            type = ComponentType.PROGRESS_BAR,
+            supportedTaskTypes = setOf(TaskType.GOAL),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.PROGRESS_BAR,
+                    sortOrder = sortOrder,
+                    config = ProgressBarConfig(
+                        source = "MANUAL",
+                        label = "Goal progress",
+                        manualProgress = 0.12f
                     )
                 )
             }
@@ -352,13 +431,31 @@ object TaskComponentCatalog {
             variantLabel = "Meeting",
             subtitle = "Structured recap for summaries and action items.",
             type = ComponentType.NOTES,
-            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.GENERAL, TaskType.FINANCE),
+            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.GENERAL, TaskType.FINANCE, TaskType.EVENT),
             build = { sortOrder, _, _ ->
                 builtComponent(
                     type = ComponentType.NOTES,
                     sortOrder = sortOrder,
                     config = NotesConfig(
                         text = "### Summary\n- Decision\n- Owner\n- Next checkpoint",
+                        isMarkdown = true
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "event_notes",
+            title = "Notes",
+            variantLabel = "Event",
+            subtitle = "People, context and what to bring for a fixed date.",
+            type = ComponentType.NOTES,
+            supportedTaskTypes = setOf(TaskType.EVENT),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.NOTES,
+                    sortOrder = sortOrder,
+                    config = NotesConfig(
+                        text = "### Event notes\n- Time and place\n- People involved\n- What to bring",
                         isMarkdown = true
                     )
                 )
@@ -389,13 +486,31 @@ object TaskComponentCatalog {
             variantLabel = "Study",
             subtitle = "Structured note for learning plans or research.",
             type = ComponentType.NOTES,
-            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.GENERAL),
+            supportedTaskTypes = setOf(TaskType.PROJECT, TaskType.GENERAL, TaskType.GOAL),
             build = { sortOrder, _, _ ->
                 builtComponent(
                     type = ComponentType.NOTES,
                     sortOrder = sortOrder,
                     config = NotesConfig(
                         text = "### Study plan\n- Goal\n- Topics\n- Practice block\n- Open questions",
+                        isMarkdown = true
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "goal_notes",
+            title = "Notes",
+            variantLabel = "Why it matters",
+            subtitle = "Motivation, blockers and next milestone in one place.",
+            type = ComponentType.NOTES,
+            supportedTaskTypes = setOf(TaskType.GOAL),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.NOTES,
+                    sortOrder = sortOrder,
+                    config = NotesConfig(
+                        text = "### Goal context\n- Why this matters\n- Current blocker\n- Next milestone",
                         isMarkdown = true
                     )
                 )
@@ -532,6 +647,46 @@ object TaskComponentCatalog {
             }
         ),
         TaskComponentTemplate(
+            id = "metric_budget_target",
+            title = "Metric Tracker",
+            variantLabel = "Budget",
+            subtitle = "Track saved money or available budget against a target.",
+            type = ComponentType.METRIC_TRACKER,
+            supportedTaskTypes = setOf(TaskType.FINANCE, TaskType.TRAVEL, TaskType.GOAL),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.METRIC_TRACKER,
+                    sortOrder = sortOrder,
+                    config = MetricTrackerConfig(
+                        unit = "USD",
+                        label = "Budget target",
+                        goal = 1500f,
+                        history = listOf(150f, 320f, 540f, 810f, 980f)
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
+            id = "goal_momentum_metric",
+            title = "Metric Tracker",
+            variantLabel = "Momentum",
+            subtitle = "A lightweight score to track consistency toward a goal.",
+            type = ComponentType.METRIC_TRACKER,
+            supportedTaskTypes = setOf(TaskType.GOAL),
+            build = { sortOrder, _, _ ->
+                builtComponent(
+                    type = ComponentType.METRIC_TRACKER,
+                    sortOrder = sortOrder,
+                    config = MetricTrackerConfig(
+                        unit = "%",
+                        label = "Momentum",
+                        goal = 100f,
+                        history = listOf(18f, 24f, 31f, 45f, 57f)
+                    )
+                )
+            }
+        ),
+        TaskComponentTemplate(
             id = "feed_weather",
             title = "Data Feed",
             variantLabel = "Weather",
@@ -575,7 +730,66 @@ object TaskComponentCatalog {
     )
 
     fun recommended(taskType: TaskType): List<TaskComponentTemplate> {
-        return templates.filter { template -> taskType in template.supportedTaskTypes }
+        val orderedTemplateIds = when (taskType) {
+            TaskType.TRAVEL -> listOf(
+                "travel_countdown",
+                "packing_checklist",
+                "travel_documents_checklist",
+                "metric_budget_target",
+                "travel_itinerary_notes"
+            )
+            TaskType.HABIT -> listOf(
+                "habit_daily",
+                "habit_weekly",
+                "metric_hydration",
+                "metric_steps",
+                "journal_reflection"
+            )
+            TaskType.HEALTH -> listOf(
+                "metric_weight",
+                "progress_manual",
+                "metric_hydration",
+                "metric_steps",
+                "metric_sleep",
+                "medication_checklist",
+                "deadline_countdown",
+                "notes_clinic"
+            )
+            TaskType.PROJECT -> listOf(
+                "progress_milestones",
+                "action_checklist",
+                "progress_sprint",
+                "deadline_countdown",
+                "notes_meeting",
+                "study_plan_notes"
+            )
+            TaskType.FINANCE -> listOf(
+                "metric_budget_target",
+                "progress_budget",
+                "payment_countdown",
+                "finance_payment_checklist",
+                "budget_snapshot_notes"
+            )
+            TaskType.EVENT -> listOf(
+                "event_countdown",
+                "event_runbook_checklist",
+                "event_notes"
+            )
+            TaskType.GOAL -> listOf(
+                "goal_progress",
+                "goal_milestones_checklist",
+                "goal_momentum_metric",
+                "deadline_countdown",
+                "goal_notes"
+            )
+            TaskType.GENERAL -> listOf(
+                "notes_brain_dump",
+                "action_checklist",
+                "deadline_countdown"
+            )
+        }
+
+        return orderedTemplateIds.mapNotNull(::find)
     }
 
     fun find(id: String): TaskComponentTemplate? = templates.firstOrNull { it.id == id }

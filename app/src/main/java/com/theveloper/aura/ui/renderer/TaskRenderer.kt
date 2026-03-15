@@ -41,6 +41,7 @@ import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskComponent
 import com.theveloper.aura.domain.model.TaskStatus
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.domain.model.toTaskShape
 import com.theveloper.aura.ui.components.ComponentPill
 import com.theveloper.aura.ui.components.EmptyStateView
 import com.theveloper.aura.ui.components.ErrorStateView
@@ -196,7 +197,7 @@ private fun EditTaskHeader(task: Task) {
         Column(modifier = Modifier.weight(1f)) {
             AssistChip(
                 onClick = {},
-                label = { Text(task.type.name) },
+                label = { Text(task.type.toTaskShape().displayName) },
                 leadingIcon = {
                     Icon(
                         imageVector = typeIcon(task.type),
@@ -271,7 +272,7 @@ private fun InterpretedTaskHeader(task: Task) {
                             tint = palette.accent
                         )
                         Text(
-                            text = task.type.name.lowercase().replaceFirstChar { it.titlecase() },
+                            text = task.type.toTaskShape().displayName,
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                             color = palette.accent
                         )
@@ -341,6 +342,16 @@ private fun interpretedTaskPalette(type: TaskType): InterpretedTaskPalette {
             accent = scheme.secondary,
             content = scheme.onSurface
         )
+        TaskType.EVENT -> InterpretedTaskPalette(
+            container = scheme.tertiaryContainer.copy(alpha = 0.28f),
+            accent = scheme.tertiary,
+            content = scheme.onSurface
+        )
+        TaskType.GOAL -> InterpretedTaskPalette(
+            container = scheme.primaryContainer.copy(alpha = 0.26f),
+            accent = scheme.primary,
+            content = scheme.onSurface
+        )
         TaskType.GENERAL -> InterpretedTaskPalette(
             container = scheme.surfaceContainerLow,
             accent = scheme.primary,
@@ -355,6 +366,8 @@ private fun typeIcon(taskType: TaskType): ImageVector = when (taskType) {
     TaskType.HEALTH -> Icons.Default.Favorite
     TaskType.PROJECT -> Icons.Default.PieChart
     TaskType.FINANCE -> Icons.Default.Savings
+    TaskType.EVENT -> Icons.Default.CalendarMonth
+    TaskType.GOAL -> Icons.Default.PieChart
     TaskType.GENERAL -> Icons.Default.CheckCircle
 }
 

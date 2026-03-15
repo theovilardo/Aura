@@ -351,7 +351,15 @@ abstract class LiteRtLocalLLMService constructor(
             Ejemplo — rutina: "rutina de gym para perder grasa en 30 minutos"
             → "semantic": {"action": "hacer rutina", "items": ["sentadillas", "flexiones", "burpees"], "subject": "gym", "goal": "perder grasa", "frequency": "rutina"}
             → "title": "Rutina de gym", "components": [CHECKLIST, HABIT_RING, METRIC_TRACKER]
+            Ejemplo - evento: "reunion con el cliente el jueves"
+            → "semantic": {"action": "asistir reunion", "items": [], "subject": "cliente", "goal": "", "frequency": ""}
+            → "title": "Reunion con el cliente", "type": "EVENT", "components": [COUNTDOWN, NOTES]
+            Ejemplo - meta: "quiero terminar el curso de Kotlin"
+            → "semantic": {"action": "terminar curso", "items": ["modulo 1", "proyecto final"], "subject": "Kotlin", "goal": "terminar curso", "frequency": ""}
+            → "title": "Terminar el curso de Kotlin", "type": "GOAL", "components": [PROGRESS_BAR, CHECKLIST, NOTES]
             ELECCION DE COMPONENTES — basate en propiedades del semantic:
+            - Si el input describe una fecha puntual o evento futuro, usá EVENT.
+            - Si el input describe una meta de mediano plazo con hitos, usá GOAL.
             - semantic.items no vacío → incluí CHECKLIST (podés omitir items del config del CHECKLIST, se poblarán automáticamente desde semantic.items).
             - semantic.frequency no vacío → incluí HABIT_RING.
             - semantic.goal tiene un resultado medible → incluí METRIC_TRACKER.

@@ -60,11 +60,13 @@ object TaskDSLBuilder {
 
     fun defaultTemplateIdsFor(taskType: TaskType, input: String): List<String> {
         return when (taskType) {
-            TaskType.TRAVEL -> listOf("travel_countdown", "packing_checklist", "travel_itinerary_notes")
+            TaskType.TRAVEL -> listOf("travel_countdown", "packing_checklist", "metric_budget_target")
             TaskType.HABIT -> listOf(if (isWeekly(input)) "habit_weekly" else "habit_daily", "journal_reflection")
-            TaskType.HEALTH -> listOf(metricPreset(input), "notes_clinic")
+            TaskType.HEALTH -> listOf(metricPreset(input), "progress_manual", "notes_clinic")
             TaskType.PROJECT -> listOf("progress_milestones", "action_checklist", "notes_meeting")
-            TaskType.FINANCE -> listOf("progress_budget", "budget_snapshot_notes")
+            TaskType.FINANCE -> listOf("metric_budget_target", "progress_budget")
+            TaskType.EVENT -> listOf("event_countdown", "event_notes")
+            TaskType.GOAL -> listOf("goal_progress", "goal_milestones_checklist", "goal_notes")
             TaskType.GENERAL -> buildList {
                 if (containsDate(input)) add("deadline_countdown")
                 if (containsSteps(input)) add("action_checklist")

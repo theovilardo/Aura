@@ -84,8 +84,18 @@ class MemoryWriter @Inject constructor(
     ): String? {
         return when (category) {
             MemoryCategory.ROUTINE -> buildRoutineContent(patterns)
-            MemoryCategory.WORK_CONTEXT -> buildContextContent(tasks.filter { it.type == TaskType.PROJECT || it.type == TaskType.FINANCE }, "Trabajo")
-            MemoryCategory.PERSONAL_CONTEXT -> buildContextContent(tasks.filter { it.type == TaskType.TRAVEL || it.type == TaskType.HEALTH || it.type == TaskType.HABIT }, "Personal")
+            MemoryCategory.WORK_CONTEXT -> buildContextContent(
+                tasks.filter {
+                    it.type == TaskType.PROJECT || it.type == TaskType.FINANCE || it.type == TaskType.GOAL || it.type == TaskType.EVENT
+                },
+                "Trabajo"
+            )
+            MemoryCategory.PERSONAL_CONTEXT -> buildContextContent(
+                tasks.filter {
+                    it.type == TaskType.TRAVEL || it.type == TaskType.HEALTH || it.type == TaskType.HABIT || it.type == TaskType.EVENT
+                },
+                "Personal"
+            )
             MemoryCategory.TASK_PREFERENCES -> buildTaskPreferencesContent(tasks)
             MemoryCategory.REMINDER_BEHAVIOR -> buildReminderBehaviorContent(patterns)
             MemoryCategory.VOCABULARY -> buildVocabularyContent(tasks)

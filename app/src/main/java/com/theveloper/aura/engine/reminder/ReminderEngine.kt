@@ -30,6 +30,8 @@ class ReminderEngine @Inject constructor(
         return when (taskType) {
             TaskType.HABIT, TaskType.HEALTH -> Pair(8, 0) // Morning
             TaskType.PROJECT, TaskType.FINANCE -> Pair(10, 0) // Work/Focus hours
+            TaskType.EVENT -> Pair(9, 0) // Calendar-like tasks
+            TaskType.GOAL -> Pair(18, 0) // End-of-day reflection
             TaskType.GENERAL, TaskType.TRAVEL -> Pair(18, 0) // Evening
         }
     }

@@ -64,4 +64,45 @@ class HeuristicOnDeviceTaskDslServiceTest {
                 component.config["text"]?.jsonPrimitive?.contentOrNull?.contains("Health follow-up") == true
         })
     }
+
+    @Test
+    fun `fixed-date prompt resolves to event shape`() = runTest {
+        val result = subject.compose(
+            OnDeviceTaskDslRequest(
+                input = "Reunion con el cliente el jueves a las 15",
+                intentResult = IntentResult(TaskType.GENERAL, 0.44f),
+                extractedEntities = ExtractedEntities(
+                    dateTimes = listOf(1_762_000_000_000L)
+                ),
+                llmContext = LLMClassificationContext(
+                    intentHint = TaskType.GENERAL,
+                    intentConfidence = 0.44f,
+                    extractedDates = listOf(1_762_000_000_000L)
+                )
+            )
+        )
+
+        assertEquals(TaskType.EVENT, result.dsl.type)
+        assertTrue(result.dsl.components.any { it.type == ComponentType.COUNTDOWN })
+        assertTrue(result.dsl.components.any { it.type == ComponentType.NOTES })
+    }
+
+    @Test
+    fun `medium-term learning prompt resolves to goal shape`() = runTest {
+        val result = subject.compose(
+            OnDeviceTaskDslRequest(
+                input = "Quiero terminar el curso de Kotlin y seguir mi progreso",
+                intentResult = IntentResult(TaskType.GENERAL, 0.46f),
+                extractedEntities = ExtractedEntities(),
+                llmContext = LLMClassificationContext(
+                    intentHint = TaskType.GENERAL,
+                    intentConfidence = 0.46f
+                )
+            )
+        )
+
+        assertEquals(TaskType.GOAL, result.dsl.type)
+        assertTrue(result.dsl.components.any { it.type == ComponentType.PROGRESS_BAR })
+        assertTrue(result.dsl.components.any { it.type == ComponentType.CHECKLIST })
+    }
 }

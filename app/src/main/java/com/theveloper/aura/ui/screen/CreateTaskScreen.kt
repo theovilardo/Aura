@@ -90,7 +90,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.theveloper.aura.domain.model.TaskShape
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.domain.model.toTaskShape
 import com.theveloper.aura.engine.dsl.TaskComponentCatalog
 import com.theveloper.aura.engine.dsl.TaskComponentTemplate
 import com.theveloper.aura.ui.components.ClarificationCard
@@ -103,11 +105,12 @@ fun CreateTaskScreen(
     viewModel: CreateTaskViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val selectedShape = remember(uiState.manual.taskTypeOverride) { uiState.manual.taskTypeOverride?.toTaskShape() }
     val selectedTemplates = remember(uiState.manual.selectedTemplateIds) {
         uiState.manual.selectedTemplateIds.mapNotNull(TaskComponentCatalog::find)
     }
-    val recommendedTemplates = remember(uiState.manual.taskType) {
-        TaskComponentCatalog.recommended(uiState.manual.taskType)
+    val recommendedTemplates = remember(uiState.manual.resolvedTaskType) {
+        TaskComponentCatalog.recommended(uiState.manual.resolvedTaskType)
     }
     val canSubmit = uiState.input.isNotBlank() || uiState.manual.title.isNotBlank()
 
@@ -159,11 +162,13 @@ fun CreateTaskScreen(
 
             item {
                 BuilderSection(
-                    title = "Type",
-                    titlePadding = 16.dp
+                    title = "Shape",
+                    titlePadding = 16.dp,
+                    body = selectedShape?.shortDescription
+                        ?: "Aura can detect the shape automatically, or you can pin one before creating."
                 ) {
                     CreateTaskTypeRow(
-                        selected = uiState.manual.taskType,
+                        selected = uiState.manual.taskTypeOverride,
                         onSelect = viewModel::selectManualTaskType
                     )
                 }
@@ -174,7 +179,7 @@ fun CreateTaskScreen(
                     modifier = Modifier.padding(horizontal = 16.dp),
                     title = "Modules",
                     body = if (selectedTemplates.isEmpty()) {
-                        "Pick the structure you want the engine to respect."
+                        "Pick the modules you want Aura to keep when it builds this shape."
                     } else {
                         "${selectedTemplates.size} selected"
                     }
@@ -250,6 +255,7 @@ fun CreateTaskScreen(
                 TaskPreviewBottomSheet(
                     preview = preview,
                     isSaving = uiState.isSaving,
+                    onTaskTypeChange = viewModel::selectPreviewTaskType,
                     onConfirm = viewModel::confirmPreview,
                     onCancel = viewModel::dismissPreview
                 )
@@ -470,16 +476,41 @@ private fun CreateTaskTitleField(
 
 @Composable
 private fun CreateTaskTypeRow(
-    selected: TaskType,
-    onSelect: (TaskType) -> Unit
+    selected: TaskType?,
+    onSelect: (TaskType?) -> Unit
 ) {
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(horizontal = 16.dp)
     ) {
-        TaskType.entries.forEach { taskType ->
-            val active = taskType == selected
+        item {
+            val active = selected == null
+            Surface(
+                shape = CircleShape,
+                color = if (active) MaterialTheme.colorScheme.inverseSurface
+                else MaterialTheme.colorScheme.surface,
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = if (active) MaterialTheme.colorScheme.inverseSurface
+                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
+                ),
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable { onSelect(null) }
+            ) {
+                Text(
+                    text = "Auto",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (active) MaterialTheme.colorScheme.inverseOnSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        TaskShape.userFacingOrder.forEach { shape ->
+            val active = shape.taskType == selected
             item {
                 Surface(
                     shape = CircleShape,
@@ -492,10 +523,10 @@ private fun CreateTaskTypeRow(
                     ),
                     modifier = Modifier
                         .clip(CircleShape)
-                        .clickable { onSelect(taskType) }
+                        .clickable { onSelect(shape.taskType) }
                 ) {
                     Text(
-                        text = taskType.name.lowercase().replaceFirstChar { it.titlecase() },
+                        text = shape.displayName,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                         color = if (active) MaterialTheme.colorScheme.inverseOnSurface
@@ -720,10 +751,13 @@ private fun createTaskTemplateIcon(template: TaskComponentTemplate): ImageVector
     return when (template.id) {
         "travel_countdown" -> Icons.Rounded.FlightTakeoff
         "deadline_countdown" -> Icons.Rounded.Event
+        "event_countdown" -> Icons.Rounded.Event
         "payment_countdown" -> Icons.Rounded.Payments
         "packing_checklist" -> Icons.Rounded.Checklist
         "travel_documents_checklist" -> Icons.Rounded.NoteAlt
         "action_checklist" -> Icons.Rounded.Checklist
+        "event_runbook_checklist" -> Icons.Rounded.Checklist
+        "goal_milestones_checklist" -> Icons.Rounded.Flag
         "finance_payment_checklist" -> Icons.Rounded.Payments
         "medication_checklist" -> Icons.Rounded.Medication
         "habit_daily" -> Icons.Rounded.Repeat
@@ -732,10 +766,13 @@ private fun createTaskTemplateIcon(template: TaskComponentTemplate): ImageVector
         "progress_milestones" -> Icons.Rounded.Flag
         "progress_budget" -> Icons.Rounded.Savings
         "progress_sprint" -> Icons.Rounded.Bolt
+        "goal_progress" -> Icons.Rounded.Flag
         "notes_brain_dump" -> Icons.Rounded.NoteAlt
         "notes_meeting" -> Icons.Rounded.Groups
+        "event_notes" -> Icons.Rounded.Event
         "travel_itinerary_notes" -> Icons.Rounded.Map
         "study_plan_notes" -> Icons.Rounded.School
+        "goal_notes" -> Icons.Rounded.Flag
         "budget_snapshot_notes" -> Icons.Rounded.AccountBalanceWallet
         "journal_reflection" -> Icons.AutoMirrored.Rounded.MenuBook
         "notes_clinic" -> Icons.Rounded.LocalHospital
@@ -743,6 +780,8 @@ private fun createTaskTemplateIcon(template: TaskComponentTemplate): ImageVector
         "metric_weight" -> Icons.Rounded.MonitorWeight
         "metric_steps" -> Icons.AutoMirrored.Rounded.DirectionsWalk
         "metric_sleep" -> Icons.Rounded.Bedtime
+        "metric_budget_target" -> Icons.Rounded.Savings
+        "goal_momentum_metric" -> Icons.AutoMirrored.Rounded.TrendingUp
         "feed_weather" -> Icons.Rounded.Cloud
         "feed_exchange" -> Icons.Rounded.CurrencyExchange
         else -> Icons.Default.AutoAwesome

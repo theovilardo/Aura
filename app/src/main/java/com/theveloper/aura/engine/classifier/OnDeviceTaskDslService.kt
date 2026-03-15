@@ -95,8 +95,13 @@ class HeuristicOnDeviceTaskDslService @Inject constructor() : OnDeviceTaskDslSer
         if (signals.financeRelated) bump(TaskType.FINANCE, 0.35f)
         if (signals.healthRelated) bump(TaskType.HEALTH, 0.32f)
         if (signals.habitRelated) bump(TaskType.HABIT, 0.28f)
-        if (signals.projectRelated) bump(TaskType.PROJECT, 0.28f)
-        if (signals.eventOrDeadline) bump(TaskType.GENERAL, 0.08f)
+        if (signals.projectRelated) bump(TaskType.PROJECT, 0.26f)
+        if (signals.goalRelated) bump(TaskType.GOAL, 0.38f)
+        if (signals.studyRelated || signals.trackingRelated) bump(TaskType.GOAL, 0.12f)
+        if (signals.eventRelated) bump(TaskType.EVENT, 0.32f)
+        if (signals.eventOrDeadline) bump(TaskType.EVENT, 0.24f)
+        if (signals.meetingRelated) bump(TaskType.EVENT, 0.08f)
+        if (signals.deadlineRelated && signals.goalRelated) bump(TaskType.GOAL, 0.06f)
 
         return scores.maxByOrNull { it.value }?.key ?: intentResult.taskType
     }
@@ -145,8 +150,22 @@ class HeuristicOnDeviceTaskDslService @Inject constructor() : OnDeviceTaskDslSer
                     if (signals.paymentRelated) add("payment_countdown")
                     if (signals.paymentRelated) add("finance_payment_checklist")
                     if (signals.budgetRelated || signals.savingsRelated) add("progress_budget")
+                    if (signals.budgetRelated || signals.savingsRelated) add("metric_budget_target")
                     if (signals.financeRelated || signals.travelRelated) add("feed_exchange")
                     if (signals.budgetRelated || signals.paymentRelated) add("budget_snapshot_notes")
+                }
+                TaskType.EVENT -> {
+                    if (signals.checklistHeavy || signals.meetingRelated) add("event_runbook_checklist")
+                    if (signals.meetingRelated) add("notes_meeting")
+                    if (signals.eventRelated || signals.deadlineRelated) add("event_notes")
+                }
+                TaskType.GOAL -> {
+                    if (signals.checklistHeavy || signals.studyRelated || signals.projectRelated) add("goal_milestones_checklist")
+                    if (signals.trackingRelated || signals.goalRelated) add("goal_momentum_metric")
+                    if (signals.deadlineRelated) add("deadline_countdown")
+                    if (signals.studyRelated || signals.researchRelated) add("study_plan_notes")
+                    if (signals.financeRelated || signals.savingsRelated) add("metric_budget_target")
+                    if (signals.journalRelated) add("goal_notes")
                 }
                 TaskType.GENERAL -> {
                     if (signals.deadlineRelated) add("deadline_countdown")
@@ -192,6 +211,8 @@ private data class PromptSignals(
     val healthRelated: Boolean,
     val habitRelated: Boolean,
     val projectRelated: Boolean,
+    val goalRelated: Boolean,
+    val eventRelated: Boolean,
     val eventOrDeadline: Boolean,
     val itinerary: Boolean,
     val bookingRelated: Boolean,
@@ -220,6 +241,8 @@ private data class PromptSignals(
         healthRelated,
         habitRelated,
         projectRelated,
+        goalRelated,
+        eventRelated,
         eventOrDeadline,
         itinerary,
         bookingRelated,
@@ -250,6 +273,7 @@ private data class PromptSignals(
         researchRelated,
         studyRelated,
         journalRelated,
+        goalRelated,
         medicationRelated,
         hydrationRelated,
         activityRelated,
@@ -272,7 +296,9 @@ private data class PromptSignals(
                 paymentRelated = has("\\bpagar\\b|pago\\b|factura\\b|vencim\\w*|cuota\\b|alquiler\\b|transferencia\\b"),
                 healthRelated = has("\\bsalud\\b|medic\\w*|tratamiento\\b|peso\\b|agua\\b|hidrata\\w*|sueno\\b|sueño\\b|pasos\\b|gym\\b|gimnasio\\b|entren\\w*"),
                 habitRelated = has("\\bhabito\\b|h[aá]bito\\b|rutina\\b|diario\\b|diariamente\\b|cada\\s+\\d+\\s+(hora|horas|dia|dias|d[ií]as)\\b"),
-                projectRelated = has("\\bproyecto\\b|roadmap\\b|entrega\\b|lanzamiento\\b|reunion\\b|reuni[oó]n\\b|investigar\\b|dise[ñn]ar\\b|implementar\\b|estudiar\\b|curso\\b"),
+                projectRelated = has("\\bproyecto\\b|roadmap\\b|entrega\\b|lanzamiento\\b|investigar\\b|dise[ñn]ar\\b|implementar\\b|app\\b|tesis\\b|informe\\b"),
+                goalRelated = has("\\bmeta\\b|objetivo\\b|hito\\w*\\b|milestone\\b|aprender\\b|mejorar\\b|lograr\\b|dominar\\b|terminar\\b|completar\\b|practicar\\b"),
+                eventRelated = has("\\bevento\\b|cumplea[ñn]os\\b|reunion\\b|reuni[oó]n\\b|meeting\\b|cita\\b|turno\\b|llamada\\b|webinar\\b"),
                 eventOrDeadline = has("\\bhoy\\b|\\bmanana\\b|\\bmañana\\b|\\bviernes\\b|\\blunes\\b|\\bmartes\\b|\\bmiercoles\\b|\\bmiércoles\\b|\\bjueves\\b|\\bsabado\\b|\\bsábado\\b|\\bdomingo\\b|deadline\\b|fecha\\b"),
                 itinerary = has("\\bitinerario\\b|agenda\\b|plan\\s+de\\s+viaje\\b|recorrido\\b"),
                 bookingRelated = has("\\breserva\\w*|booking\\b|check-in\\b|hotel\\b|vuelo\\w*"),

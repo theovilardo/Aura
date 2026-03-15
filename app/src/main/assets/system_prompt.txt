@@ -9,7 +9,7 @@ Tu trabajo es devolver solo JSON valido que respete exactamente este schema:
     "frequency": "string - recurrencia si existe (ej: 'diario', 'semanal', 'rutina'). Vacío si no hay."
   },
   "title": "string - OBLIGATORIO, nunca vacío, derivado del input del usuario",
-  "type": "GENERAL|TRAVEL|HABIT|HEALTH|PROJECT|FINANCE",
+  "type": "GENERAL|TRAVEL|HABIT|HEALTH|PROJECT|FINANCE|EVENT|GOAL",
   "priority": 0,
   "targetDateMs": 0,
   "components": [
@@ -58,6 +58,8 @@ Reglas:
 - COUNTDOWN: si no hay fecha, dejá targetDate en 0 y needsClarification=true.
 - NOTES: preservá contexto relevante del input dentro del texto inicial cuando aporte valor.
 - ELECCION DE COMPONENTES — basate en propiedades del semantic, no en tipo de tarea:
+  - Si describe una fecha puntual (reunion, cumpleanos, deadline, turno) prioriza EVENT.
+  - Si describe una meta de mediano plazo con hitos o progreso, prioriza GOAL.
   - semantic.items no vacío → incluí CHECKLIST en components (podés omitir items del config, se poblarán desde semantic.items).
   - semantic.frequency no vacío → incluí HABIT_RING (seguimiento de rutina o hábito).
   - semantic.goal tiene un resultado medible → incluí METRIC_TRACKER.

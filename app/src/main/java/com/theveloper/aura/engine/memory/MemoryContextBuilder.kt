@@ -20,10 +20,16 @@ class MemoryContextBuilder @Inject constructor() {
                 MemoryCategory.PERSONAL_CONTEXT
             )
 
-            TaskType.PROJECT, TaskType.FINANCE -> listOf(
+            TaskType.PROJECT, TaskType.FINANCE, TaskType.GOAL -> listOf(
                 MemoryCategory.WORK_CONTEXT,
                 MemoryCategory.ROUTINE,
                 MemoryCategory.TASK_PREFERENCES
+            )
+
+            TaskType.EVENT -> listOf(
+                MemoryCategory.WORK_CONTEXT,
+                MemoryCategory.PERSONAL_CONTEXT,
+                MemoryCategory.VOCABULARY
             )
 
             TaskType.TRAVEL -> listOf(

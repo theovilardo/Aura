@@ -1,6 +1,8 @@
 package com.theveloper.aura.ui.screen
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.automirrored.rounded.ShowChart
@@ -42,6 +45,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.theveloper.aura.domain.model.ComponentType
+import com.theveloper.aura.domain.model.TaskShape
+import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.domain.model.toTaskShape
 import com.theveloper.aura.engine.classifier.TaskGenerationResult
 import com.theveloper.aura.engine.classifier.TaskGenerationSource
 import com.theveloper.aura.engine.dsl.ChecklistDslItems
@@ -57,6 +63,7 @@ import kotlinx.serialization.json.longOrNull
 fun TaskPreviewBottomSheet(
     preview: TaskGenerationResult,
     isSaving: Boolean,
+    onTaskTypeChange: (TaskType) -> Unit,
     onConfirm: () -> Unit,
     onCancel: () -> Unit
 ) {
@@ -102,6 +109,14 @@ fun TaskPreviewBottomSheet(
 
             item {
                 PreviewSummaryCard(preview = preview)
+            }
+
+            item {
+                PreviewShapeSelector(
+                    selectedTaskType = dsl.type,
+                    isSaving = isSaving,
+                    onTaskTypeChange = onTaskTypeChange
+                )
             }
 
             if (preview.warnings.isNotEmpty()) {
@@ -205,6 +220,7 @@ fun TaskPreviewBottomSheet(
 @Composable
 private fun PreviewSummaryCard(preview: TaskGenerationResult) {
     val dsl = preview.dsl
+    val taskShape = dsl.type.toTaskShape()
     Surface(
         shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -221,19 +237,77 @@ private fun PreviewSummaryCard(preview: TaskGenerationResult) {
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = preview.summaryLine(),
+                    text = "Forma detectada: ${taskShape.displayName}. ${taskShape.shortDescription}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ComponentPill(dsl.type.name.lowercase().replaceFirstChar { it.titlecase() })
+                ComponentPill(taskShape.displayName)
                 ComponentPill(preview.sourceLabel())
-                ComponentPill(preview.executionMode.title)
                 ComponentPill("P${dsl.priority}")
                 dsl.targetDateMs?.let {
                     ComponentPill(formatDate(it))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreviewShapeSelector(
+    selectedTaskType: TaskType,
+    isSaving: Boolean,
+    onTaskTypeChange: (TaskType) -> Unit
+) {
+    val selectedShape = selectedTaskType.toTaskShape()
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Task shape",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = selectedShape.shortDescription,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TaskShape.userFacingOrder.forEach { shape ->
+                    val active = shape.taskType == selectedTaskType
+                    Surface(
+                        shape = CircleShape,
+                        color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(
+                            1.dp,
+                            if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.44f)
+                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                        ),
+                        modifier = Modifier
+                            .clickable(enabled = !isSaving) { onTaskTypeChange(shape.taskType) }
+                    ) {
+                        Text(
+                            text = shape.displayName,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
@@ -381,20 +455,21 @@ private fun previewComponentIcon(type: ComponentType): ImageVector = when (type)
 
 private fun TaskGenerationResult.sourceLabel(): String = when (source) {
     TaskGenerationSource.MANUAL -> "Manual"
-    TaskGenerationSource.RULES -> "Rules"
-    TaskGenerationSource.LOCAL_AI -> "On-device"
-    TaskGenerationSource.GROQ_API -> "Groq"
+    TaskGenerationSource.RULES -> "Basic guide"
+    TaskGenerationSource.LOCAL_AI -> "Local AI"
+    TaskGenerationSource.GROQ_API -> "Connected AI"
 }
 
 private fun TaskGenerationResult.summaryLine(): String {
     val taskDsl = dsl
+    val taskShape = taskDsl.type.toTaskShape()
     val sourceSummary = when (source) {
         TaskGenerationSource.MANUAL -> "Built manually"
         TaskGenerationSource.RULES -> "Built from local rules"
         TaskGenerationSource.LOCAL_AI -> "Built with the local AI composer"
-        TaskGenerationSource.GROQ_API -> "Built with Groq after local analysis"
+        TaskGenerationSource.GROQ_API -> "Refined with connected AI"
     }
-    return "$sourceSummary. ${taskDsl.type.name.lowercase().replaceFirstChar { it.titlecase() }} task with ${taskDsl.components.size} component${if (taskDsl.components.size == 1) "" else "s"}."
+    return "$sourceSummary. ${taskShape.displayName} with ${taskDsl.components.size} component${if (taskDsl.components.size == 1) "" else "s"}."
 }
 
 private fun ComponentType.displayName(): String = when (this) {

@@ -15,6 +15,7 @@ import com.theveloper.aura.engine.classifier.TaskGenerationSource
 import com.theveloper.aura.engine.dsl.TaskComponentCatalog
 import com.theveloper.aura.engine.dsl.TaskComponentContext
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
+import com.theveloper.aura.engine.classifier.TaskDSLBuilder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -86,19 +87,10 @@ class CreateTaskViewModel @Inject constructor(
         }
     }
 
-    fun selectManualTaskType(taskType: TaskType) {
+    fun selectManualTaskType(taskType: TaskType?) {
         _uiState.update { state ->
-            val supportedSelection = state.manual.selectedTemplateIds.filter { templateId ->
-                TaskComponentCatalog.find(templateId)?.supportedTaskTypes?.contains(taskType) == true
-            }
-            val newSelection = supportedSelection.ifEmpty {
-                TaskComponentCatalog.recommended(taskType).take(2).map { it.id }
-            }
             state.copy(
-                manual = state.manual.copy(
-                    taskType = taskType,
-                    selectedTemplateIds = newSelection
-                ),
+                manual = state.manual.withTaskTypeOverride(taskType),
                 errorMessage = null
             )
         }
@@ -166,7 +158,7 @@ class CreateTaskViewModel @Inject constructor(
                         result = result,
                         manual = state.manual,
                         rawInput = state.input.trim()
-                    )
+                    ).withShapeGuidance(hasExplicitTypeOverride = state.manual.taskTypeOverride != null)
                     _uiState.update {
                         it.copy(
                             isClassifying = false,
@@ -229,7 +221,7 @@ class CreateTaskViewModel @Inject constructor(
                         result = result,
                         manual = manual,
                         rawInput = input
-                    )
+                    ).withShapeGuidance(hasExplicitTypeOverride = manual.taskTypeOverride != null)
                     val clarification = mergedPreview.clarification
                     _uiState.update {
                         it.copy(
@@ -273,7 +265,7 @@ class CreateTaskViewModel @Inject constructor(
             now = now,
             context = TaskComponentContext(
                 title = draft.title.trim(),
-                taskType = draft.taskType
+                taskType = draft.resolvedTaskType
             )
         )
         val targetDateMs = components.firstOrNull { component ->
@@ -285,7 +277,7 @@ class CreateTaskViewModel @Inject constructor(
                 preview = TaskGenerationResult(
                     dsl = TaskDSLOutput(
                         title = draft.title.trim(),
-                        type = draft.taskType,
+                        type = draft.resolvedTaskType,
                         priority = 1,
                         targetDateMs = targetDateMs,
                         components = components,
@@ -310,8 +302,8 @@ class CreateTaskViewModel @Inject constructor(
             manual.title.trim()
                 .takeIf { it.isNotBlank() }
                 ?.let { add("Preferred title: $it") }
-            if (manual.taskType != TaskType.GENERAL) {
-                add("Task type hint: ${manual.taskType.name.lowercase()}")
+            manual.taskTypeOverride?.let { taskType ->
+                add("Task type hint: ${taskType.name.lowercase()}")
             }
         }
 
@@ -333,7 +325,7 @@ class CreateTaskViewModel @Inject constructor(
     ): TaskGenerationResult {
         val preview = result.dsl
         val resolvedTitle = manual.title.trim().ifBlank { preview.title }
-        val resolvedType = if (manual.taskType != TaskType.GENERAL) manual.taskType else preview.type
+        val resolvedType = manual.taskTypeOverride ?: preview.type
 
         if (manual.selectedTemplateIds.isEmpty()) {
             return result.copy(
@@ -374,6 +366,87 @@ class CreateTaskViewModel @Inject constructor(
                 reminders = mergedReminders
             )
         )
+    }
+
+    fun selectPreviewTaskType(taskType: TaskType) {
+        val state = uiState.value
+        val preview = state.preview ?: return
+        val updatedManual = state.manual.withTaskTypeOverride(taskType)
+        val rawInput = state.input.trim().ifBlank { preview.dsl.title }
+        val rebuiltBase = rebuildPreviewForTaskType(
+            preview = preview,
+            taskType = taskType,
+            rawInput = rawInput
+        )
+        val rebuiltPreview = mergeManualSelections(
+            result = rebuiltBase,
+            manual = updatedManual,
+            rawInput = rawInput
+        ).copy(
+            warnings = (rebuiltBase.warnings + "Forma ajustada manualmente.").distinct()
+        ).withShapeGuidance(hasExplicitTypeOverride = true)
+
+        _uiState.update {
+            it.copy(
+                manual = updatedManual,
+                preview = rebuiltPreview,
+                clarification = null,
+                errorMessage = null
+            )
+        }
+    }
+
+    private fun rebuildPreviewForTaskType(
+        preview: TaskGenerationResult,
+        taskType: TaskType,
+        rawInput: String
+    ): TaskGenerationResult {
+        val taskTitle = preview.dsl.title
+        val targetDateMs = preview.dsl.targetDateMs
+        val (components, reminders) = TaskComponentCatalog.buildSelection(
+            templateIds = TaskDSLBuilder.defaultTemplateIdsFor(taskType, rawInput),
+            now = System.currentTimeMillis(),
+            context = TaskComponentContext(
+                input = rawInput,
+                title = taskTitle,
+                taskType = taskType,
+                targetDateMs = targetDateMs
+            )
+        )
+
+        return preview.copy(
+            dsl = preview.dsl.copy(
+                title = taskTitle,
+                type = taskType,
+                targetDateMs = targetDateMs,
+                components = components,
+                reminders = reminders
+            )
+        )
+    }
+
+    private fun TaskGenerationResult.withShapeGuidance(hasExplicitTypeOverride: Boolean): TaskGenerationResult {
+        val guidancePrefixes = listOf(
+            "No pude detectar la forma con confianza.",
+            "Armé una primera forma con reglas locales.",
+            "La forma detectada es tentativa.",
+            "Forma ajustada manualmente."
+        )
+        val preservedWarnings = warnings.filterNot { warning ->
+            guidancePrefixes.any(warning::startsWith)
+        }
+        val guidanceWarnings = buildList {
+            when {
+                hasExplicitTypeOverride -> add("Forma ajustada manualmente.")
+                source == TaskGenerationSource.RULES && dsl.type == TaskType.GENERAL ->
+                    add("No pude detectar la forma con confianza. Elegí una antes de guardar si la nota libre no encaja.")
+                source == TaskGenerationSource.RULES ->
+                    add("Armé una primera forma con reglas locales. Revisala antes de guardar.")
+                localConfidence < 0.62f || intentConfidence < 0.55f ->
+                    add("La forma detectada es tentativa. Podés cambiarla antes de guardar.")
+            }
+        }
+        return copy(warnings = (preservedWarnings + guidanceWarnings).distinct())
     }
 
     fun dismissPreview() {
@@ -429,15 +502,34 @@ data class PendingClarification(
 
 data class ManualTaskDraft(
     val title: String,
-    val taskType: TaskType,
+    val taskTypeOverride: TaskType?,
     val selectedTemplateIds: List<String>
 ) {
+    val resolvedTaskType: TaskType
+        get() = taskTypeOverride ?: TaskType.GENERAL
+
+    fun withTaskTypeOverride(taskType: TaskType?): ManualTaskDraft {
+        val resolvedTaskType = taskType ?: TaskType.GENERAL
+        val supportedSelection = selectedTemplateIds.filter { templateId ->
+            TaskComponentCatalog.find(templateId)?.supportedTaskTypes?.contains(resolvedTaskType) == true
+        }
+        val newSelection = when {
+            supportedSelection.isNotEmpty() -> supportedSelection
+            taskType != null -> TaskComponentCatalog.recommended(resolvedTaskType).take(2).map { it.id }
+            else -> emptyList()
+        }
+        return copy(
+            taskTypeOverride = taskType,
+            selectedTemplateIds = newSelection
+        )
+    }
+
     companion object {
         fun default(): ManualTaskDraft {
             return ManualTaskDraft(
                 title = "",
-                taskType = TaskType.GENERAL,
-                selectedTemplateIds = listOf("notes_brain_dump")
+                taskTypeOverride = null,
+                selectedTemplateIds = emptyList()
             )
         }
     }
