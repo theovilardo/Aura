@@ -3,8 +3,6 @@ package com.theveloper.aura.engine.classifier
 import com.theveloper.aura.domain.model.ComponentType
 import com.theveloper.aura.domain.model.TaskType
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -13,69 +11,84 @@ class HeuristicOnDeviceTaskDslServiceTest {
 
     private val subject = HeuristicOnDeviceTaskDslService()
 
+    // --- Finance: currency signals ---
+
     @Test
-    fun `travel budget prompt builds richer travel ui locally`() = runTest {
+    fun `currency symbol bumps type to FINANCE and adds budget components`() = runTest {
         val result = subject.compose(
             OnDeviceTaskDslRequest(
-                input = "Viajar a Madrid en agosto, controlar presupuesto y tener el itinerario",
-                intentResult = IntentResult(TaskType.TRAVEL, 0.92f),
+                input = "Save \$500 USD per month for vacation",
+                intentResult = IntentResult(TaskType.FINANCE, 0.55f),
+                extractedEntities = ExtractedEntities(numbers = listOf(500.0)),
+                llmContext = LLMClassificationContext(
+                    intentConfidence = 0.55f,
+                    extractedNumbers = listOf(500.0)
+                )
+            )
+        )
+
+        assertEquals(TaskType.FINANCE, result.dsl.type)
+        assertTrue(
+            result.dsl.components.any {
+                it.type == ComponentType.METRIC_TRACKER || it.type == ComponentType.PROGRESS_BAR
+            }
+        )
+        assertEquals(TaskGenerationSource.LOCAL_AI, result.source)
+    }
+
+    // --- Travel: location + multiple dates ---
+
+    @Test
+    fun `location plus multiple extracted dates resolves to travel shape`() = runTest {
+        val result = subject.compose(
+            OnDeviceTaskDslRequest(
+                input = "Trip to Paris",
+                intentResult = IntentResult(TaskType.GENERAL, 0.30f),
                 extractedEntities = ExtractedEntities(
-                    locations = listOf("Madrid")
+                    dateTimes = listOf(1_756_000_000_000L, 1_758_000_000_000L),
+                    locations = listOf("Paris")
                 ),
                 llmContext = LLMClassificationContext(
-                    intentHint = TaskType.TRAVEL,
-                    intentConfidence = 0.92f,
-                    extractedLocations = listOf("Madrid")
+                    intentConfidence = 0.30f,
+                    extractedDates = listOf(1_756_000_000_000L, 1_758_000_000_000L),
+                    extractedLocations = listOf("Paris")
                 )
             )
         )
 
         assertEquals(TaskType.TRAVEL, result.dsl.type)
-        assertTrue(result.dsl.components.count { it.type == ComponentType.NOTES } >= 1)
-        assertTrue(result.dsl.components.any { it.type == ComponentType.DATA_FEED })
-        assertTrue(result.dsl.components.any { component ->
-            component.type == ComponentType.PROGRESS_BAR &&
-                component.config["label"]?.jsonPrimitive?.contentOrNull == "Budget target"
-        })
+        assertTrue(result.dsl.components.any { it.type == ComponentType.COUNTDOWN })
         assertEquals(TaskGenerationSource.LOCAL_AI, result.source)
     }
 
+    // --- Health: set×rep notation ---
+
     @Test
-    fun `medication prompt builds checklist and health notes locally`() = runTest {
+    fun `set-rep notation bumps type to HEALTH and adds fitness components`() = runTest {
         val result = subject.compose(
             OnDeviceTaskDslRequest(
-                input = "Seguir la medicacion y registrar sintomas toda la semana",
-                intentResult = IntentResult(TaskType.HEALTH, 0.74f),
-                extractedEntities = ExtractedEntities(),
-                llmContext = LLMClassificationContext(
-                    intentHint = TaskType.HEALTH,
-                    intentConfidence = 0.74f
-                )
+                input = "Squats 3x10 bench press 4x8",
+                intentResult = IntentResult(TaskType.HEALTH, 0.48f),
+                extractedEntities = ExtractedEntities(numbers = listOf(3.0, 10.0, 4.0, 8.0)),
+                llmContext = LLMClassificationContext(intentConfidence = 0.48f)
             )
         )
 
         assertEquals(TaskType.HEALTH, result.dsl.type)
-        assertTrue(result.dsl.components.any { component ->
-            component.type == ComponentType.CHECKLIST &&
-                component.config["label"]?.jsonPrimitive?.contentOrNull == "Medication cycle"
-        })
-        assertTrue(result.dsl.components.any { component ->
-            component.type == ComponentType.NOTES &&
-                component.config["text"]?.jsonPrimitive?.contentOrNull?.contains("Health follow-up") == true
-        })
+        assertTrue(result.dsl.components.any { it.type == ComponentType.METRIC_TRACKER })
+        assertEquals(TaskGenerationSource.LOCAL_AI, result.source)
     }
 
+    // --- Event: single extracted date ---
+
     @Test
-    fun `fixed-date prompt resolves to event shape`() = runTest {
+    fun `single extracted date resolves to event shape with countdown`() = runTest {
         val result = subject.compose(
             OnDeviceTaskDslRequest(
-                input = "Reunion con el cliente el jueves a las 15",
-                intentResult = IntentResult(TaskType.GENERAL, 0.44f),
-                extractedEntities = ExtractedEntities(
-                    dateTimes = listOf(1_762_000_000_000L)
-                ),
+                input = "Meeting at 14:30",
+                intentResult = IntentResult(TaskType.EVENT, 0.44f),
+                extractedEntities = ExtractedEntities(dateTimes = listOf(1_762_000_000_000L)),
                 llmContext = LLMClassificationContext(
-                    intentHint = TaskType.GENERAL,
                     intentConfidence = 0.44f,
                     extractedDates = listOf(1_762_000_000_000L)
                 )
@@ -87,22 +100,21 @@ class HeuristicOnDeviceTaskDslServiceTest {
         assertTrue(result.dsl.components.any { it.type == ComponentType.NOTES })
     }
 
+    // --- General: list structure adds checklist ---
+
     @Test
-    fun `medium-term learning prompt resolves to goal shape`() = runTest {
+    fun `multi-line list input adds action checklist to general task`() = runTest {
+        val listInput = "My plan:\n- Step one\n- Step two\n- Step three"
         val result = subject.compose(
             OnDeviceTaskDslRequest(
-                input = "Quiero terminar el curso de Kotlin y seguir mi progreso",
-                intentResult = IntentResult(TaskType.GENERAL, 0.46f),
+                input = listInput,
+                intentResult = IntentResult(TaskType.GENERAL, 0.30f),
                 extractedEntities = ExtractedEntities(),
-                llmContext = LLMClassificationContext(
-                    intentHint = TaskType.GENERAL,
-                    intentConfidence = 0.46f
-                )
+                llmContext = LLMClassificationContext(intentConfidence = 0.30f)
             )
         )
 
-        assertEquals(TaskType.GOAL, result.dsl.type)
-        assertTrue(result.dsl.components.any { it.type == ComponentType.PROGRESS_BAR })
         assertTrue(result.dsl.components.any { it.type == ComponentType.CHECKLIST })
+        assertEquals(TaskGenerationSource.LOCAL_AI, result.source)
     }
 }

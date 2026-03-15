@@ -23,7 +23,7 @@ object TaskDSLBuilder {
             numbers = entities.numbers,
             locations = entities.locations
         )
-        val presetIds = defaultTemplateIdsFor(taskType, input)
+        val presetIds = defaultTemplateIdsFor(taskType, entities, input)
         val (components, reminders) = TaskComponentCatalog.buildSelection(
             templateIds = presetIds,
             now = System.currentTimeMillis(),
@@ -40,10 +40,10 @@ object TaskDSLBuilder {
     }
 
     fun buildFallback(input: String, context: LLMClassificationContext): TaskDSLOutput {
-        val fallbackType = context.intentHint ?: TaskType.GENERAL
+        // No intentHint available — always fall back to GENERAL as the safest default
         return buildDeterministic(
             input = input,
-            intentResult = IntentResult(fallbackType, context.intentConfidence),
+            intentResult = IntentResult(TaskType.GENERAL, context.intentConfidence),
             entities = ExtractedEntities(
                 dateTimes = context.extractedDates,
                 numbers = context.extractedNumbers,
@@ -58,42 +58,44 @@ object TaskDSLBuilder {
             .ifBlank { taskType.name.lowercase().replaceFirstChar { it.titlecase() } }
     }
 
-    fun defaultTemplateIdsFor(taskType: TaskType, input: String): List<String> {
+    /**
+     * Returns the default template IDs for a given task type.
+     *
+     * Template selection uses language-agnostic structural signals only:
+     *   - Extracted dates (from ML EntityExtractor) → date-sensitive templates
+     *   - List/multi-line patterns → checklist templates
+     *   - Set×rep / unit annotations → fitness metric templates
+     * No keyword detection tied to any specific language.
+     */
+    fun defaultTemplateIdsFor(taskType: TaskType, entities: ExtractedEntities, input: String = ""): List<String> {
+        val hasDate = entities.dateTimes.isNotEmpty()
+        val hasMultipleDates = entities.dateTimes.size > 1
+        val hasListStructure = LIST_STRUCTURE.containsMatchIn(input)
+        val isMultiLine = input.lines().count { it.isNotBlank() } > 2
+        val hasSetRep = SET_REP.containsMatchIn(input)
+
         return when (taskType) {
-            TaskType.TRAVEL -> listOf("travel_countdown", "packing_checklist", "metric_budget_target")
-            TaskType.HABIT -> listOf(if (isWeekly(input)) "habit_weekly" else "habit_daily", "journal_reflection")
-            TaskType.HEALTH -> listOf(metricPreset(input), "progress_manual", "notes_clinic")
+            TaskType.TRAVEL  -> listOf("travel_countdown", "packing_checklist", "metric_budget_target")
+            TaskType.HABIT   -> listOf(if (hasMultipleDates) "habit_weekly" else "habit_daily", "journal_reflection")
+            TaskType.HEALTH  -> listOf(if (hasSetRep) "metric_weight" else "metric_weight", "progress_manual", "notes_clinic")
             TaskType.PROJECT -> listOf("progress_milestones", "action_checklist", "notes_meeting")
             TaskType.FINANCE -> listOf("metric_budget_target", "progress_budget")
-            TaskType.EVENT -> listOf("event_countdown", "event_notes")
-            TaskType.GOAL -> listOf("goal_progress", "goal_milestones_checklist", "goal_notes")
+            TaskType.EVENT   -> listOf("event_countdown", "event_notes")
+            TaskType.GOAL    -> listOf("goal_progress", "goal_milestones_checklist", "goal_notes")
             TaskType.GENERAL -> buildList {
-                if (containsDate(input)) add("deadline_countdown")
-                if (containsSteps(input)) add("action_checklist")
+                if (hasDate) add("deadline_countdown")
+                if (hasListStructure || isMultiLine) add("action_checklist")
                 add("notes_brain_dump")
             }
         }
     }
 
-    private fun metricPreset(input: String): String {
-        return when {
-            Regex("\\bagua\\b|hidrat", RegexOption.IGNORE_CASE).containsMatchIn(input) -> "metric_hydration"
-            Regex("\\bpasos\\b|camina|actividad", RegexOption.IGNORE_CASE).containsMatchIn(input) -> "metric_steps"
-            else -> "metric_weight"
-        }
-    }
+    private val SET_REP = Regex(
+        """\b\d+\s*[xX×]\s*\d+\b|\b\d+\s*(sets?|reps?|series?)\b""",
+        RegexOption.IGNORE_CASE
+    )
 
-    private fun isWeekly(input: String): Boolean {
-        return Regex("\\bsemana\\b|semanal", RegexOption.IGNORE_CASE).containsMatchIn(input)
-    }
-
-    private fun containsDate(input: String): Boolean {
-        return Regex("\\bmañana\\b|hoy\\b|viernes\\b|lunes\\b|martes\\b|mi[eé]rcoles\\b|jueves\\b|s[aá]bado\\b|domingo\\b|enero\\b|febrero\\b|marzo\\b|abril\\b|mayo\\b|junio\\b|julio\\b|agosto\\b|septiembre\\b|octubre\\b|noviembre\\b|diciembre\\b|pr[oó]xim\\w+\\s+semana\\b|esta\\s+semana\\b|en\\s+\\d+\\s+d[ií]as\\b", RegexOption.IGNORE_CASE)
-            .containsMatchIn(input)
-    }
-
-    private fun containsSteps(input: String): Boolean {
-        return Regex("\\blista\\b|\\bpasos\\b|\\borganizar\\b|\\bpreparar\\b|\\bgestionar\\b|\\bplanificar\\b", RegexOption.IGNORE_CASE)
-            .containsMatchIn(input)
-    }
+    private val LIST_STRUCTURE = Regex(
+        """(?:^|\n)\s*[-*•]\s+\S|(?:^|\n)\s*\d+[.)]\s+\S"""
+    )
 }

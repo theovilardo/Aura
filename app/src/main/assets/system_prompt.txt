@@ -11,7 +11,7 @@ OUTPUT: Return only valid JSON. No markdown fences, no explanations, no extra te
     "items": ["atomic noun or noun-phrase, 1–3 words, no verbs"],
     "subject": "place, topic, or context",
     "goal": "measurable result if mentioned, else empty string",
-    "frequency": "recurrence if mentioned (daily, weekly, etc.), else empty string"
+    "frequency": "DAILY or WEEKLY if recurring, else empty string"
   },
   "title": "REQUIRED. Never empty. Derived from user input, in user's language.",
   "type": "GENERAL|TRAVEL|HABIT|HEALTH|PROJECT|FINANCE|EVENT|GOAL",
@@ -118,4 +118,4 @@ semantic.action    → short verb phrase: what the user wants to do
 semantic.items     → atomic nouns/noun-phrases, 1–3 words each, NO verbs. Use [] if none.
 semantic.subject   → place, topic, or context of the task
 semantic.goal      → measurable result or target, or "" if none
-semantic.frequency → recurrence pattern (daily, weekly, etc.), or "" if none
+semantic.frequency → "DAILY" or "WEEKLY" if recurring, or "" if none

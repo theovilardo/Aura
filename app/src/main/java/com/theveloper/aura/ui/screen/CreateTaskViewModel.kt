@@ -404,7 +404,7 @@ class CreateTaskViewModel @Inject constructor(
         val taskTitle = preview.dsl.title
         val targetDateMs = preview.dsl.targetDateMs
         val (components, reminders) = TaskComponentCatalog.buildSelection(
-            templateIds = TaskDSLBuilder.defaultTemplateIdsFor(taskType, rawInput),
+            templateIds = TaskDSLBuilder.defaultTemplateIdsFor(taskType, com.theveloper.aura.engine.classifier.ExtractedEntities(), rawInput),
             now = System.currentTimeMillis(),
             context = TaskComponentContext(
                 input = rawInput,

@@ -367,7 +367,7 @@ private fun JsonElement?.booleanValue(default: Boolean): Boolean {
                     ?.lowercase(Locale.US)
                     ?.let { raw ->
                         when (raw) {
-                            "true", "1", "yes", "si" -> true
+                            "true", "1", "yes" -> true
                             "false", "0", "no" -> false
                             else -> null
                         }
@@ -463,14 +463,19 @@ internal fun applySemanticToComponents(
     components: JsonArray,
     frame: SemanticFrame
 ): JsonArray {
-    if (frame == SemanticFrame.EMPTY || !frame.hasItems) return components
+    if (frame == SemanticFrame.EMPTY) return components
 
     val updated = components.map { element ->
         val component = element as? JsonObject ?: return@map element
         val type = component["type"].stringValue()
 
         when {
-            type == ComponentType.CHECKLIST.name -> applySemanticToChecklist(component, frame)
+            type == ComponentType.CHECKLIST.name && frame.hasItems ->
+                applySemanticToChecklist(component, frame)
+            type == ComponentType.NOTES.name && frame.hasItems ->
+                applySemanticToNotes(component, frame)
+            type == ComponentType.HABIT_RING.name && frame.hasFrequency ->
+                applySemanticToHabitRing(component, frame)
             else -> component
         }
     }
@@ -524,6 +529,37 @@ private fun applySemanticToChecklist(
     )
 }
 
+private fun applySemanticToNotes(
+    component: JsonObject,
+    frame: SemanticFrame
+): JsonObject {
+    val config = component["config"] as? JsonObject ?: return component
+    val existingText = config["text"].stringValue()
+    if (existingText.isNotBlank()) return component  // preserve non-empty notes
+
+    val markdownList = frame.items.joinToString("\n") { "- $it" }
+    val updatedConfig = JsonObject(config + ("text" to JsonPrimitive(markdownList)))
+    return JsonObject(
+        component + mapOf(
+            "config" to updatedConfig,
+            "populatedFromInput" to JsonPrimitive(true)
+        )
+    )
+}
+
+private fun applySemanticToHabitRing(
+    component: JsonObject,
+    frame: SemanticFrame
+): JsonObject {
+    val config = component["config"] as? JsonObject ?: return component
+    val normalizedFrequency = when (frame.frequency.trim().uppercase(Locale.US)) {
+        "WEEKLY", "WEEK" -> "WEEKLY"
+        else -> "DAILY"
+    }
+    val updatedConfig = JsonObject(config + ("frequency" to JsonPrimitive(normalizedFrequency)))
+    return JsonObject(component + ("config" to updatedConfig))
+}
+
 private fun existingItemsLookNoisy(
     items: JsonArray,
     frame: SemanticFrame
@@ -572,12 +608,12 @@ private val COMPONENT_METADATA_KEYS = setOf(
 )
 
 private val SHOPPING_REQUEST_REGEX = Regex(
-    pattern = "\\b(shopping\\s+list|grocer(?:y|ies)|groceries|supermarket|market\\s+list|lista\\s+de\\s+compras|compras|supermercado)\\b",
+    pattern = "\\b(shopping\\s+list|grocer(?:y|ies)|groceries|supermarket|market\\s+list)\\b",
     option = RegexOption.IGNORE_CASE
 )
 
 private val SPECIALIZED_UI_SIGNAL_REGEX = Regex(
-    pattern = "\\b(progress|avance|progreso|habit|habito|h[aá]bito|metric|m[eé]trica|track|seguimiento|countdown|deadline|streak)\\b",
+    pattern = "\\b(progress|habit|metric|track|countdown|deadline|streak)\\b",
     option = RegexOption.IGNORE_CASE
 )
 

@@ -20,17 +20,17 @@ class RulesOnlyLLMService @Inject constructor(
     override fun isAvailable(): Boolean = true
 
     override suspend fun classify(input: String, context: LLMClassificationContext): TaskDSLOutput {
-        val taskType = context.intentHint ?: return TaskDSLBuilder.buildFallback(input, context)
+        val entities = ExtractedEntities(
+            dateTimes = context.extractedDates,
+            numbers = context.extractedNumbers,
+            locations = context.extractedLocations
+        )
         return runCatching {
             onDeviceTaskDslService.compose(
                 OnDeviceTaskDslRequest(
                     input = input,
-                    intentResult = IntentResult(taskType, context.intentConfidence),
-                    extractedEntities = ExtractedEntities(
-                        dateTimes = context.extractedDates,
-                        numbers = context.extractedNumbers,
-                        locations = context.extractedLocations
-                    ),
+                    intentResult = IntentResult(com.theveloper.aura.domain.model.TaskType.GENERAL, context.intentConfidence),
+                    extractedEntities = entities,
                     llmContext = context
                 )
             ).dsl
