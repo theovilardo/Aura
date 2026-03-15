@@ -6,9 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.theveloper.aura.domain.model.SignalType
 import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskStatus
+import com.theveloper.aura.domain.model.rule.ComponentRule
+import com.theveloper.aura.domain.repository.ComponentRuleRepository
 import com.theveloper.aura.domain.repository.TaskRepository
 import com.theveloper.aura.domain.usecase.DeleteTaskUseCase
 import com.theveloper.aura.engine.habit.HabitEngine
+import com.theveloper.aura.engine.rule.RuleEngine
 import com.theveloper.aura.domain.usecase.UpdateTaskStatusUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -27,11 +30,25 @@ class TaskDetailViewModel @Inject constructor(
     private val updateTaskStatusUseCase: UpdateTaskStatusUseCase,
     private val deleteTaskUseCase: DeleteTaskUseCase,
     private val habitEngine: HabitEngine,
+    private val ruleEngine: RuleEngine,
+    private val ruleRepository: ComponentRuleRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
     private val taskId: String = checkNotNull(savedStateHandle["taskId"])
     private val events = MutableSharedFlow<TaskDetailEvent>(extraBufferCapacity = 1)
+
+    /** Cached rules for this task, loaded once at init. */
+    @Volatile
+    private var cachedRules: List<ComponentRule> = emptyList()
+
+    init {
+        viewModelScope.launch {
+            ruleRepository.getRulesForTask(taskId).collect { rules ->
+                cachedRules = rules
+            }
+        }
+    }
 
     val eventFlow = events.asSharedFlow()
 
@@ -56,6 +73,16 @@ class TaskDetailViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = TaskDetailUiState(isLoading = true)
         )
+
+    /**
+     * Apply component rules after a component change.
+     * Compares [oldTask] and [newTask] to detect events,
+     * then runs rules and returns the final task with all side-effects applied.
+     */
+    fun applyRules(oldTask: Task, newTask: Task, changedComponentId: String): Task {
+        if (cachedRules.isEmpty()) return newTask
+        return ruleEngine.applyRulesForChange(oldTask, newTask, changedComponentId, cachedRules)
+    }
 
     fun onSignal(signalType: SignalType) {
         viewModelScope.launch {

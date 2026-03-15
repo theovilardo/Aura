@@ -14,6 +14,8 @@ import com.theveloper.aura.domain.repository.FetcherConfigRepository
 import com.theveloper.aura.domain.repository.MemoryRepository
 import com.theveloper.aura.data.repository.SuggestionRepositoryImpl
 import com.theveloper.aura.domain.repository.SuggestionRepository
+import com.theveloper.aura.data.repository.ComponentRuleRepositoryImpl
+import com.theveloper.aura.domain.repository.ComponentRuleRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -63,4 +65,10 @@ abstract class RepositoryModule {
     abstract fun bindMemoryRepository(
         memoryRepositoryImpl: MemoryRepositoryImpl
     ): MemoryRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindComponentRuleRepository(
+        componentRuleRepositoryImpl: ComponentRuleRepositoryImpl
+    ): ComponentRuleRepository
 }

@@ -119,3 +119,25 @@ data class MemorySlotEntity(
     @ColumnInfo(name = "token_count") val tokenCount: Int,
     @ColumnInfo(name = "max_tokens", defaultValue = "300") val maxTokens: Int = 300
 )
+
+@Entity(
+    tableName = "component_rules",
+    indices = [
+        Index(value = ["task_id"]),
+        Index(value = ["trigger_component_id"])
+    ]
+)
+data class ComponentRuleEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "task_id") val taskId: String,
+    @ColumnInfo(name = "trigger_component_id") val triggerComponentId: String,
+    @ColumnInfo(name = "trigger_event") val triggerEvent: String,
+    @ColumnInfo(name = "trigger_condition_json") val triggerConditionJson: String? = null,
+    @ColumnInfo(name = "target_component_id") val targetComponentId: String,
+    val action: String,
+    @ColumnInfo(name = "action_params_json") val actionParamsJson: String? = null,
+    @ColumnInfo(name = "is_enabled") val isEnabled: Boolean = true,
+    val priority: Int = 0,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "created_by") val createdBy: String
+)

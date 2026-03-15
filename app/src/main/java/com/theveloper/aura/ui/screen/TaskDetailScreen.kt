@@ -564,7 +564,20 @@ fun TaskEditScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp),
-                onTaskChange = { updated -> draftTask = updated },
+                onTaskChange = { updated ->
+                    val current = currentDraft
+                    if (current != null) {
+                        val changedId = current.components.zip(updated.components)
+                            .firstOrNull { (old, new) -> old != new }?.second?.id
+                        draftTask = if (changedId != null) {
+                            viewModel.applyRules(current, updated, changedId)
+                        } else {
+                            updated
+                        }
+                    } else {
+                        draftTask = updated
+                    }
+                },
                 onEditNotes = { component ->
                     val config = component.config as? NotesConfig ?: return@EditableTaskRenderer
                     editorStateHandle[TASK_NOTE_EDITOR_TEXT_KEY] = config.text

@@ -24,7 +24,7 @@ object DatabaseModule {
             AuraDatabase::class.java,
             "aura_database"
         )
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
     }
 
@@ -78,6 +78,11 @@ object DatabaseModule {
         return db.memorySlotDao()
     }
 
+    @Provides
+    fun provideComponentRuleDao(db: AuraDatabase): com.theveloper.aura.data.db.ComponentRuleDao {
+        return db.componentRuleDao()
+    }
+
     private val MIGRATION_1_2 = object : Migration(1, 2) {
         override fun migrate(database: SupportSQLiteDatabase) {
             database.execSQL(
@@ -101,6 +106,35 @@ object DatabaseModule {
             )
             database.execSQL(
                 "CREATE UNIQUE INDEX IF NOT EXISTS index_memory_slots_category ON memory_slots(category)"
+            )
+        }
+    }
+
+    private val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS component_rules (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    trigger_component_id TEXT NOT NULL,
+                    trigger_event TEXT NOT NULL,
+                    trigger_condition_json TEXT,
+                    target_component_id TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    action_params_json TEXT,
+                    is_enabled INTEGER NOT NULL DEFAULT 1,
+                    priority INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    created_by TEXT NOT NULL
+                )
+                """.trimIndent()
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_component_rules_task_id ON component_rules(task_id)"
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_component_rules_trigger_component_id ON component_rules(trigger_component_id)"
             )
         }
     }

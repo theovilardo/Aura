@@ -215,3 +215,27 @@ interface MemorySlotDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(slots: List<MemorySlotEntity>)
 }
+
+@Dao
+interface ComponentRuleDao {
+    @Query("SELECT * FROM component_rules WHERE task_id = :taskId AND is_enabled = 1 ORDER BY priority ASC")
+    fun getRulesForTask(taskId: String): Flow<List<ComponentRuleEntity>>
+
+    @Query("SELECT * FROM component_rules WHERE trigger_component_id = :componentId AND is_enabled = 1 ORDER BY priority ASC")
+    suspend fun getRulesForComponent(componentId: String): List<ComponentRuleEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRule(rule: ComponentRuleEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRules(rules: List<ComponentRuleEntity>)
+
+    @Query("UPDATE component_rules SET is_enabled = :enabled WHERE id = :ruleId")
+    suspend fun setRuleEnabled(ruleId: String, enabled: Boolean)
+
+    @Query("DELETE FROM component_rules WHERE task_id = :taskId")
+    suspend fun deleteRulesForTask(taskId: String)
+
+    @Delete
+    suspend fun deleteRule(rule: ComponentRuleEntity)
+}
