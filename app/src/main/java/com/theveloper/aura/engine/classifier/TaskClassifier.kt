@@ -31,7 +31,6 @@ class TaskClassifier @Inject constructor(
         val intentResult = intentClassifier.classify(normalizedInput)
         val memorySlots = memoryRepository.getSlots()
         val context = LLMClassificationContext(
-            intentHint = intentResult.taskType,
             intentConfidence = intentResult.confidence,
             extractedDates = extractedEntities.dateTimes,
             extractedNumbers = extractedEntities.numbers,

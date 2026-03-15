@@ -4,170 +4,94 @@ import com.theveloper.aura.domain.model.TaskType
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Lightweight pre-classifier based exclusively on language-agnostic structural signals.
+ *
+ * This classifier does NOT use any keyword patterns tied to a specific language. It detects
+ * universal structural markers (currency symbols, date/time formats, set×rep notation, etc.)
+ * to produce a weak TaskType hint and a low confidence value.
+ *
+ * Confidence is intentionally capped at 0.55 — structural signals are coarse hints.
+ * The LLM is always preferred when available and performs the real classification.
+ * This classifier only provides a starting point for the rules-only fallback path.
+ */
 @Singleton
 class IntentClassifier @Inject constructor() {
 
-    private val rules = listOf(
-        ClassificationRule(
-            taskType = TaskType.TRAVEL,
-            confidence = 0.92f,
-            patterns = listOf(
-                Regex("\\bviaj\\w*", RegexOption.IGNORE_CASE),
-                Regex("\\bvuelo\\w*", RegexOption.IGNORE_CASE),
-                Regex("\\bhotel\\w*", RegexOption.IGNORE_CASE),
-                Regex("\\bpasaporte\\b", RegexOption.IGNORE_CASE),
-                Regex("\\btravel\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bmaleta\\b", RegexOption.IGNORE_CASE),
-                Regex("\\baeropuerto\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bturismo\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bitinerario\\b", RegexOption.IGNORE_CASE),
-                Regex("\\breserva\\w*", RegexOption.IGNORE_CASE)
-            )
-        ),
-        ClassificationRule(
-            taskType = TaskType.HABIT,
-            confidence = 0.91f,
-            patterns = listOf(
-                Regex("\\bcada\\s+\\d+\\s+(hora|horas|día|dias|días)\\b", RegexOption.IGNORE_CASE),
-                Regex("\\btodos?\\s+los\\s+d[ií]as\\b", RegexOption.IGNORE_CASE),
-                Regex("\\brutina\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bh[aá]bito\\b", RegexOption.IGNORE_CASE),
-                Regex("tomar\\s+agua", RegexOption.IGNORE_CASE),
-                Regex("\\bmeditar\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bmeditaci[oó]n\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bcada\\s+ma[ñn]ana\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bcada\\s+noche\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bdiariamente\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bdiario\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bstreak\\b", RegexOption.IGNORE_CASE)
-            )
-        ),
-        ClassificationRule(
-            taskType = TaskType.HEALTH,
-            confidence = 0.88f,
-            patterns = listOf(
-                Regex("\\bpeso\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bpresi[oó]n\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bglucosa\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bejercicio\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bcalor[ií]as\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bgym\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bgimnasio\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bcorr[ei]\\w*", RegexOption.IGNORE_CASE),
-                Regex("\\bentrena\\w*", RegexOption.IGNORE_CASE),
-                Regex("\\bdieta\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bsalud\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bpasos\\b", RegexOption.IGNORE_CASE),
-                Regex("\\badelgazar\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bmedic\\w*", RegexOption.IGNORE_CASE),
-                Regex("\\btratamiento\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bsue[ñn]o\\b", RegexOption.IGNORE_CASE)
-            )
-        ),
-        ClassificationRule(
-            taskType = TaskType.PROJECT,
-            confidence = 0.89f,
-            patterns = listOf(
-                Regex("\\bproyecto\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bmvp\\b", RegexOption.IGNORE_CASE),
-                Regex("\\broadmap\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bentrega\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bapp\\b", RegexOption.IGNORE_CASE),
-                Regex("\\btesis\\b", RegexOption.IGNORE_CASE),
-                Regex("\\binforme\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bpresentaci[oó]n\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bdesarrollar\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bimplementar\\b", RegexOption.IGNORE_CASE),
-                Regex("\\binvestigar\\b", RegexOption.IGNORE_CASE),
-                Regex("\\blanzamiento\\b", RegexOption.IGNORE_CASE)
-            )
-        ),
-        ClassificationRule(
-            taskType = TaskType.FINANCE,
-            confidence = 0.9f,
-            patterns = listOf(
-                Regex("\\bd[oó]lar\\b", RegexOption.IGNORE_CASE),
-                Regex("\\busd\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bcotizaci[oó]n\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bpagar\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bcuota\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bahorrar\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bahorro\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bpresupuesto\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bdeuda\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bgastos?\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bdinero\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bfinanza\\w*", RegexOption.IGNORE_CASE),
-                Regex("\\balquiler\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bfactura\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bvencim\\w*", RegexOption.IGNORE_CASE)
-            )
-        ),
-        ClassificationRule(
-            taskType = TaskType.EVENT,
-            confidence = 0.91f,
-            patterns = listOf(
-                Regex("\\bevento\\b", RegexOption.IGNORE_CASE),
-                Regex("\\breuni[oó]n\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bmeeting\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bcita\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bturno\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bcumplea[ñn]os\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bdeadline\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bvencim\\w*", RegexOption.IGNORE_CASE),
-                Regex("\\bfecha\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bviernes\\b|\\blunes\\b|\\bmartes\\b|\\bmi[eé]rcoles\\b|\\bjueves\\b|\\bs[aá]bado\\b|\\bdomingo\\b", RegexOption.IGNORE_CASE)
-            )
-        ),
-        ClassificationRule(
-            taskType = TaskType.GOAL,
-            confidence = 0.9f,
-            patterns = listOf(
-                Regex("\\bmeta\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bobjetivo\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bhito\\w*", RegexOption.IGNORE_CASE),
-                Regex("\\bmilestone\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bquiero\\s+(aprender|terminar|mejorar|lograr|dominar|completar)", RegexOption.IGNORE_CASE),
-                Regex("\\baprender\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bmejorar\\b", RegexOption.IGNORE_CASE),
-                Regex("\\blograr\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bdominar\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bterminar\\b", RegexOption.IGNORE_CASE),
-                Regex("\\bcompletar\\b", RegexOption.IGNORE_CASE)
-            )
-        )
-    )
-
     fun classify(text: String): IntentResult {
         val normalized = text.trim()
-        if (normalized.isBlank()) {
-            return IntentResult(TaskType.GENERAL, 0f)
+        if (normalized.isBlank()) return IntentResult(TaskType.GENERAL, 0f)
+
+        val hasCurrencySymbol = CURRENCY_SYMBOL_PATTERN.containsMatchIn(normalized)
+        val hasCurrencyCode   = CURRENCY_CODE_PATTERN.containsMatchIn(normalized)
+        val hasIsoDate        = ISO_DATE_PATTERN.containsMatchIn(normalized)
+        val hasTime           = TIME_PATTERN.containsMatchIn(normalized)
+        val hasSetRep         = SET_REP_PATTERN.containsMatchIn(normalized)
+        val hasNumericAmount  = NUMERIC_AMOUNT_PATTERN.containsMatchIn(normalized)
+
+        val taskType = when {
+            hasCurrencySymbol || hasCurrencyCode -> TaskType.FINANCE
+            hasSetRep                            -> TaskType.HEALTH
+            hasIsoDate || hasTime                -> TaskType.EVENT
+            else                                 -> TaskType.GENERAL
         }
 
-        val matches = rules.mapNotNull { rule ->
-            val totalMatches = rule.patterns.count { pattern -> pattern.containsMatchIn(normalized) }
-            if (totalMatches == 0) {
-                null
-            } else {
-                rule.taskType to (rule.confidence + (totalMatches - 1) * 0.02f).coerceAtMost(0.98f)
-            }
+        // Confidence never exceeds 0.55 — structural signals are weak, language-agnostic hints.
+        // The LLM always takes precedence when available regardless of this value.
+        val confidence = when {
+            (hasCurrencySymbol || hasCurrencyCode) && hasNumericAmount -> 0.55f
+            hasCurrencySymbol || hasCurrencyCode                       -> 0.45f
+            hasSetRep                                                  -> 0.48f
+            hasIsoDate && hasTime                                      -> 0.50f
+            hasIsoDate || hasTime                                      -> 0.44f
+            else                                                       -> 0.30f
         }
-
-        val bestMatch = matches.maxByOrNull { it.second }
-        val taskType = bestMatch?.first ?: TaskType.GENERAL
-        val confidence = bestMatch?.second ?: 0.45f
 
         return IntentResult(taskType, confidence)
+    }
+
+    private companion object {
+        /** Universal currency symbols: $, €, £, ¥, ₹, ₽, ₩, ₴, ₦ */
+        val CURRENCY_SYMBOL_PATTERN = Regex("""[$€£¥₹₽₩₴₦]""")
+
+        /** ISO 4217 currency codes commonly written in plain text */
+        val CURRENCY_CODE_PATTERN = Regex(
+            """\b(USD|EUR|GBP|ARS|BRL|JPY|CNY|MXN|CLP|COP|PEN|CAD|AUD|CHF|INR|KRW|SEK|NOK|DKK)\b""",
+            RegexOption.IGNORE_CASE
+        )
+
+        /**
+         * Date patterns — works across locales:
+         *   ISO 8601:          2025-12-25
+         *   Common DD/MM/YYYY: 25/12/2025 or 25-12-2025 or 25.12.2025
+         *   Short MM/DD:       12/25
+         */
+        val ISO_DATE_PATTERN = Regex(
+            """\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b|\b\d{1,2}[/.\-]\d{1,2}([/.\-]\d{2,4})?\b"""
+        )
+
+        /**
+         * Time patterns: 14:30, 9:00am, 3:00 PM
+         * The colon is the universal separator — language-agnostic.
+         */
+        val TIME_PATTERN = Regex("""\b\d{1,2}:\d{2}\s*(am|pm)?\b""", RegexOption.IGNORE_CASE)
+
+        /**
+         * Workout/gym set-rep notation — universal across languages:
+         *   3x10, 4×8, 3 X 12, 10 reps, 3 sets, 3 series
+         * "reps", "sets", "series" are widely used in fitness contexts internationally.
+         */
+        val SET_REP_PATTERN = Regex(
+            """\b\d+\s*[xX×]\s*\d+\b|\b\d+\s*(sets?|reps?|series?)\b""",
+            RegexOption.IGNORE_CASE
+        )
+
+        /** A number that looks like a monetary amount: 1500, 1.500, 1,500.00 */
+        val NUMERIC_AMOUNT_PATTERN = Regex("""\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?\b""")
     }
 }
 
 data class IntentResult(
     val taskType: TaskType,
     val confidence: Float
-)
-
-private data class ClassificationRule(
-    val taskType: TaskType,
-    val confidence: Float,
-    val patterns: List<Regex>
 )
