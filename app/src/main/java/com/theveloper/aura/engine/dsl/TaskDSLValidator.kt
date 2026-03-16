@@ -18,6 +18,10 @@ object TaskDSLValidator {
             return ValidationResult.Invalid("Task priority must be between 0 and 3")
         }
 
+        if (dsl.components.isEmpty()) {
+            return ValidationResult.Invalid("Task must have at least one component")
+        }
+
         val duplicatedSortOrders = dsl.components
             .groupBy { it.sortOrder }
             .filterValues { it.size > 1 }

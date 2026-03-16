@@ -16,6 +16,7 @@ class TaskClassifier @Inject constructor(
     private val llmServiceFactory: LLMServiceFactory,
     private val aiExecutionModeStore: AiExecutionModeStore,
     private val completenessValidator: CompletenessValidator,
+    private val qualityGate: TaskDSLQualityGate,
     private val memoryRepository: MemoryRepository,
     private val memoryContextBuilder: MemoryContextBuilder
 ) {
@@ -113,11 +114,25 @@ class TaskClassifier @Inject constructor(
             return null
         }
 
-        return when (val validation = TaskDSLValidator.validate(routedDsl)) {
+        // Quality gate: repair incomplete LLM output before structural validation.
+        // This prevents empty-component tasks from either passing through or triggering
+        // a full fallback when the LLM got the type/title right but missed components.
+        val gatedDsl = when (val gate = qualityGate.enforce(routedDsl, input, extractedEntities)) {
+            is TaskDSLQualityGate.GateResult.Passed -> {
+                warnings += gate.repairs
+                gate.dsl
+            }
+            is TaskDSLQualityGate.GateResult.Rejected -> {
+                warnings += gate.reason
+                return null
+            }
+        }
+
+        return when (val validation = TaskDSLValidator.validate(gatedDsl)) {
             TaskDSLValidator.ValidationResult.Valid -> {
                 postProcess(
                     result = TaskGenerationResult(
-                        dsl = routedDsl,
+                        dsl = gatedDsl,
                         source = route.source,
                         executionMode = executionMode,
                         intentConfidence = intentResult.confidence,
@@ -174,9 +189,21 @@ class TaskClassifier @Inject constructor(
             )
         }
 
-        val fallbackDsl = when (TaskDSLValidator.validate(onDeviceResult.dsl)) {
-            TaskDSLValidator.ValidationResult.Valid -> {
+        // Quality gate on heuristic output too — ensures no empty tasks slip through.
+        val gatedFallback = when (val gate = qualityGate.enforce(onDeviceResult.dsl, input, extractedEntities)) {
+            is TaskDSLQualityGate.GateResult.Passed -> {
+                warnings += gate.repairs
+                gate.dsl
+            }
+            is TaskDSLQualityGate.GateResult.Rejected -> {
+                // Gate rejected even after repair — force deterministic
                 onDeviceResult.dsl
+            }
+        }
+
+        val fallbackDsl = when (TaskDSLValidator.validate(gatedFallback)) {
+            TaskDSLValidator.ValidationResult.Valid -> {
+                gatedFallback
             }
 
             is TaskDSLValidator.ValidationResult.Invalid -> {

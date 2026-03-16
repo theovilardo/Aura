@@ -95,6 +95,7 @@ import com.theveloper.aura.domain.model.TaskType
 import com.theveloper.aura.domain.model.toTaskShape
 import com.theveloper.aura.engine.dsl.TaskComponentCatalog
 import com.theveloper.aura.engine.dsl.TaskComponentTemplate
+import com.theveloper.aura.ui.components.ClassificationLoadingOverlay
 import com.theveloper.aura.ui.components.ClarificationCard
 import kotlinx.coroutines.flow.collectLatest
 
@@ -138,101 +139,113 @@ fun CreateTaskScreen(
             )
         }
     ) { paddingValues ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-            contentPadding = PaddingValues(
-                top = paddingValues.calculateTopPadding(),
-                bottom = paddingValues.calculateBottomPadding()
-            ),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            item {
-                BuilderSection(
-                    title = "Title",
-                    titlePadding = 16.dp
-                ) {
-                    CreateTaskTitleField(
-                        value = uiState.manual.title,
-                        onValueChange = viewModel::updateManualTitle,
-                    )
-                }
-            }
-
-            item {
-                BuilderSection(
-                    title = "Shape",
-                    titlePadding = 16.dp,
-                    body = selectedShape?.shortDescription
-                        ?: "Aura can detect the shape automatically, or you can pin one before creating."
-                ) {
-                    CreateTaskTypeRow(
-                        selected = uiState.manual.taskTypeOverride,
-                        onSelect = viewModel::selectManualTaskType
-                    )
-                }
-            }
-
-            item {
-                BuilderSection(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    title = "Modules",
-                    body = if (selectedTemplates.isEmpty()) {
-                        "Pick the modules you want Aura to keep when it builds this shape."
-                    } else {
-                        "${selectedTemplates.size} selected"
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+                contentPadding = PaddingValues(
+                    top = paddingValues.calculateTopPadding(),
+                    bottom = paddingValues.calculateBottomPadding()
+                ),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                item {
+                    BuilderSection(
+                        title = "Title",
+                        titlePadding = 16.dp
+                    ) {
+                        CreateTaskTitleField(
+                            value = uiState.manual.title,
+                            onValueChange = viewModel::updateManualTitle,
+                        )
                     }
-                ) {
-                    if (selectedTemplates.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(shape = CircleShape)
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                }
+
+                item {
+                    BuilderSection(
+                        title = "Shape",
+                        titlePadding = 16.dp,
+                        body = selectedShape?.shortDescription
+                            ?: "Aura can detect the shape automatically, or you can pin one before creating."
+                    ) {
+                        CreateTaskTypeRow(
+                            selected = uiState.manual.taskTypeOverride,
+                            onSelect = viewModel::selectManualTaskType
+                        )
+                    }
+                }
+
+                item {
+                    BuilderSection(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        title = "Modules",
+                        body = if (selectedTemplates.isEmpty()) {
+                            "Pick the modules you want Aura to keep when it builds this shape."
+                        } else {
+                            "${selectedTemplates.size} selected"
+                        }
+                    ) {
+                        if (selectedTemplates.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(shape = CircleShape)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                selectedTemplates.forEach { template ->
+                                    SelectedTemplatePill(template = template)
+                                }
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier.padding(top = if (selectedTemplates.isEmpty()) 0.dp else 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            selectedTemplates.forEach { template ->
-                                SelectedTemplatePill(template = template)
+                            recommendedTemplates.forEach { template ->
+                                ManualTemplateCard(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    template = template,
+                                    selected = template.id in uiState.manual.selectedTemplateIds,
+                                    onToggle = { viewModel.toggleTemplate(template.id) }
+                                )
                             }
                         }
                     }
+                }
 
-                    Column(
-                        modifier = Modifier.padding(top = if (selectedTemplates.isEmpty()) 0.dp else 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        recommendedTemplates.forEach { template ->
-                            ManualTemplateCard(
-                                modifier = Modifier.fillMaxWidth(),
-                                template = template,
-                                selected = template.id in uiState.manual.selectedTemplateIds,
-                                onToggle = { viewModel.toggleTemplate(template.id) }
+                uiState.errorMessage?.let { errorMessage ->
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            border = BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.error.copy(alpha = 0.28f)
+                            )
+                        ) {
+                            Text(
+                                text = errorMessage,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer
                             )
                         }
                     }
                 }
             }
 
-            uiState.errorMessage?.let { errorMessage ->
-                item {
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        border = BorderStroke(
-                            1.dp,
-                            MaterialTheme.colorScheme.error.copy(alpha = 0.28f)
-                        )
-                    ) {
-                        Text(
-                            text = errorMessage,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    }
-                }
-            }
+            ClassificationLoadingOverlay(
+                visible = uiState.isClassifying,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        top = paddingValues.calculateTopPadding(),
+                        bottom = paddingValues.calculateBottomPadding()
+                    )
+            )
         }
 
         uiState.clarification?.let { clarification ->
