@@ -23,7 +23,7 @@ class LLMTierDetector @Inject constructor(
             return@withContext TierDetectionResult(
                 primaryTier = LLMTier.GEMINI_NANO,
                 supportsAdvancedTier = hasEnoughRam(minGb = 6f),
-                reasonForTier = "El dispositivo parece compatible con IA integrada del sistema."
+                reasonForTier = "This device looks compatible with built-in system AI."
             )
         }
 
@@ -35,7 +35,7 @@ class LLMTierDetector @Inject constructor(
             return@withContext TierDetectionResult(
                 primaryTier = LLMTier.GEMMA_3_1B,
                 supportsAdvancedTier = ramGb >= 6f && (hasGpu || hasNpu),
-                reasonForTier = "El hardware alcanza para correr un modelo local descargable."
+                reasonForTier = "The hardware should handle a downloadable local model."
             )
         }
 
@@ -43,14 +43,14 @@ class LLMTierDetector @Inject constructor(
             return@withContext TierDetectionResult(
                 primaryTier = LLMTier.GROQ_API,
                 supportsAdvancedTier = false,
-                reasonForTier = "Se necesita fallback cloud porque el hardware es limitado."
+                reasonForTier = "Cloud fallback is recommended because the hardware looks limited."
             )
         }
 
         TierDetectionResult(
             primaryTier = LLMTier.RULES_ONLY,
             supportsAdvancedTier = false,
-            reasonForTier = "Se usará composición por reglas hasta que haya un backend compatible."
+            reasonForTier = "Aura will stay on rules until a compatible backend is ready."
         )
     }
 

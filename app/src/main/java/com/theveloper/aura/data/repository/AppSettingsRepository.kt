@@ -20,6 +20,7 @@ data class AppSettingsSnapshot(
     val aiExecutionMode: AiExecutionMode = AiExecutionMode.AUTO,
     val developerMockHabitDataEnabled: Boolean = false,
     val huggingFaceAccessToken: String = "",
+    val groqAccessToken: String = "",
     val preferredPrimaryModelId: String = ModelCatalog.defaultPrimary.id,
     val preferredAdvancedModelId: String = ModelCatalog.defaultAdvanced.id
 )
@@ -31,6 +32,7 @@ class AppSettingsRepository @Inject constructor(
     private val syncEnabledKey = booleanPreferencesKey("sync_enabled")
     private val developerMockHabitDataEnabledKey = booleanPreferencesKey("developer_mock_habit_data_enabled")
     private val huggingFaceAccessTokenKey = stringPreferencesKey("huggingface_access_token")
+    private val groqAccessTokenKey = stringPreferencesKey("groq_access_token")
     private val preferredPrimaryModelKey = stringPreferencesKey("preferred_primary_local_model")
     private val preferredAdvancedModelKey = stringPreferencesKey("preferred_advanced_local_model")
 
@@ -40,6 +42,7 @@ class AppSettingsRepository @Inject constructor(
             aiExecutionMode = AiExecutionMode.fromStorage(prefs[AiPreferencesKeys.executionMode]),
             developerMockHabitDataEnabled = prefs[developerMockHabitDataEnabledKey] ?: false,
             huggingFaceAccessToken = prefs[huggingFaceAccessTokenKey].orEmpty(),
+            groqAccessToken = prefs[groqAccessTokenKey].orEmpty(),
             preferredPrimaryModelId = ModelCatalog.primaryById(prefs[preferredPrimaryModelKey]).id,
             preferredAdvancedModelId = ModelCatalog.advancedById(prefs[preferredAdvancedModelKey]).id
         )
@@ -69,6 +72,16 @@ class AppSettingsRepository @Inject constructor(
                 prefs.remove(huggingFaceAccessTokenKey)
             } else {
                 prefs[huggingFaceAccessTokenKey] = token.trim()
+            }
+        }
+    }
+
+    suspend fun setGroqAccessToken(token: String) {
+        context.dataStore.edit { prefs ->
+            if (token.isBlank()) {
+                prefs.remove(groqAccessTokenKey)
+            } else {
+                prefs[groqAccessTokenKey] = token.trim()
             }
         }
     }

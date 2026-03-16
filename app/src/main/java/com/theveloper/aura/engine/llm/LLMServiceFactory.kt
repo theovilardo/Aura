@@ -39,7 +39,7 @@ class LLMServiceFactory @Inject constructor(
         val settings = appSettingsRepository.getSnapshot()
         val executionMode = modeOverride ?: settings.aiExecutionMode
         val detection = detector.detect(
-            cloudFallbackAllowed = executionMode != AiExecutionMode.LOCAL_ONLY,
+            cloudFallbackAllowed = executionMode != AiExecutionMode.LOCAL_FIRST || groqLLMService.isAvailable(),
             groqConfigured = groqLLMService.isAvailable()
         )
         val localRoute = resolveBestLocalRoute(
@@ -55,23 +55,15 @@ class LLMServiceFactory @Inject constructor(
                 reason = "Groq is not ready and no local model has been downloaded yet."
             )
 
-            AiExecutionMode.LOCAL_ONLY -> localRoute ?: buildRulesRoute(
+            AiExecutionMode.LOCAL_FIRST -> localRoute ?: cloudRoute ?: buildRulesRoute(
                 detection = detection,
-                reason = "Local-only mode active without a downloaded model. Using rules-based composer."
+                reason = "Local-first mode is active, but no local or cloud backend is ready."
             )
 
-            AiExecutionMode.AUTO -> localRoute ?: cloudRoute ?: buildRulesRoute(
+            AiExecutionMode.AUTO -> resolveAutoRoute(
                 detection = detection,
-                reason = when (detection.primaryTier) {
-                    LLMTier.GEMMA_3_1B,
-                    LLMTier.GEMINI_NANO,
-                    LLMTier.GEMMA_3N_E2B,
-                    LLMTier.QWEN_2_5_1_5B,
-                    LLMTier.QWEN_3_0_6B -> "The recommended local model for this device has not been downloaded yet."
-
-                    LLMTier.GROQ_API -> "Groq would be the recommended tier, but it is not configured."
-                    LLMTier.RULES_ONLY -> detection.reasonForTier
-                }
+                localRoute = localRoute,
+                cloudRoute = cloudRoute
             )
         }
     }
@@ -80,7 +72,7 @@ class LLMServiceFactory @Inject constructor(
         val settings = appSettingsRepository.getSnapshot()
         val executionMode = modeOverride ?: settings.aiExecutionMode
         val detection = detector.detect(
-            cloudFallbackAllowed = executionMode != AiExecutionMode.LOCAL_ONLY,
+            cloudFallbackAllowed = executionMode != AiExecutionMode.LOCAL_FIRST || groqLLMService.isAvailable(),
             groqConfigured = groqLLMService.isAvailable()
         )
         val advancedRoute = resolveAdvancedLocalRoute(
@@ -98,7 +90,7 @@ class LLMServiceFactory @Inject constructor(
         val settings = appSettingsRepository.getSnapshot()
         val executionMode = modeOverride ?: settings.aiExecutionMode
         val detection = detector.detect(
-            cloudFallbackAllowed = executionMode != AiExecutionMode.LOCAL_ONLY,
+            cloudFallbackAllowed = executionMode != AiExecutionMode.LOCAL_FIRST || groqLLMService.isAvailable(),
             groqConfigured = groqLLMService.isAvailable()
         )
         val primaryRoute = resolvePrimaryService(executionMode)
@@ -111,6 +103,33 @@ class LLMServiceFactory @Inject constructor(
             groqConfigured = groqLLMService.isAvailable(),
             activeReason = primaryRoute.reason
         )
+    }
+
+    private fun resolveAutoRoute(
+        detection: TierDetectionResult,
+        localRoute: ResolvedLLMRoute?,
+        cloudRoute: ResolvedLLMRoute?
+    ): ResolvedLLMRoute {
+        return when (detection.primaryTier) {
+            LLMTier.GROQ_API -> cloudRoute ?: localRoute ?: buildRulesRoute(
+                detection = detection,
+                reason = "Groq would be the recommended tier, but it is not configured."
+            )
+
+            LLMTier.GEMMA_3_1B,
+            LLMTier.GEMINI_NANO,
+            LLMTier.GEMMA_3N_E2B,
+            LLMTier.QWEN_2_5_1_5B,
+            LLMTier.QWEN_3_0_6B -> localRoute ?: cloudRoute ?: buildRulesRoute(
+                detection = detection,
+                reason = "The recommended local model for this device has not been downloaded yet."
+            )
+
+            LLMTier.RULES_ONLY -> localRoute ?: cloudRoute ?: buildRulesRoute(
+                detection = detection,
+                reason = detection.reasonForTier
+            )
+        }
     }
 
     private fun resolveBestLocalRoute(

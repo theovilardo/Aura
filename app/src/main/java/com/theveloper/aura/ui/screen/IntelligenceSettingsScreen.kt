@@ -7,13 +7,11 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,9 +21,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.CloudOff
@@ -37,6 +41,7 @@ import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -67,15 +72,17 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.theveloper.aura.engine.classifier.AiExecutionMode
 import com.theveloper.aura.engine.llm.DownloadState
 import com.theveloper.aura.engine.llm.LLMTier
 import com.theveloper.aura.engine.llm.LocalModelSlot
-import com.theveloper.aura.engine.llm.ModelCatalog
 import com.theveloper.aura.engine.llm.ModelSpec
 
 @Composable
 fun IntelligenceSettingsScreen(
     onNavigateBack: () -> Unit,
+    onOpenApiSettings: () -> Unit,
+    onOpenModelLibrary: () -> Unit,
     viewModel: IntelligenceSettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -87,11 +94,261 @@ fun IntelligenceSettingsScreen(
         uiState.advancedModels.firstOrNull { it.isSelected } ?: uiState.advancedModels.firstOrNull()
     }
 
+    IntelligencePageScaffold(
+        title = "Intelligence",
+        onNavigateBack = onNavigateBack
+    ) {
+        item {
+            SettingsLeadCard(
+                eyebrow = "Execution",
+                title = "Choose how Aura balances local models, rules, and cloud help.",
+                body = "Set the route order here, then use dedicated screens for API keys and the model library."
+            )
+        }
+
+        item {
+            RuntimeOverviewCard(uiState = uiState)
+        }
+
+        item { SettingsGroupHeader("Execution Mode") }
+
+        items(AiExecutionMode.entries, key = { it.storageValue }) { mode ->
+            ExecutionModeCard(
+                mode = mode,
+                selected = mode == uiState.executionMode,
+                onClick = { viewModel.setExecutionMode(mode) }
+            )
+        }
+
+        item { SettingsGroupHeader("Local Models") }
+
+        selectedPrimaryModel?.let { model ->
+            item {
+                CurrentModelCard(
+                    icon = Icons.Rounded.Memory,
+                    label = "Current model for tasks",
+                    modelName = model.spec.displayName,
+                    status = if (model.isDownloaded) "Installed" else "Needs download",
+                    supporting = "Used first for organization, task building, and general writing.",
+                    onClick = { selectorSlot = LocalModelSlot.PRIMARY }
+                )
+            }
+        }
+
+        if (uiState.supportsAdvancedTier) {
+            selectedAdvancedModel?.let { model ->
+                item {
+                    CurrentModelCard(
+                        icon = Icons.Rounded.Speed,
+                        label = "Current model for richer writing",
+                        modelName = model.spec.displayName,
+                        status = if (model.isDownloaded) "Installed" else "Needs download",
+                        supporting = "Optional stronger local model for heavier prompts.",
+                        onClick = { selectorSlot = LocalModelSlot.ADVANCED }
+                    )
+                }
+            }
+        }
+
+        item {
+            SettingsNavigationCard(
+                icon = Icons.Rounded.Memory,
+                title = "Model Library",
+                summary = "Download models and compare them in one place.",
+                status = "${(uiState.primaryModels + uiState.advancedModels).count { it.isDownloaded }} installed",
+                onClick = onOpenModelLibrary
+            )
+        }
+
+        item { SettingsGroupHeader("APIs") }
+
+        item {
+            SettingsNavigationCard(
+                icon = if (uiState.groqConfigured || uiState.huggingFaceTokenConfigured) {
+                    Icons.Rounded.CloudDone
+                } else {
+                    Icons.Rounded.CloudOff
+                },
+                title = "API Settings",
+                summary = "Configure Hugging Face for gated downloads and Groq for cloud-first or fallback execution.",
+                status = apiStatusLabel(uiState),
+                onClick = onOpenApiSettings
+            )
+        }
+    }
+
+    selectorSlot?.let { slot ->
+        val models = if (slot == LocalModelSlot.PRIMARY) uiState.primaryModels else uiState.advancedModels
+        ModelPickerSheet(
+            slot = slot,
+            models = models,
+            onDismissRequest = { selectorSlot = null },
+            onSelect = { spec ->
+                if (slot == LocalModelSlot.PRIMARY) {
+                    viewModel.selectPrimaryModel(spec)
+                } else {
+                    viewModel.selectAdvancedModel(spec)
+                }
+                selectorSlot = null
+            },
+            onOpenModelLibrary = {
+                selectorSlot = null
+                onOpenModelLibrary()
+            }
+        )
+    }
+}
+
+@Composable
+fun IntelligenceApiSettingsScreen(
+    onNavigateBack: () -> Unit,
+    viewModel: IntelligenceSettingsViewModel = hiltViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+
+    IntelligencePageScaffold(
+        title = "API Settings",
+        onNavigateBack = onNavigateBack
+    ) {
+        item {
+            SettingsLeadCard(
+                eyebrow = "Credentials",
+                title = "Only add external access when you want a capability local models cannot provide.",
+                body = "Hugging Face unlocks gated model downloads. Groq enables cloud fallback and Cloud-first routing."
+            )
+        }
+
+        item {
+            ApiCredentialCard(
+                icon = Icons.Rounded.Download,
+                title = "Hugging Face",
+                summary = "Needed for gated repos such as Gemma. Public Qwen models can still download without it.",
+                status = if (uiState.huggingFaceTokenConfigured) "Saved" else "Missing",
+                value = uiState.huggingFaceTokenInput,
+                onValueChange = viewModel::updateHuggingFaceTokenInput,
+                onSave = viewModel::saveHuggingFaceToken,
+                onClear = viewModel::clearHuggingFaceToken,
+                fieldLabel = "Read token",
+                placeholder = "hf_...",
+                helperText = "Accept access on the gated model page first, then paste a read token here."
+            )
+        }
+
+        item {
+            ApiCredentialCard(
+                icon = if (uiState.groqConfigured) Icons.Rounded.CloudDone else Icons.Rounded.CloudOff,
+                title = "Groq",
+                summary = "Used for cloud-first routing and cloud fallback when local execution is unavailable.",
+                status = when {
+                    uiState.groqTokenConfigured -> "Saved"
+                    uiState.groqConfigured -> "Embedded"
+                    else -> "Missing"
+                },
+                value = uiState.groqTokenInput,
+                onValueChange = viewModel::updateGroqTokenInput,
+                onSave = viewModel::saveGroqToken,
+                onClear = viewModel::clearGroqToken,
+                fieldLabel = "API key",
+                placeholder = "gsk_...",
+                helperText = if (uiState.groqConfigured && !uiState.groqTokenConfigured) {
+                    "This build already has a Groq key available. Saving one here overrides it on this device."
+                } else {
+                    "Add a key if you want Aura to use Groq for cloud execution on this device."
+                }
+            )
+        }
+
+        item {
+            SettingsInfoCard(
+                icon = Icons.Rounded.AutoAwesome,
+                title = "On-device storage",
+                body = "These credentials stay on this device. Model downloads and cloud requests only use the key that belongs to the service they need."
+            )
+        }
+    }
+}
+
+@Composable
+fun IntelligenceModelLibraryScreen(
+    onNavigateBack: () -> Unit,
+    viewModel: IntelligenceSettingsViewModel = hiltViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val selectedPrimaryModel = remember(uiState.primaryModels) {
+        uiState.primaryModels.firstOrNull { it.isSelected } ?: uiState.primaryModels.firstOrNull()
+    }
+    val selectedAdvancedModel = remember(uiState.advancedModels) {
+        uiState.advancedModels.firstOrNull { it.isSelected } ?: uiState.advancedModels.firstOrNull()
+    }
+
+    IntelligencePageScaffold(
+        title = "Model Library",
+        onNavigateBack = onNavigateBack
+    ) {
+        item {
+            SettingsLeadCard(
+                eyebrow = "On-device models",
+                title = "Build a local toolkit that matches this phone and your workload.",
+                body = "Browse every supported model, see the tradeoff, and assign each slot directly from the card that explains it."
+            )
+        }
+
+        if (selectedPrimaryModel != null && selectedAdvancedModel != null) {
+            item {
+                ModelLibraryOverviewCard(
+                    primaryModel = selectedPrimaryModel,
+                    advancedModel = selectedAdvancedModel,
+                    supportsAdvancedTier = uiState.supportsAdvancedTier
+                )
+            }
+        }
+
+        item { SettingsGroupHeader("Primary Models") }
+
+        items(uiState.primaryModels, key = { it.spec.id }) { model ->
+            ModelLibraryCard(
+                slot = LocalModelSlot.PRIMARY,
+                uiState = model,
+                supportsAdvancedTier = uiState.supportsAdvancedTier,
+                onSelect = { viewModel.selectPrimaryModel(model.spec) },
+                onDownloadWifi = { viewModel.downloadModel(model.spec, wifiOnly = true) },
+                onDownloadMobile = { viewModel.downloadModel(model.spec, wifiOnly = false) },
+                onDelete = { viewModel.deleteModel(model.spec) },
+                onCancel = { viewModel.cancelDownload(model.spec) }
+            )
+        }
+
+        item { SettingsGroupHeader("Advanced Models") }
+
+        items(uiState.advancedModels, key = { it.spec.id }) { model ->
+            ModelLibraryCard(
+                slot = LocalModelSlot.ADVANCED,
+                uiState = model,
+                supportsAdvancedTier = uiState.supportsAdvancedTier,
+                onSelect = { viewModel.selectAdvancedModel(model.spec) },
+                onDownloadWifi = { viewModel.downloadModel(model.spec, wifiOnly = true) },
+                onDownloadMobile = { viewModel.downloadModel(model.spec, wifiOnly = false) },
+                onDelete = { viewModel.deleteModel(model.spec) },
+                onCancel = { viewModel.cancelDownload(model.spec) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun IntelligencePageScaffold(
+    title: String,
+    onNavigateBack: () -> Unit,
+    content: LazyListScope.() -> Unit
+) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            IntelligenceTopBar(onNavigateBack = onNavigateBack)
+            IntelligenceTopBar(
+                title = title,
+                onNavigateBack = onNavigateBack
+            )
         }
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
@@ -105,95 +362,9 @@ fun IntelligenceSettingsScreen(
                     top = innerPadding.calculateTopPadding() + 8.dp,
                     end = 16.dp,
                     bottom = innerPadding.calculateBottomPadding() + 40.dp
-                )
-            ) {
-                item {
-                    SettingsLeadCard(
-                        eyebrow = "Local runtime",
-                        title = "Elegí el modelo local con una lectura más clara del costo real.",
-                        body = "Aura detecta el tier del dispositivo, te deja elegir el modelo preferido por slot y muestra con más detalle qué conviene descargar."
-                    )
-                }
-
-                item {
-                    CurrentTierCard(uiState = uiState)
-                }
-
-                item { SettingsGroupHeader("Model slots") }
-
-                selectedPrimaryModel?.let { model ->
-                    item {
-                        SlotSelectionCard(
-                            title = "Primary slot",
-                            body = "El modelo liviano que Aura intenta usar primero para clasificar, organizar y redactar tareas.",
-                            selectedModel = model,
-                            onChoose = { selectorSlot = LocalModelSlot.PRIMARY }
-                        )
-                    }
-                }
-
-                selectedAdvancedModel?.let { model ->
-                    item {
-                        SlotSelectionCard(
-                            title = "Advanced slot",
-                            body = "El modelo más capaz para prompts más ricos, con más presión sobre RAM, almacenamiento y temperatura.",
-                            selectedModel = model,
-                            onChoose = { selectorSlot = LocalModelSlot.ADVANCED }
-                        )
-                    }
-                }
-
-                item { SettingsGroupHeader("Model library") }
-
-                item {
-                    SettingsInfoCard(
-                        icon = Icons.Rounded.AutoAwesome,
-                        title = "Expand for details",
-                        body = "Cada card resume el rol del modelo. Al expandirlo vas a ver fortalezas, tradeoffs, requisitos de acceso y controles de descarga."
-                    )
-                }
-
-                ModelCatalog.all.forEach { spec ->
-                    val model = (uiState.primaryModels + uiState.advancedModels)
-                        .firstOrNull { it.spec.id == spec.id }
-                    if (model != null) {
-                        item(key = "model-${spec.id}") {
-                            ModelLibraryCard(
-                                uiState = model,
-                                onDownloadWifi = { viewModel.downloadModel(spec, wifiOnly = true) },
-                                onDownloadMobile = { viewModel.downloadModel(spec, wifiOnly = false) },
-                                onDelete = { viewModel.deleteModel(spec) },
-                                onCancel = { viewModel.cancelDownload(spec) }
-                            )
-                        }
-                    }
-                }
-
-                item { SettingsGroupHeader("Access") }
-
-                item {
-                    HuggingFaceAccessCard(
-                        uiState = uiState,
-                        onValueChange = viewModel::updateHuggingFaceTokenInput,
-                        onSave = viewModel::saveHuggingFaceToken,
-                        onClear = viewModel::clearHuggingFaceToken
-                    )
-                }
-
-                item { SettingsGroupHeader("Cloud") }
-
-                item {
-                    SettingsInfoCard(
-                        icon = if (uiState.groqConfigured) Icons.Rounded.CloudDone else Icons.Rounded.CloudOff,
-                        title = if (uiState.groqConfigured) "Groq available" else "Groq unavailable",
-                        body = if (uiState.groqConfigured) {
-                            "Cloud fallback is available when ${uiState.executionModeLabel} mode allows it or when no local model is downloaded."
-                        } else {
-                            "No Groq API key configured. Aura will rely on the downloaded local model or the rules-based engine."
-                        }
-                    )
-                }
-            }
+                ),
+                content = content
+            )
 
             Box(
                 modifier = Modifier
@@ -211,31 +382,11 @@ fun IntelligenceSettingsScreen(
             )
         }
     }
-
-    selectorSlot?.let { slot ->
-        val models = if (slot == LocalModelSlot.PRIMARY) {
-            uiState.primaryModels
-        } else {
-            uiState.advancedModels
-        }
-        ModelSelectionSheet(
-            slot = slot,
-            models = models,
-            onDismissRequest = { selectorSlot = null },
-            onSelect = { spec ->
-                if (slot == LocalModelSlot.PRIMARY) {
-                    viewModel.selectPrimaryModel(spec)
-                } else {
-                    viewModel.selectAdvancedModel(spec)
-                }
-                selectorSlot = null
-            }
-        )
-    }
 }
 
 @Composable
 private fun IntelligenceTopBar(
+    title: String,
     onNavigateBack: () -> Unit
 ) {
     AuraGradientTopBarContainer(
@@ -257,7 +408,7 @@ private fun IntelligenceTopBar(
             )
 
             Text(
-                text = "Intelligence",
+                text = title,
                 style = MaterialTheme.typography.headlineSmall.copy(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 30.sp,
@@ -278,7 +429,7 @@ private fun IntelligenceChromeIconButton(
 ) {
     Surface(
         modifier = modifier,
-        shape = androidx.compose.foundation.shape.CircleShape,
+        shape = CircleShape,
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
         border = BorderStroke(
             1.dp,
@@ -291,7 +442,7 @@ private fun IntelligenceChromeIconButton(
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            androidx.compose.material3.Icon(
+            Icon(
                 imageVector = imageVector,
                 contentDescription = contentDescription,
                 tint = MaterialTheme.colorScheme.onSurface
@@ -301,21 +452,12 @@ private fun IntelligenceChromeIconButton(
 }
 
 @Composable
-private fun SlotSelectionCard(
-    title: String,
-    body: String,
-    selectedModel: IntelligenceModelUiState,
-    onChoose: () -> Unit
+private fun RuntimeOverviewCard(
+    uiState: IntelligenceSettingsUiState
 ) {
-    val context = LocalContext.current
-    val sizeLabel = Formatter.formatShortFileSize(
-        context,
-        selectedModel.sizeOnDisk.takeIf { it > 0 } ?: selectedModel.spec.sizeBytes
-    )
-
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f))
     ) {
@@ -323,31 +465,516 @@ private fun SlotSelectionCard(
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            Text(
+                text = "Current Runtime",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
             Row(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.Top
             ) {
-                SettingsIconBadge(icon = iconFor(selectedModel.spec))
+                SettingsIconBadge(icon = Icons.Rounded.AutoAwesome)
 
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.primary
+                    RuntimeMetaBlock(
+                        label = "Active backend",
+                        value = uiState.activeTier.displayName(),
+                        trailingChip = uiState.executionMode.title
                     )
                     Text(
-                        text = selectedModel.spec.displayName,
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = body,
+                        text = uiState.activeReason,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            RuntimeMetaBlock(
+                label = "Recommended for this device",
+                value = uiState.recommendedTier.displayName(),
+                supporting = uiState.recommendedReason
+            )
+        }
+    }
+}
+
+@Composable
+private fun RuntimeMetaBlock(
+    label: String,
+    value: String,
+    trailingChip: String? = null,
+    supporting: String? = null
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.primary
+            )
+            trailingChip?.let { SettingsStatusChip(it) }
+        }
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        supporting?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExecutionModeCard(
+    mode: AiExecutionMode,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(28.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = BorderStroke(
+            1.dp,
+            if (selected) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+            }
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = mode.title,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = mode.summary,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.84f)
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            )
+            Text(
+                text = mode.orderSummary,
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+@Composable
+private fun CurrentModelCard(
+    icon: ImageVector,
+    label: String,
+    modelName: String,
+    status: String,
+    supporting: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            SettingsIconBadge(icon = icon)
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = modelName,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = supporting,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                SettingsStatusChip(status)
+            }
+
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .size(22.dp)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModelPickerSheet(
+    slot: LocalModelSlot,
+    models: List<IntelligenceModelUiState>,
+    onDismissRequest: () -> Unit,
+    onSelect: (ModelSpec) -> Unit,
+    onOpenModelLibrary: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismissRequest) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = if (slot == LocalModelSlot.PRIMARY) {
+                    "Choose model for tasks"
+                } else {
+                    "Choose model for richer writing"
+                },
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            models.forEach { model ->
+                ModelPickerOption(
+                    model = model,
+                    onClick = { onSelect(model.spec) }
+                )
+            }
+
+            TextButton(onClick = onOpenModelLibrary) {
+                Text("Open model library")
+            }
+
+            Box(modifier = Modifier.navigationBarsPadding())
+        }
+    }
+}
+
+@Composable
+private fun ModelPickerOption(
+    model: IntelligenceModelUiState,
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val sizeLabel = Formatter.formatShortFileSize(
+        context,
+        model.sizeOnDisk.takeIf { it > 0 } ?: model.spec.sizeBytes
+    )
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(24.dp),
+        color = if (model.isSelected) {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = BorderStroke(
+            1.dp,
+            if (model.isSelected) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+            }
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RadioButton(
+                selected = model.isSelected,
+                onClick = onClick
+            )
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = model.spec.displayName,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SettingsStatusChip(sizeLabel)
+                    SettingsStatusChip(if (model.isDownloaded) "Installed" else "Download later")
+                    if (model.spec.requiresAuthentication) {
+                        SettingsStatusChip("Gated")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ApiCredentialCard(
+    icon: ImageVector,
+    title: String,
+    summary: String,
+    status: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onClear: () -> Unit,
+    fieldLabel: String,
+    placeholder: String,
+    helperText: String
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SettingsIconBadge(icon = icon)
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = summary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                SettingsStatusChip(status)
+            }
+
+            Text(
+                text = helperText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(fieldLabel) },
+                placeholder = { Text(placeholder) },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrectEnabled = false
+                )
+            )
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = onSave,
+                    enabled = value.isNotBlank()
+                ) {
+                    Text("Save")
+                }
+                TextButton(onClick = onClear) {
+                    Text("Clear")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModelLibraryOverviewCard(
+    primaryModel: IntelligenceModelUiState,
+    advancedModel: IntelligenceModelUiState,
+    supportsAdvancedTier: Boolean
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f))
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Current assignment",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            ModelAssignmentSummary(label = "Primary", model = primaryModel.spec.displayName)
+            ModelAssignmentSummary(label = "Advanced", model = advancedModel.spec.displayName)
+
+            if (!supportsAdvancedTier) {
+                Text(
+                    text = "Advanced models are visible here, but this device is not currently flagged for the advanced local tier.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModelAssignmentSummary(
+    label: String,
+    model: String
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = model,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
+private fun ModelLibraryCard(
+    slot: LocalModelSlot,
+    uiState: IntelligenceModelUiState,
+    supportsAdvancedTier: Boolean,
+    onSelect: () -> Unit,
+    onDownloadWifi: () -> Unit,
+    onDownloadMobile: () -> Unit,
+    onDelete: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val context = LocalContext.current
+    val sizeLabel = Formatter.formatShortFileSize(
+        context,
+        uiState.sizeOnDisk.takeIf { it > 0 } ?: uiState.spec.sizeBytes
+    )
+    var expanded by rememberSaveable(uiState.spec.id) {
+        mutableStateOf(false)
+    }
+
+    LaunchedEffect(uiState.isSelected, uiState.downloadState, uiState.hasCredentials) {
+        if (
+            uiState.isSelected ||
+            uiState.downloadState is DownloadState.Downloading ||
+            uiState.downloadState is DownloadState.Error ||
+            uiState.downloadState == DownloadState.Processing ||
+            uiState.downloadState == DownloadState.WaitingForWifi ||
+            (uiState.spec.requiresAuthentication && !uiState.hasCredentials)
+        ) {
+            expanded = true
+        }
+    }
+
+    val accentBorder = when {
+        uiState.isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+        uiState.isActive -> MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+        else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f)
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, accentBorder)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                SettingsIconBadge(icon = iconFor(uiState.spec))
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = uiState.spec.displayName,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = uiState.spec.summary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                TextButton(onClick = { expanded = !expanded }) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                        contentDescription = null
+                    )
+                    Text(if (expanded) "Less" else "More")
                 }
             }
 
@@ -356,140 +983,30 @@ private fun SlotSelectionCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SettingsStatusChip(if (selectedModel.isDownloaded) "Installed" else "Not downloaded")
                 SettingsStatusChip(sizeLabel)
-                if (selectedModel.isActive) {
+                SettingsStatusChip(if (uiState.isDownloaded) "Installed" else "Download available")
+                SettingsStatusChip(if (slot == LocalModelSlot.PRIMARY) "Primary slot" else "Advanced slot")
+                if (uiState.isSelected) {
+                    SettingsStatusChip(if (slot == LocalModelSlot.PRIMARY) "Current primary" else "Current advanced")
+                }
+                if (uiState.isActive) {
                     SettingsStatusChip("Active")
+                }
+                if (uiState.spec.requiresAuthentication) {
+                    SettingsStatusChip("Gated")
                 }
             }
 
-            OutlinedButton(onClick = onChoose) {
-                Text("Choose from list")
-            }
-        }
-    }
-}
-
-@Composable
-private fun ModelLibraryCard(
-    uiState: IntelligenceModelUiState,
-    onDownloadWifi: () -> Unit,
-    onDownloadMobile: () -> Unit,
-    onDelete: () -> Unit,
-    onCancel: () -> Unit
-) {
-    val context = LocalContext.current
-    val estimatedSize = uiState.sizeOnDisk.takeIf { it > 0 } ?: uiState.spec.sizeBytes
-    val sizeLabel = Formatter.formatShortFileSize(context, estimatedSize)
-    var expanded by rememberSaveable(uiState.spec.id) {
-        mutableStateOf(uiState.isSelected || uiState.isActive)
-    }
-
-    LaunchedEffect(uiState.isSelected, uiState.isActive, uiState.downloadState) {
-        if (
-            uiState.isSelected ||
-            uiState.isActive ||
-            uiState.downloadState is DownloadState.Downloading ||
-            uiState.downloadState is DownloadState.Error ||
-            uiState.downloadState == DownloadState.Processing ||
-            uiState.downloadState == DownloadState.WaitingForWifi
-        ) {
-            expanded = true
-        }
-    }
-
-    val containerColor = if (uiState.isSelected || uiState.isActive) {
-        MaterialTheme.colorScheme.surfaceContainerLow
-    } else {
-        MaterialTheme.colorScheme.surface
-    }
-    val borderColor = if (uiState.isSelected || uiState.isActive) {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
-    } else {
-        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f)
-    }
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .animateContentSize(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(30.dp),
-        color = containerColor,
-        border = BorderStroke(1.dp, borderColor)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded },
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                SettingsIconBadge(icon = iconFor(uiState.spec))
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = uiState.spec.displayName,
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        androidx.compose.material3.Icon(
-                            imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SettingsStatusChip(slotLabel(uiState.spec.slot))
-                        SettingsStatusChip(if (uiState.isDownloaded) "Installed" else "Ready to download")
-                        if (uiState.isSelected) {
-                            SettingsStatusChip("Preferred")
-                        }
-                        if (uiState.isActive) {
-                            SettingsStatusChip("Active")
-                        }
-                        if (uiState.spec.requiresAuthentication) {
-                            SettingsStatusChip("Gated repo")
-                        }
-                    }
-
-                    Text(
-                        text = if (uiState.isDownloaded) {
-                            "Installed on device · $sizeLabel"
-                        } else {
-                            "Download size · $sizeLabel"
-                        },
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+            if (uiState.isSelected) {
+                SettingsStatusChip(if (slot == LocalModelSlot.PRIMARY) "Aura prefers this for the primary slot" else "Aura prefers this for the advanced slot")
+            } else {
+                OutlinedButton(onClick = onSelect) {
+                    Text(if (slot == LocalModelSlot.PRIMARY) "Use for primary" else "Use for advanced")
                 }
             }
 
             AnimatedVisibility(visible = expanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text(
-                        text = uiState.spec.summary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
                     ModelDetailRow(
                         label = "Best for",
                         value = uiState.spec.bestFor
@@ -503,23 +1020,31 @@ private fun ModelLibraryCard(
                         value = if (uiState.spec.requiresAuthentication) {
                             "Requires accepted access on Hugging Face plus a read token."
                         } else {
-                            "Open Hugging Face repo. No token is needed for download."
+                            "Open Hugging Face repo. No token is required for download."
                         }
                     )
 
-                    if (!uiState.isSupported && !uiState.isDownloaded) {
+                    when {
+                        slot == LocalModelSlot.ADVANCED && !supportsAdvancedTier -> {
+                            Text(
+                                text = "This device is not currently flagged for the advanced local tier, so Aura may stay on the primary path.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+
+                        !uiState.isSupported && !uiState.isDownloaded -> {
+                            Text(
+                                text = "This model is not currently recommended for the detected device tier.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+
+                    if (uiState.spec.requiresAuthentication && !uiState.hasCredentials) {
                         Text(
-                            text = if (uiState.spec.slot == LocalModelSlot.ADVANCED) {
-                                "This device does not currently meet the recommended advanced tier for this model."
-                            } else {
-                                "This device does not currently meet the recommended lightweight local tier."
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    } else if (uiState.spec.requiresAuthentication && !uiState.hasCredentials) {
-                        Text(
-                            text = "Add a Hugging Face token after accepting access to enable this download.",
+                            text = "Add a Hugging Face token in API Settings to enable this download.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
                         )
@@ -527,7 +1052,7 @@ private fun ModelLibraryCard(
 
                     ModelDownloadStateBlock(uiState = uiState)
 
-                    ModelActionRow(
+                    ModelDownloadActionRow(
                         uiState = uiState,
                         onDownloadWifi = onDownloadWifi,
                         onDownloadMobile = onDownloadMobile,
@@ -588,7 +1113,7 @@ private fun ModelDownloadStateBlock(
 
         DownloadState.WaitingForWifi -> {
             Text(
-                text = "Aura is waiting for Wi-Fi before starting this heavier download.",
+                text = "Aura is waiting for Wi-Fi before starting this download.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -608,54 +1133,61 @@ private fun ModelDownloadStateBlock(
 }
 
 @Composable
-private fun ModelActionRow(
+private fun ModelDownloadActionRow(
     uiState: IntelligenceModelUiState,
     onDownloadWifi: () -> Unit,
     onDownloadMobile: () -> Unit,
     onDelete: () -> Unit,
     onCancel: () -> Unit
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when (uiState.downloadState) {
             is DownloadState.Downloading,
             DownloadState.Processing -> {
                 TextButton(onClick = onCancel) {
-                    Text("Cancel")
+                    Text("Cancel download")
                 }
             }
 
             DownloadState.WaitingForWifi -> {
-                Button(onClick = onDownloadMobile) {
-                    androidx.compose.material3.Icon(
-                        imageVector = Icons.Rounded.Download,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text("Use data")
-                }
-                TextButton(onClick = onCancel) {
-                    Text("Cancel")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(onClick = onDownloadMobile) {
+                        Icon(
+                            imageVector = Icons.Rounded.Download,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text("Use cellular")
+                    }
+                    TextButton(onClick = onCancel) {
+                        Text("Cancel")
+                    }
                 }
             }
 
             is DownloadState.Error -> {
-                Button(
-                    onClick = onDownloadWifi,
-                    enabled = (uiState.isSupported || uiState.isDownloaded) && uiState.hasCredentials
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    androidx.compose.material3.Icon(
-                        imageVector = Icons.Rounded.Download,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text("Retry")
-                }
-                if (uiState.hasCredentials) {
-                    TextButton(onClick = onDownloadMobile) {
-                        Text("Use data")
+                    Button(
+                        onClick = onDownloadWifi,
+                        enabled = (uiState.isSupported || uiState.isDownloaded) && uiState.hasCredentials
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Download,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text("Retry")
+                    }
+                    if (uiState.hasCredentials) {
+                        TextButton(onClick = onDownloadMobile) {
+                            Text("Use cellular")
+                        }
                     }
                 }
             }
@@ -664,7 +1196,7 @@ private fun ModelActionRow(
             DownloadState.Complete -> {
                 if (uiState.isDownloaded) {
                     OutlinedButton(onClick = onDelete) {
-                        androidx.compose.material3.Icon(
+                        Icon(
                             imageVector = Icons.Rounded.Delete,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
@@ -672,20 +1204,25 @@ private fun ModelActionRow(
                         Text("Delete")
                     }
                 } else {
-                    Button(
-                        onClick = onDownloadWifi,
-                        enabled = uiState.isSupported && uiState.hasCredentials
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        androidx.compose.material3.Icon(
-                            imageVector = Icons.Rounded.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text("Download")
-                    }
-                    if (uiState.isSupported && uiState.hasCredentials) {
-                        TextButton(onClick = onDownloadMobile) {
-                            Text("Use data")
+                        Button(
+                            onClick = onDownloadWifi,
+                            enabled = uiState.isSupported && uiState.hasCredentials
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text("Download")
+                        }
+                        if (uiState.isSupported && uiState.hasCredentials) {
+                            TextButton(onClick = onDownloadMobile) {
+                                Text("Use cellular")
+                            }
                         }
                     }
                 }
@@ -694,255 +1231,15 @@ private fun ModelActionRow(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ModelSelectionSheet(
-    slot: LocalModelSlot,
-    models: List<IntelligenceModelUiState>,
-    onDismissRequest: () -> Unit,
-    onSelect: (ModelSpec) -> Unit
-) {
-    ModalBottomSheet(onDismissRequest = onDismissRequest) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Text(
-                text = if (slot == LocalModelSlot.PRIMARY) "Choose primary model" else "Choose advanced model",
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = if (slot == LocalModelSlot.PRIMARY) {
-                    "Pick the lighter model Aura should prefer first."
-                } else {
-                    "Pick the heavier model Aura should prefer when a richer local response is worth the extra device cost."
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            models.forEach { model ->
-                ModelSelectionOption(
-                    model = model,
-                    onClick = { onSelect(model.spec) }
-                )
-            }
-
-            Spacer(modifier = Modifier.navigationBarsPadding())
-        }
-    }
-}
-
-@Composable
-private fun ModelSelectionOption(
-    model: IntelligenceModelUiState,
-    onClick: () -> Unit
-) {
-    val context = LocalContext.current
-    val sizeLabel = Formatter.formatShortFileSize(
-        context,
-        model.sizeOnDisk.takeIf { it > 0 } ?: model.spec.sizeBytes
-    )
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
-        color = if (model.isSelected) {
-            MaterialTheme.colorScheme.surfaceContainerLow
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
-        border = BorderStroke(
-            1.dp,
-            if (model.isSelected) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
-            } else {
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-            }
-        )
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            RadioButton(
-                selected = model.isSelected,
-                onClick = onClick
-            )
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = model.spec.displayName,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = model.spec.summary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SettingsStatusChip(sizeLabel)
-                    SettingsStatusChip(if (model.isDownloaded) "Installed" else "Download needed")
-                    if (model.isActive) {
-                        SettingsStatusChip("Active now")
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CurrentTierCard(
-    uiState: IntelligenceSettingsUiState
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SettingsIconBadge(icon = Icons.Rounded.AutoAwesome)
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = "Active backend",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = uiState.activeTier.displayName(),
-                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                SettingsStatusChip(uiState.executionModeLabel)
-            }
-
-            Text(
-                text = uiState.activeReason,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            if (uiState.recommendedTier != uiState.activeTier || uiState.recommendedReason.isNotBlank()) {
-                Text(
-                    text = "Recommended for this device: ${uiState.recommendedTier.displayName()}",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                if (uiState.recommendedReason.isNotBlank()) {
-                    Text(
-                        text = uiState.recommendedReason,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HuggingFaceAccessCard(
-    uiState: IntelligenceSettingsUiState,
-    onValueChange: (String) -> Unit,
-    onSave: () -> Unit,
-    onClear: () -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SettingsIconBadge(icon = Icons.Rounded.Download)
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = "Hugging Face access",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Gemma repos require accepted access and a read token. Qwen downloads can run directly from Hugging Face.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                SettingsStatusChip(if (uiState.huggingFaceTokenConfigured) "Configured" else "Missing")
-            }
-
-            Text(
-                text = "1. Open the gated model repo on Hugging Face and accept access.\n2. Create a read token.\n3. Paste it here to enable gated downloads. Ungated repos can be downloaded without this token.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            OutlinedTextField(
-                value = uiState.huggingFaceTokenInput,
-                onValueChange = onValueChange,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Hugging Face token") },
-                placeholder = { Text("hf_...") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.None,
-                    autoCorrectEnabled = false
-                )
-            )
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick = onSave,
-                    enabled = uiState.huggingFaceTokenInput.isNotBlank()
-                ) {
-                    Text("Save token")
-                }
-                if (uiState.huggingFaceTokenConfigured) {
-                    TextButton(onClick = onClear) {
-                        Text("Clear")
-                    }
-                }
-            }
-        }
+private fun apiStatusLabel(uiState: IntelligenceSettingsUiState): String {
+    val configuredCount = listOf(
+        uiState.huggingFaceTokenConfigured,
+        uiState.groqConfigured
+    ).count { it }
+    return when (configuredCount) {
+        2 -> "Ready"
+        1 -> "Partial"
+        else -> "Missing"
     }
 }
 
@@ -962,12 +1259,5 @@ private fun iconFor(spec: ModelSpec): ImageVector {
     return when (spec.slot) {
         LocalModelSlot.PRIMARY -> Icons.Rounded.Memory
         LocalModelSlot.ADVANCED -> Icons.Rounded.Speed
-    }
-}
-
-private fun slotLabel(slot: LocalModelSlot): String {
-    return when (slot) {
-        LocalModelSlot.PRIMARY -> "Primary"
-        LocalModelSlot.ADVANCED -> "Advanced"
     }
 }

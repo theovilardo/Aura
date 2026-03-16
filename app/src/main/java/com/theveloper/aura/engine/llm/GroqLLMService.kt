@@ -3,12 +3,14 @@ package com.theveloper.aura.engine.llm
 import android.content.Context
 import com.theveloper.aura.BuildConfig
 import com.theveloper.aura.core.json.auraJson
+import com.theveloper.aura.data.repository.AppSettingsRepository
 import com.theveloper.aura.engine.classifier.LLMClassificationContext
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -21,12 +23,13 @@ import okhttp3.RequestBody.Companion.toRequestBody
 @Singleton
 class GroqLLMService @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val okHttpClient: OkHttpClient
+    private val okHttpClient: OkHttpClient,
+    private val appSettingsRepository: AppSettingsRepository
 ) : LLMService {
 
     override val tier: LLMTier = LLMTier.GROQ_API
 
-    override fun isAvailable(): Boolean = BuildConfig.GROQ_API_KEY.isNotBlank()
+    override fun isAvailable(): Boolean = currentApiKey().isNotBlank()
 
     override suspend fun classify(input: String, context: LLMClassificationContext): TaskDSLOutput {
         require(isAvailable()) { throw GroqAPIKeyMissingException() }
@@ -88,7 +91,7 @@ class GroqLLMService @Inject constructor(
 
         val request = Request.Builder()
             .url(BuildConfig.GROQ_BASE_URL + "chat/completions")
-            .header("Authorization", "Bearer ${BuildConfig.GROQ_API_KEY}")
+            .header("Authorization", "Bearer ${currentApiKey()}")
             .header("Content-Type", "application/json")
             .post(requestBody.toRequestBody(JSON_MEDIA_TYPE))
             .build()
@@ -123,6 +126,13 @@ class GroqLLMService @Inject constructor(
                 appendLine(context.memoryContext)
             }
         }
+    }
+
+    private fun currentApiKey(): String {
+        val storedKey = runBlocking {
+            appSettingsRepository.getSnapshot().groqAccessToken.trim()
+        }
+        return storedKey.ifBlank { BuildConfig.GROQ_API_KEY.trim() }
     }
 
     @Serializable

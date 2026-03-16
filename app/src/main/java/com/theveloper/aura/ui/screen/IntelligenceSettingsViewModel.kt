@@ -3,6 +3,7 @@ package com.theveloper.aura.ui.screen
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.theveloper.aura.data.repository.AppSettingsRepository
+import com.theveloper.aura.engine.classifier.AiExecutionMode
 import com.theveloper.aura.engine.llm.DownloadState
 import com.theveloper.aura.engine.llm.LLMRuntimeStatus
 import com.theveloper.aura.engine.llm.LLMServiceFactory
@@ -33,14 +34,16 @@ data class IntelligenceModelUiState(
 
 data class IntelligenceSettingsUiState(
     val isLoading: Boolean = true,
+    val executionMode: AiExecutionMode = AiExecutionMode.AUTO,
     val activeTier: LLMTier = LLMTier.RULES_ONLY,
     val recommendedTier: LLMTier = LLMTier.RULES_ONLY,
     val activeReason: String = "",
     val recommendedReason: String = "",
-    val executionModeLabel: String = "Auto",
     val groqConfigured: Boolean = false,
+    val groqTokenConfigured: Boolean = false,
     val huggingFaceTokenConfigured: Boolean = false,
     val huggingFaceTokenInput: String = "",
+    val groqTokenInput: String = "",
     val supportsAdvancedTier: Boolean = false,
     val selectedPrimaryModelId: String = ModelCatalog.defaultPrimary.id,
     val selectedAdvancedModelId: String = ModelCatalog.defaultAdvanced.id,
@@ -69,15 +72,17 @@ class IntelligenceSettingsViewModel @Inject constructor(
             val runtime = llmServiceFactory.getRuntimeStatus()
             val settings = appSettingsRepository.getSnapshot()
             val tokenConfigured = settings.huggingFaceAccessToken.isNotBlank()
+            val groqTokenConfigured = settings.groqAccessToken.isNotBlank()
             _uiState.update { state ->
                 state.copy(
                     isLoading = false,
+                    executionMode = settings.aiExecutionMode,
                     activeTier = runtime.activePrimaryTier,
                     recommendedTier = runtime.detection.primaryTier,
                     activeReason = runtime.activeReason,
                     recommendedReason = runtime.detection.reasonForTier,
-                    executionModeLabel = runtime.executionMode.title,
                     groqConfigured = runtime.groqConfigured,
+                    groqTokenConfigured = groqTokenConfigured,
                     huggingFaceTokenConfigured = tokenConfigured,
                     supportsAdvancedTier = runtime.detection.supportsAdvancedTier,
                     selectedPrimaryModelId = settings.preferredPrimaryModelId,
@@ -110,6 +115,7 @@ class IntelligenceSettingsViewModel @Inject constructor(
     fun saveHuggingFaceToken() {
         viewModelScope.launch {
             appSettingsRepository.setHuggingFaceAccessToken(uiState.value.huggingFaceTokenInput)
+            _uiState.update { it.copy(huggingFaceTokenInput = "") }
             refresh()
         }
     }
@@ -118,6 +124,33 @@ class IntelligenceSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             appSettingsRepository.setHuggingFaceAccessToken("")
             _uiState.update { it.copy(huggingFaceTokenInput = "") }
+            refresh()
+        }
+    }
+
+    fun updateGroqTokenInput(value: String) {
+        _uiState.update { it.copy(groqTokenInput = value) }
+    }
+
+    fun saveGroqToken() {
+        viewModelScope.launch {
+            appSettingsRepository.setGroqAccessToken(uiState.value.groqTokenInput)
+            _uiState.update { it.copy(groqTokenInput = "") }
+            refresh()
+        }
+    }
+
+    fun clearGroqToken() {
+        viewModelScope.launch {
+            appSettingsRepository.setGroqAccessToken("")
+            _uiState.update { it.copy(groqTokenInput = "") }
+            refresh()
+        }
+    }
+
+    fun setExecutionMode(mode: AiExecutionMode) {
+        viewModelScope.launch {
+            appSettingsRepository.setAiExecutionMode(mode)
             refresh()
         }
     }

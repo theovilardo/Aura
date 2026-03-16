@@ -90,7 +90,8 @@ import com.theveloper.aura.ui.screen.CreateTaskScreen
 import com.theveloper.aura.ui.screen.CloudSettingsScreen
 import com.theveloper.aura.ui.screen.DeveloperSettingsScreen
 import com.theveloper.aura.ui.screen.HomeScreen
-import com.theveloper.aura.ui.screen.AiSettingsScreen
+import com.theveloper.aura.ui.screen.IntelligenceApiSettingsScreen
+import com.theveloper.aura.ui.screen.IntelligenceModelLibraryScreen
 import com.theveloper.aura.ui.screen.IntelligenceSettingsScreen
 import com.theveloper.aura.ui.screen.SettingsScreen
 import com.theveloper.aura.ui.screen.TaskCreationMode
@@ -111,7 +112,8 @@ private const val TASK_NOTE_READER_ROUTE = "task_detail_note/{taskId}/{component
 private const val TASK_NOTE_EDITOR_ROUTE = "task_detail_edit_note/{taskId}/{componentId}"
 private const val SETTINGS_ROUTE = "settings"
 private const val SETTINGS_INTELLIGENCE_ROUTE = "settings/intelligence"
-private const val SETTINGS_AI_ROUTE = "settings/ai"
+private const val SETTINGS_INTELLIGENCE_APIS_ROUTE = "settings/intelligence/apis"
+private const val SETTINGS_INTELLIGENCE_LIBRARY_ROUTE = "settings/intelligence/library"
 private const val SETTINGS_CLOUD_ROUTE = "settings/cloud"
 private const val SETTINGS_DEVELOPER_ROUTE = "settings/developer"
 private const val CREATE_TASK_BASE_ROUTE = "create_task"
@@ -226,7 +228,6 @@ fun AuraApp() {
             composable(SETTINGS_ROUTE) {
                 SettingsScreen(
                     onOpenIntelligenceSettings = { navController.navigate(SETTINGS_INTELLIGENCE_ROUTE) },
-                    onOpenAiSettings = { navController.navigate(SETTINGS_AI_ROUTE) },
                     onOpenCloudSettings = { navController.navigate(SETTINGS_CLOUD_ROUTE) },
                     onOpenDeveloperSettings = { navController.navigate(SETTINGS_DEVELOPER_ROUTE) }
                 )
@@ -234,13 +235,22 @@ fun AuraApp() {
             composable(SETTINGS_INTELLIGENCE_ROUTE) {
                 SecondaryScreenFrame {
                     IntelligenceSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onOpenApiSettings = { navController.navigate(SETTINGS_INTELLIGENCE_APIS_ROUTE) },
+                        onOpenModelLibrary = { navController.navigate(SETTINGS_INTELLIGENCE_LIBRARY_ROUTE) }
+                    )
+                }
+            }
+            composable(SETTINGS_INTELLIGENCE_APIS_ROUTE) {
+                SecondaryScreenFrame {
+                    IntelligenceApiSettingsScreen(
                         onNavigateBack = { navController.popBackStack() }
                     )
                 }
             }
-            composable(SETTINGS_AI_ROUTE) {
+            composable(SETTINGS_INTELLIGENCE_LIBRARY_ROUTE) {
                 SecondaryScreenFrame {
-                    AiSettingsScreen(
+                    IntelligenceModelLibraryScreen(
                         onNavigateBack = { navController.popBackStack() }
                     )
                 }

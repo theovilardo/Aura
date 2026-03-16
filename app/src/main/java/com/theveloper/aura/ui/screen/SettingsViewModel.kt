@@ -2,7 +2,6 @@ package com.theveloper.aura.ui.screen
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.theveloper.aura.BuildConfig
 import com.theveloper.aura.data.repository.AppSettingsRepository
 import com.theveloper.aura.engine.classifier.AiExecutionMode
 import com.theveloper.aura.engine.llm.LLMServiceFactory
@@ -18,7 +17,7 @@ import javax.inject.Inject
 data class SettingsUiState(
     val syncEnabled: Boolean = false,
     val aiExecutionMode: AiExecutionMode = AiExecutionMode.AUTO,
-    val groqConfigured: Boolean = BuildConfig.GROQ_API_KEY.isNotBlank(),
+    val groqConfigured: Boolean = false,
     val developerMockHabitDataEnabled: Boolean = false,
     val intelligenceStatus: String = "Rules"
 )
@@ -35,15 +34,18 @@ class SettingsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             appSettingsRepository.settingsFlow.collect { settings ->
-                val intelligenceStatus = runCatching {
+                val runtimeStatus = runCatching {
                     llmServiceFactory.getRuntimeStatus(settings.aiExecutionMode)
-                        .activePrimaryTier
-                        .settingsLabel()
-                }.getOrDefault(LLMTier.RULES_ONLY.settingsLabel())
+                }.getOrNull()
+                val intelligenceStatus = runtimeStatus
+                    ?.activePrimaryTier
+                    ?.settingsLabel()
+                    ?: LLMTier.RULES_ONLY.settingsLabel()
                 _uiState.update {
                     it.copy(
                         syncEnabled = settings.syncEnabled,
                         aiExecutionMode = settings.aiExecutionMode,
+                        groqConfigured = runtimeStatus?.groqConfigured ?: false,
                         developerMockHabitDataEnabled = settings.developerMockHabitDataEnabled,
                         intelligenceStatus = intelligenceStatus
                     )

@@ -110,9 +110,9 @@ class TaskClassifierTest {
     @Test
     fun `shopping prompt asks for clarification after routed failure`() = runTest {
         coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
-        coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.LOCAL_ONLY
+        coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.LOCAL_FIRST
         coEvery { memoryRepository.getSlots() } returns emptyList()
-        coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.LOCAL_ONLY) } returns route(
+        coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.LOCAL_FIRST) } returns route(
             source = TaskGenerationSource.LOCAL_AI,
             tier = LLMTier.GEMMA_3_1B
         )
@@ -132,9 +132,9 @@ class TaskClassifierTest {
     @Test
     fun `shopping prompt with bullet point items populates checklist without clarification`() = runTest {
         coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
-        coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.LOCAL_ONLY
+        coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.LOCAL_FIRST
         coEvery { memoryRepository.getSlots() } returns emptyList()
-        coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.LOCAL_ONLY) } returns route(
+        coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.LOCAL_FIRST) } returns route(
             source = TaskGenerationSource.LOCAL_AI,
             tier = LLMTier.GEMMA_3_1B
         )

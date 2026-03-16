@@ -558,6 +558,7 @@ private fun BuilderSection(
         )
         body?.let {
             Text(
+                modifier = Modifier.padding(horizontal = titlePadding),
                 text = it,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

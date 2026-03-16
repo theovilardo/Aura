@@ -100,7 +100,7 @@ class ModelDownloadManager @Inject constructor(
                 }
 
                 val body = response.body ?: run {
-                    emit(DownloadState.Error("La descarga llegó vacía.", canRetry = true))
+                    emit(DownloadState.Error("The download response was empty.", canRetry = true))
                     return@flow
                 }
 
@@ -142,7 +142,7 @@ class ModelDownloadManager @Inject constructor(
             }
         } catch (exception: IOException) {
             tempFile.delete()
-            val reason = if (call.isCanceled()) "Descarga cancelada." else exception.message.orEmpty().ifBlank { "Error de red." }
+            val reason = if (call.isCanceled()) "Download cancelled." else exception.message.orEmpty().ifBlank { "Network error." }
             emit(DownloadState.Error(reason, canRetry = true))
         } finally {
             activeCalls.remove(spec.id)

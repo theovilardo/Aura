@@ -302,7 +302,7 @@ class CreateTaskViewModel @Inject constructor(
                         reminders = reminders
                     ),
                     source = TaskGenerationSource.MANUAL,
-                    executionMode = AiExecutionMode.LOCAL_ONLY,
+                    executionMode = AiExecutionMode.LOCAL_FIRST,
                     intentConfidence = 1f,
                     localConfidence = 1f
                 ),

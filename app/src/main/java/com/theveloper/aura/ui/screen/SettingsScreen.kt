@@ -69,7 +69,6 @@ import com.theveloper.aura.engine.classifier.AiExecutionMode
 @Composable
 fun SettingsScreen(
     onOpenIntelligenceSettings: () -> Unit,
-    onOpenAiSettings: () -> Unit,
     onOpenCloudSettings: () -> Unit,
     onOpenDeveloperSettings: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
@@ -94,19 +93,9 @@ fun SettingsScreen(
             SettingsNavigationCard(
                 icon = Icons.Rounded.AutoAwesome,
                 title = "Intelligence",
-                summary = "Detect device tier, manage model downloads and verify which backend is active right now.",
+                summary = "Choose execution mode, manage local models, and configure the API access Aura can use.",
                 status = uiState.intelligenceStatus,
                 onClick = onOpenIntelligenceSettings
-            )
-        }
-
-        item {
-            SettingsNavigationCard(
-                icon = Icons.Rounded.Memory,
-                title = "AI",
-                summary = "Pick how Aura resolves prompts and which execution path it prioritizes.",
-                status = uiState.aiExecutionMode.title,
-                onClick = onOpenAiSettings
             )
         }
 
@@ -464,13 +453,13 @@ internal fun SettingsNavigationCard(
         Row(
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Top
         ) {
             SettingsIconBadge(icon = icon)
 
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
                     text = title,
@@ -482,19 +471,20 @@ internal fun SettingsNavigationCard(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                if (status.isNotBlank()) {
+                    SettingsStatusChip(status)
+                }
             }
 
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SettingsStatusChip(status)
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .size(22.dp)
+            )
         }
     }
 }

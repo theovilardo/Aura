@@ -18,24 +18,27 @@ enum class AiExecutionMode(
     AUTO(
         storageValue = "auto",
         title = "Auto",
-        summary = "Usa reglas, compositor local y solo sube a la nube si el prompt queda ambiguo.",
-        orderSummary = "Reglas -> IA local -> API si hace falta"
+        summary = "Lets Aura choose the most sensible route based on what is ready on this device.",
+        orderSummary = "Adaptive routing across rules, local, and cloud"
     ),
-    LOCAL_ONLY(
-        storageValue = "local_only",
-        title = "Solo local",
-        summary = "Nunca usa red. Prioriza privacidad y funciona offline.",
-        orderSummary = "Reglas -> IA local"
+    LOCAL_FIRST(
+        storageValue = "local_first",
+        title = "Local-first",
+        summary = "Prefers on-device models and only falls back to Groq when local execution is not ready.",
+        orderSummary = "Rules -> local -> cloud fallback"
     ),
     CLOUD_FIRST(
         storageValue = "cloud_first",
-        title = "Nube primero",
-        summary = "Consulta Groq primero si está configurado y vuelve a local si falla.",
-        orderSummary = "API -> reglas -> IA local"
+        title = "Cloud-first",
+        summary = "Uses Groq first when available, then falls back to local execution if the API is unavailable.",
+        orderSummary = "Cloud -> rules -> local"
     );
 
     companion object {
         fun fromStorage(value: String?): AiExecutionMode {
+            if (value == "local_only") {
+                return LOCAL_FIRST
+            }
             return entries.firstOrNull { it.storageValue == value } ?: AUTO
         }
     }
