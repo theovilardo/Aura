@@ -60,6 +60,24 @@ class TaskClassifier @Inject constructor(
             allowClarification = allowClarification
         )?.let { return it }
 
+        // Primary LLM failed — try the advanced model before falling to heuristics.
+        // This gives the larger model (e.g. Qwen 2.5 1.5B) a chance to handle inputs
+        // that the smaller primary model (e.g. Qwen 3 0.6B) could not parse.
+        val advancedRoute = llmServiceFactory.resolveAdvancedService(executionMode)
+        if (advancedRoute.service !== route.service && advancedRoute.source != TaskGenerationSource.RULES) {
+            buildRouteResult(
+                input = normalizedInput,
+                context = context,
+                executionMode = executionMode,
+                route = advancedRoute,
+                intentResult = intentResult,
+                extractedEntities = extractedEntities,
+                warnings = warnings,
+                memorySlots = memorySlots,
+                allowClarification = allowClarification
+            )?.let { return it }
+        }
+
         return buildFallbackResult(
             input = normalizedInput,
             context = context,

@@ -85,6 +85,9 @@ object TaskDSLBuilder {
             TaskType.GENERAL -> buildList {
                 if (hasDate) add("deadline_countdown")
                 if (hasListStructure || isMultiLine) add("action_checklist")
+                // Descriptive inputs (8+ words) likely need structured output even without explicit signals
+                val wordCount = input.split(Regex("\\s+")).count { it.isNotBlank() }
+                if (wordCount >= 8 && none { it == "action_checklist" }) add("action_checklist")
                 add("notes_brain_dump")
             }
         }

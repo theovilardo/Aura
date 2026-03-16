@@ -351,7 +351,7 @@ abstract class LiteRtLocalLLMService constructor(
             PROGRESS_BAR: {"config_type":"PROGRESS_BAR","source":"MANUAL","label":"...","manualProgress":0.0}
 
             When to use: items→CHECKLIST, recurring→HABIT_RING, measurable goal→METRIC_TRACKER, date→COUNTDOWN, useful info→NOTES. Minimum components only.
-            Type: HEALTH(fitness/medical), EVENT(future date), TRAVEL(trip), FINANCE(money), HABIT(recurring), GOAL(milestones), PROJECT(deliverable), else GENERAL.
+            Type: HEALTH(physical fitness/medical/body metrics ONLY), EVENT(future date), TRAVEL(trip), FINANCE(money), HABIT(recurring), GOAL(learning/skill development/personal growth/milestones/roadmap), PROJECT(deliverable), else GENERAL. IMPORTANT: learning, studying, recommendations, self-improvement → GOAL, never HEALTH.
 
             Example — input: "gym routine, recommend exercises for legs"
             {"semantic":{"action":"workout","items":["squats","lunges","leg press","calf raises"],"subject":"gym","goal":"","frequency":""},"title":"Gym routine","type":"HEALTH","priority":0,"targetDateMs":0,"components":[{"type":"CHECKLIST","sortOrder":0,"config":{"config_type":"CHECKLIST","label":"Exercises","allowAddItems":true,"items":[{"label":"squats","isSuggested":true},{"label":"lunges","isSuggested":true},{"label":"leg press","isSuggested":true},{"label":"calf raises","isSuggested":true}]},"populatedFromInput":true,"needsClarification":false},{"type":"NOTES","sortOrder":1,"config":{"config_type":"NOTES","text":"## Workout tips\n- **Sets:** 3-4 per exercise\n- **Reps:** 8-12\n- **Rest:** 60-90s between sets\n- Warm up 5 min before starting","isMarkdown":true},"populatedFromInput":true,"needsClarification":false}],"reminders":[],"fetchers":[]}

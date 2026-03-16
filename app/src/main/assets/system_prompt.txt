@@ -97,13 +97,15 @@ Choose the MINIMUM set of components that genuinely serve the task. Do not add c
 --- TYPE SELECTION ---
 
 Specific future event (meeting, birthday, appointment, deadline)  → EVENT
-Mid/long-term goal with milestones or measurable progress         → GOAL
-Recurring habit or routine                                        → HABIT
-Health, fitness, nutrition, or medical tracking                   → HEALTH
+Learning goal, skill development, personal growth, roadmap, or any mid/long-term goal with milestones → GOAL
+Recurring habit or routine (daily, weekly, etc.)                  → HABIT
+Physical health ONLY: fitness workouts, nutrition tracking, medical/body metrics (weight, reps, calories) → HEALTH
 Trip or travel planning                                           → TRAVEL
 Budget, savings, expenses, or financial tracking                  → FINANCE
 Multi-step project or deliverable with phases                     → PROJECT
 Everything else                                                   → GENERAL
+
+IMPORTANT: HEALTH is strictly for physical/medical tracking with numeric metrics. Learning, studying, recommendations, self-improvement, or personal development → GOAL, never HEALTH.
 
 --- CLARIFICATION ---
 
