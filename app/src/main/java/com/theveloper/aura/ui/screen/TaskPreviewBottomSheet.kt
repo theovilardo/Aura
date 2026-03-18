@@ -26,9 +26,12 @@ import androidx.compose.material.icons.rounded.Alarm
 import androidx.compose.material.icons.rounded.Autorenew
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.Computer
 import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.DonutLarge
 import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
@@ -245,7 +248,7 @@ private fun PreviewSummaryCard(preview: TaskGenerationResult) {
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ComponentPill(taskShape.displayName)
-                ComponentPill(preview.sourceLabel())
+                SourcePill(source = preview.source)
                 ComponentPill("P${dsl.priority}")
                 dsl.targetDateMs?.let {
                     ComponentPill(formatDate(it))
@@ -451,6 +454,41 @@ private fun previewComponentIcon(type: ComponentType): ImageVector = when (type)
     ComponentType.NOTES -> Icons.AutoMirrored.Rounded.Notes
     ComponentType.METRIC_TRACKER -> Icons.AutoMirrored.Rounded.ShowChart
     ComponentType.DATA_FEED -> Icons.Rounded.Sync
+}
+
+@Composable
+private fun SourcePill(source: TaskGenerationSource) {
+    val (icon, label) = when (source) {
+        TaskGenerationSource.MANUAL -> null to "Manual"
+        TaskGenerationSource.RULES -> Icons.Rounded.PhoneAndroid to "Rules"
+        TaskGenerationSource.LOCAL_AI -> Icons.Rounded.PhoneAndroid to "Local AI"
+        TaskGenerationSource.GROQ_API -> Icons.Rounded.Cloud to "Cloud AI"
+    }
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(13.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }
 
 private fun TaskGenerationResult.sourceLabel(): String = when (source) {

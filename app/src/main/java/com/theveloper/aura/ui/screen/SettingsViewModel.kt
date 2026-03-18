@@ -16,6 +16,7 @@ import javax.inject.Inject
 
 data class SettingsUiState(
     val syncEnabled: Boolean = false,
+    val ecosystemEnabled: Boolean = false,
     val aiExecutionMode: AiExecutionMode = AiExecutionMode.AUTO,
     val groqConfigured: Boolean = false,
     val developerMockHabitDataEnabled: Boolean = false,
@@ -44,6 +45,7 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         syncEnabled = settings.syncEnabled,
+                        ecosystemEnabled = settings.ecosystemEnabled,
                         aiExecutionMode = settings.aiExecutionMode,
                         groqConfigured = runtimeStatus?.groqConfigured ?: false,
                         developerMockHabitDataEnabled = settings.developerMockHabitDataEnabled,

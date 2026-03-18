@@ -93,6 +93,7 @@ import com.theveloper.aura.ui.screen.HomeScreen
 import com.theveloper.aura.ui.screen.IntelligenceApiSettingsScreen
 import com.theveloper.aura.ui.screen.IntelligenceModelLibraryScreen
 import com.theveloper.aura.ui.screen.IntelligenceSettingsScreen
+import com.theveloper.aura.ui.screen.EcosystemSettingsScreen
 import com.theveloper.aura.ui.screen.SettingsScreen
 import com.theveloper.aura.ui.screen.TaskCreationMode
 import com.theveloper.aura.ui.screen.TaskDetailScreen
@@ -116,6 +117,7 @@ private const val SETTINGS_INTELLIGENCE_APIS_ROUTE = "settings/intelligence/apis
 private const val SETTINGS_INTELLIGENCE_LIBRARY_ROUTE = "settings/intelligence/library"
 private const val SETTINGS_CLOUD_ROUTE = "settings/cloud"
 private const val SETTINGS_DEVELOPER_ROUTE = "settings/developer"
+private const val SETTINGS_ECOSYSTEM_ROUTE = "settings/ecosystem"
 private const val CREATE_TASK_BASE_ROUTE = "create_task"
 private const val CREATE_TASK_ROUTE =
     "$CREATE_TASK_BASE_ROUTE?mode={mode}&input={input}&autoSubmit={autoSubmit}"
@@ -229,6 +231,7 @@ fun AuraApp() {
                 SettingsScreen(
                     onOpenIntelligenceSettings = { navController.navigate(SETTINGS_INTELLIGENCE_ROUTE) },
                     onOpenCloudSettings = { navController.navigate(SETTINGS_CLOUD_ROUTE) },
+                    onOpenEcosystemSettings = { navController.navigate(SETTINGS_ECOSYSTEM_ROUTE) },
                     onOpenDeveloperSettings = { navController.navigate(SETTINGS_DEVELOPER_ROUTE) }
                 )
             }
@@ -258,6 +261,13 @@ fun AuraApp() {
             composable(SETTINGS_CLOUD_ROUTE) {
                 SecondaryScreenFrame {
                     CloudSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+            }
+            composable(SETTINGS_ECOSYSTEM_ROUTE) {
+                SecondaryScreenFrame {
+                    EcosystemSettingsScreen(
                         onNavigateBack = { navController.popBackStack() }
                     )
                 }
