@@ -239,3 +239,21 @@ interface ComponentRuleDao {
     @Delete
     suspend fun deleteRule(rule: ComponentRuleEntity)
 }
+
+@Dao
+interface PairedDeviceDao {
+    @Query("SELECT * FROM paired_devices ORDER BY last_seen_at DESC")
+    suspend fun getAll(): List<PairedDeviceEntity>
+
+    @Query("SELECT * FROM paired_devices WHERE id = :deviceId")
+    suspend fun getById(deviceId: String): PairedDeviceEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(device: PairedDeviceEntity)
+
+    @Query("UPDATE paired_devices SET last_seen_at = :timestamp WHERE id = :deviceId")
+    suspend fun updateLastSeen(deviceId: String, timestamp: Long)
+
+    @Query("DELETE FROM paired_devices WHERE id = :deviceId")
+    suspend fun delete(deviceId: String)
+}

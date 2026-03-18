@@ -22,7 +22,8 @@ data class AppSettingsSnapshot(
     val huggingFaceAccessToken: String = "",
     val groqAccessToken: String = "",
     val preferredPrimaryModelId: String = ModelCatalog.defaultPrimary.id,
-    val preferredAdvancedModelId: String = ModelCatalog.defaultAdvanced.id
+    val preferredAdvancedModelId: String = ModelCatalog.defaultAdvanced.id,
+    val ecosystemEnabled: Boolean = false
 )
 
 @Singleton
@@ -30,6 +31,7 @@ class AppSettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val syncEnabledKey = booleanPreferencesKey("sync_enabled")
+    private val ecosystemEnabledKey = booleanPreferencesKey("ecosystem_enabled")
     private val developerMockHabitDataEnabledKey = booleanPreferencesKey("developer_mock_habit_data_enabled")
     private val huggingFaceAccessTokenKey = stringPreferencesKey("huggingface_access_token")
     private val groqAccessTokenKey = stringPreferencesKey("groq_access_token")
@@ -44,7 +46,8 @@ class AppSettingsRepository @Inject constructor(
             huggingFaceAccessToken = prefs[huggingFaceAccessTokenKey].orEmpty(),
             groqAccessToken = prefs[groqAccessTokenKey].orEmpty(),
             preferredPrimaryModelId = ModelCatalog.primaryById(prefs[preferredPrimaryModelKey]).id,
-            preferredAdvancedModelId = ModelCatalog.advancedById(prefs[preferredAdvancedModelKey]).id
+            preferredAdvancedModelId = ModelCatalog.advancedById(prefs[preferredAdvancedModelKey]).id,
+            ecosystemEnabled = prefs[ecosystemEnabledKey] ?: false
         )
     }
 
@@ -95,6 +98,12 @@ class AppSettingsRepository @Inject constructor(
     suspend fun setPreferredAdvancedModel(modelId: String) {
         context.dataStore.edit { prefs ->
             prefs[preferredAdvancedModelKey] = ModelCatalog.advancedById(modelId).id
+        }
+    }
+
+    suspend fun setEcosystemEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[ecosystemEnabledKey] = enabled
         }
     }
 

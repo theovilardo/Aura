@@ -12,7 +12,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class CryptoHelper @Inject constructor() {
+class CryptoHelper @Inject constructor() : SyncCrypto {
 
     private val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
 
@@ -41,7 +41,7 @@ class CryptoHelper @Inject constructor() {
         return keyStore.getKey(KEY_ALIAS, null) as SecretKey
     }
 
-    fun encrypt(plaintext: String): String {
+    override fun encrypt(plaintext: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getSecretKey())
         val iv = cipher.iv
@@ -55,7 +55,7 @@ class CryptoHelper @Inject constructor() {
         return Base64.encodeToString(combined, Base64.DEFAULT)
     }
 
-    fun decrypt(encryptedTextBase64: String): String {
+    override fun decrypt(encryptedTextBase64: String): String {
         val combined = Base64.decode(encryptedTextBase64, Base64.DEFAULT)
         val cipher = Cipher.getInstance(TRANSFORMATION)
         

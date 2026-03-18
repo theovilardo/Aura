@@ -24,7 +24,7 @@ object DatabaseModule {
             AuraDatabase::class.java,
             "aura_database"
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .build()
     }
 
@@ -83,6 +83,11 @@ object DatabaseModule {
         return db.componentRuleDao()
     }
 
+    @Provides
+    fun providePairedDeviceDao(db: AuraDatabase): com.theveloper.aura.data.db.PairedDeviceDao {
+        return db.pairedDeviceDao()
+    }
+
     private val MIGRATION_1_2 = object : Migration(1, 2) {
         override fun migrate(database: SupportSQLiteDatabase) {
             database.execSQL(
@@ -106,6 +111,25 @@ object DatabaseModule {
             )
             database.execSQL(
                 "CREATE UNIQUE INDEX IF NOT EXISTS index_memory_slots_category ON memory_slots(category)"
+            )
+        }
+    }
+
+    private val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS paired_devices (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    platform TEXT NOT NULL,
+                    connection_url TEXT NOT NULL,
+                    relay_url TEXT,
+                    shared_secret TEXT NOT NULL DEFAULT '',
+                    last_seen_at INTEGER NOT NULL,
+                    paired_at INTEGER NOT NULL
+                )
+                """.trimIndent()
             )
         }
     }

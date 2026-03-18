@@ -141,3 +141,15 @@ data class ComponentRuleEntity(
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "created_by") val createdBy: String
 )
+
+@Entity(tableName = "paired_devices")
+data class PairedDeviceEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val platform: String,
+    @ColumnInfo(name = "connection_url") val connectionUrl: String,
+    @ColumnInfo(name = "relay_url") val relayUrl: String? = null,
+    @ColumnInfo(name = "shared_secret") val sharedSecret: String = "",
+    @ColumnInfo(name = "last_seen_at") val lastSeenAt: Long,
+    @ColumnInfo(name = "paired_at") val pairedAt: Long
+)

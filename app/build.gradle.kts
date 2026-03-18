@@ -111,6 +111,9 @@ dependencies {
     // DataStore
     implementation(libs.androidx.datastore.preferences)
 
+    // Protocol module (shared cross-platform message definitions)
+    implementation(project(":protocol"))
+
     // Kotlin Serialization
     implementation(libs.kotlinx.serialization.json)
 
