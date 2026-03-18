@@ -74,6 +74,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -139,7 +140,6 @@ fun TaskDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val taskListState = rememberLazyListState()
     var showDeleteConfirmation by remember { mutableStateOf(false) }
-    val isFloatingBarVisible = !taskListState.isScrollInProgress
 
     LaunchedEffect(viewModel) {
         viewModel.eventFlow.collectLatest { event ->
@@ -208,21 +208,44 @@ fun TaskDetailScreen(
             )
 
             uiState.task?.let { task ->
-                AnimatedVisibility(
-                    visible = isFloatingBarVisible,
+                TaskDetailFloatingBarHost(
+                    task = task,
+                    taskListState = taskListState,
                     modifier = Modifier.align(Alignment.BottomCenter),
-                    enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-                    exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
-                ) {
-                    TaskDetailFloatingBar(
-                        task = task,
-                        onCompleteTask = viewModel::onCompleteTask,
-                        onReopenTask = viewModel::onReopenTask,
-                        onDeleteTask = { showDeleteConfirmation = true }
-                    )
-                }
+                    onCompleteTask = viewModel::onCompleteTask,
+                    onReopenTask = viewModel::onReopenTask,
+                    onDeleteTask = { showDeleteConfirmation = true }
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun TaskDetailFloatingBarHost(
+    task: Task,
+    taskListState: androidx.compose.foundation.lazy.LazyListState,
+    modifier: Modifier = Modifier,
+    onCompleteTask: () -> Unit,
+    onReopenTask: () -> Unit,
+    onDeleteTask: () -> Unit
+) {
+    val isVisible by remember(taskListState) {
+        derivedStateOf { !taskListState.isScrollInProgress }
+    }
+
+    AnimatedVisibility(
+        visible = isVisible,
+        modifier = modifier,
+        enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+    ) {
+        TaskDetailFloatingBar(
+            task = task,
+            onCompleteTask = onCompleteTask,
+            onReopenTask = onReopenTask,
+            onDeleteTask = onDeleteTask
+        )
     }
 }
 
@@ -814,7 +837,8 @@ private fun TaskComponentReorderSheet(
             ) {
                 itemsIndexed(
                     items = orderedComponents,
-                    key = { _, component -> component.id }
+                    key = { _, component -> component.id },
+                    contentType = { _, component -> component.type }
                 ) { index, component ->
                     ReorderableItem(
                         state = reorderableLazyListState,

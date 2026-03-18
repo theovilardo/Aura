@@ -11,12 +11,15 @@ import com.theveloper.aura.domain.model.TaskType
 import com.theveloper.aura.domain.repository.HabitRepository
 import com.theveloper.aura.domain.repository.TaskRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -59,24 +62,30 @@ class HabitTrackerViewModel @Inject constructor(
                 appSettingsRepository.settingsFlow
             ) { tasks, settings ->
                 tasks to settings.developerMockHabitDataEnabled
-            }.collect { (tasks, developerMockHabitDataEnabled) ->
+            }.collectLatest { (tasks, developerMockHabitDataEnabled) ->
+                val today = LocalDate.now()
                 val habitItems = if (developerMockHabitDataEnabled) {
-                    buildMockHabitItems()
+                    withContext(Dispatchers.Default) {
+                        buildMockHabitItems()
+                    }
                 } else {
                     val habitTasks = tasks.filter {
                         (it.type == TaskType.HABIT || it.type == TaskType.HEALTH) &&
                             it.status == TaskStatus.ACTIVE
                     }
-                    habitTasks.map { task ->
-                        val signals = habitRepository.getSignalsForTask(task.id)
-                        buildHabitItem(task, signals)
+                    val signals = habitRepository.getSignalsForTasks(habitTasks.map(Task::id))
+                    withContext(Dispatchers.Default) {
+                        val signalsByTask = signals.groupBy(HabitSignalEntity::taskId)
+                        habitTasks.map { task ->
+                            buildHabitItem(task, signalsByTask[task.id].orEmpty(), today)
+                        }
                     }
                 }
 
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        today = LocalDate.now(),
+                        today = today,
                         totalActive = habitItems.size,
                         doneToday = habitItems.count { item -> item.completedToday },
                         habitItems = habitItems
@@ -86,9 +95,12 @@ class HabitTrackerViewModel @Inject constructor(
         }
     }
 
-    private fun buildHabitItem(task: Task, signals: List<HabitSignalEntity>): HabitItemUiState {
+    private fun buildHabitItem(
+        task: Task,
+        signals: List<HabitSignalEntity>,
+        today: LocalDate
+    ): HabitItemUiState {
         val completedSignals = signals.filter { it.signalType == SignalType.TASK_COMPLETED }
-        val today = LocalDate.now()
         val zoneId = ZoneId.systemDefault()
 
         fun Long.toDate(): LocalDate = Instant.ofEpochMilli(this).atZone(zoneId).toLocalDate()

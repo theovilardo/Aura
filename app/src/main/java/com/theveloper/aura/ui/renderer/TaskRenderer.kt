@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -103,19 +104,26 @@ fun TaskRenderer(
         }
         else -> {
             val resolvedListState = listState ?: rememberLazyListState()
+            val sortedComponents = remember(task.components) {
+                task.components.sortedBy(TaskComponent::sortOrder)
+            }
             LazyColumn(
                 state = resolvedListState,
                 modifier = modifier.fillMaxWidth(),
                 contentPadding = contentPadding,
                 verticalArrangement = Arrangement.spacedBy(if (mode == TaskRenderMode.INTERPRETED) 16.dp else 12.dp)
             ) {
-                item {
+                item(key = "task_header_${task.id}", contentType = "task_header") {
                     when (mode) {
                         TaskRenderMode.INTERPRETED -> InterpretedTaskHeader(task = task)
                         TaskRenderMode.EDIT -> EditTaskHeader(task = task)
                     }
                 }
-                items(task.components.sortedBy { it.sortOrder }, key = { it.id }) { component ->
+                items(
+                    items = sortedComponents,
+                    key = { it.id },
+                    contentType = { it.type }
+                ) { component ->
                     when (mode) {
                         TaskRenderMode.INTERPRETED -> InterpretedComponentRenderer(
                             component = component,
@@ -164,16 +172,23 @@ fun EditableTaskRenderer(
         }
         else -> {
             val resolvedListState = listState ?: rememberLazyListState()
+            val sortedComponents = remember(task.components) {
+                task.components.sortedBy(TaskComponent::sortOrder)
+            }
             LazyColumn(
                 state = resolvedListState,
                 modifier = modifier.fillMaxWidth(),
                 contentPadding = contentPadding,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                item {
+                item(key = "task_edit_header_${task.id}", contentType = "task_header") {
                     EditTaskHeader(task = task)
                 }
-                items(task.components.sortedBy { it.sortOrder }, key = { it.id }) { component ->
+                items(
+                    items = sortedComponents,
+                    key = { it.id },
+                    contentType = { it.type }
+                ) { component ->
                     EditableComponentRenderer(
                         task = task,
                         component = component,

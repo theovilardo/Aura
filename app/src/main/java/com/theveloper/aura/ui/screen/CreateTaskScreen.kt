@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -150,7 +151,7 @@ fun CreateTaskScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
-                item {
+                item(key = "manual_title_section", contentType = "builder_section") {
                     BuilderSection(
                         title = "Title",
                         titlePadding = 16.dp
@@ -162,7 +163,7 @@ fun CreateTaskScreen(
                     }
                 }
 
-                item {
+                item(key = "manual_shape_section", contentType = "builder_section") {
                     BuilderSection(
                         title = "Shape",
                         titlePadding = 16.dp,
@@ -176,7 +177,7 @@ fun CreateTaskScreen(
                     }
                 }
 
-                item {
+                item(key = "manual_modules_section", contentType = "builder_section") {
                     BuilderSection(
                         modifier = Modifier.padding(horizontal = 16.dp),
                         title = "Modules",
@@ -217,7 +218,7 @@ fun CreateTaskScreen(
                 }
 
                 uiState.errorMessage?.let { errorMessage ->
-                    item {
+                    item(key = "manual_error_state", contentType = "error_state") {
                         Surface(
                             shape = RoundedCornerShape(24.dp),
                             color = MaterialTheme.colorScheme.errorContainer,
@@ -497,7 +498,7 @@ private fun CreateTaskTypeRow(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(horizontal = 16.dp)
     ) {
-        item {
+        item(key = "task_type_auto", contentType = "task_type_chip") {
             val active = selected == null
             Surface(
                 shape = CircleShape,
@@ -522,30 +523,32 @@ private fun CreateTaskTypeRow(
             }
         }
 
-        TaskShape.userFacingOrder.forEach { shape ->
+        items(
+            items = TaskShape.userFacingOrder,
+            key = { it.taskType.name },
+            contentType = { "task_type_chip" }
+        ) { shape ->
             val active = shape.taskType == selected
-            item {
-                Surface(
-                    shape = CircleShape,
+            Surface(
+                shape = CircleShape,
+                color = if (active) MaterialTheme.colorScheme.inverseSurface
+                else MaterialTheme.colorScheme.surface,
+                border = BorderStroke(
+                    width = 1.dp,
                     color = if (active) MaterialTheme.colorScheme.inverseSurface
-                    else MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(
-                        width = 1.dp,
-                        color = if (active) MaterialTheme.colorScheme.inverseSurface
-                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
-                    ),
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .clickable { onSelect(shape.taskType) }
-                ) {
-                    Text(
-                        text = shape.displayName,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = if (active) MaterialTheme.colorScheme.inverseOnSurface
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
+                ),
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable { onSelect(shape.taskType) }
+            ) {
+                Text(
+                    text = shape.displayName,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (active) MaterialTheme.colorScheme.inverseOnSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

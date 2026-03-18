@@ -113,6 +113,9 @@ interface HabitSignalDao {
     @Query("SELECT * FROM habit_signals WHERE task_id = :taskId")
     suspend fun getSignalsForTask(taskId: String): List<HabitSignalEntity>
 
+    @Query("SELECT * FROM habit_signals WHERE task_id IN (:taskIds)")
+    suspend fun getSignalsForTasks(taskIds: List<String>): List<HabitSignalEntity>
+
     @Query("SELECT * FROM habit_signals WHERE hour_of_day = :hourOfDay AND day_of_week = :dayOfWeek")
     suspend fun getSignalsByTimeWindow(hourOfDay: Int, dayOfWeek: Int): List<HabitSignalEntity>
 }

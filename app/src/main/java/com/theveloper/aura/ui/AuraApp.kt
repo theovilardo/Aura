@@ -86,6 +86,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.theveloper.aura.BuildConfig
 import com.theveloper.aura.ui.screen.CreateTaskScreen
 import com.theveloper.aura.ui.screen.CloudSettingsScreen
 import com.theveloper.aura.ui.screen.DeveloperSettingsScreen
@@ -123,6 +124,7 @@ private const val CREATE_TASK_ROUTE =
     "$CREATE_TASK_BASE_ROUTE?mode={mode}&input={input}&autoSubmit={autoSubmit}"
 private const val ROOT_TRANSITION_DURATION_MS = 430
 private const val SECONDARY_TRANSITION_DURATION_MS = 380
+private const val DEBUG_FADE_TRANSITION_DURATION_MS = 90
 
 @Composable
 fun AuraApp() {
@@ -307,6 +309,13 @@ fun AuraApp() {
 private fun SecondaryScreenFrame(
     content: @Composable () -> Unit
 ) {
+    if (BuildConfig.DEBUG) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            content()
+        }
+        return
+    }
+
     var entered by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { entered = true }
     val scale by animateFloatAsState(
@@ -359,14 +368,22 @@ fun AuraBottomBar(
     AnimatedVisibility(
         visible = isVisible,
         modifier = modifier.fillMaxWidth(),
-        enter = slideInVertically(
-            animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
-            initialOffsetY = { it / 2 }
-        ) + fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 40)),
-        exit = slideOutVertically(
-            animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
-            targetOffsetY = { it / 2 }
-        ) + fadeOut(animationSpec = tween(durationMillis = 180))
+        enter = if (BuildConfig.DEBUG) {
+            EnterTransition.None
+        } else {
+            slideInVertically(
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                initialOffsetY = { it / 2 }
+            ) + fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 40))
+        },
+        exit = if (BuildConfig.DEBUG) {
+            ExitTransition.None
+        } else {
+            slideOutVertically(
+                animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+                targetOffsetY = { it / 2 }
+            ) + fadeOut(animationSpec = tween(durationMillis = 180))
+        }
     ) {
         Column(
             modifier = Modifier
@@ -690,6 +707,10 @@ private fun buildTaskNoteReaderRoute(
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraEnterTransition(): EnterTransition {
+    if (BuildConfig.DEBUG) {
+        return fadeIn(animationSpec = tween(durationMillis = DEBUG_FADE_TRANSITION_DURATION_MS))
+    }
+
     val initialRoute = normalizedRoute(initialState.destination.route)
     val targetRoute = normalizedRoute(targetState.destination.route)
     val rootDirection = rootSlideDirection(initialRoute, targetRoute)
@@ -710,6 +731,10 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraEnterTransitio
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraExitTransition(): ExitTransition {
+    if (BuildConfig.DEBUG) {
+        return fadeOut(animationSpec = tween(durationMillis = DEBUG_FADE_TRANSITION_DURATION_MS))
+    }
+
     val initialRoute = normalizedRoute(initialState.destination.route)
     val targetRoute = normalizedRoute(targetState.destination.route)
     val rootDirection = rootSlideDirection(initialRoute, targetRoute)
@@ -730,6 +755,10 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraExitTransition
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraPopEnterTransition(): EnterTransition {
+    if (BuildConfig.DEBUG) {
+        return fadeIn(animationSpec = tween(durationMillis = DEBUG_FADE_TRANSITION_DURATION_MS))
+    }
+
     val initialRoute = normalizedRoute(initialState.destination.route)
     val targetRoute = normalizedRoute(targetState.destination.route)
     val rootDirection = rootSlideDirection(targetRoute, initialRoute)
@@ -750,6 +779,10 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraPopEnterTransi
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraPopExitTransition(): ExitTransition {
+    if (BuildConfig.DEBUG) {
+        return fadeOut(animationSpec = tween(durationMillis = DEBUG_FADE_TRANSITION_DURATION_MS))
+    }
+
     val initialRoute = normalizedRoute(initialState.destination.route)
     val targetRoute = normalizedRoute(targetState.destination.route)
     val rootDirection = rootSlideDirection(targetRoute, initialRoute)

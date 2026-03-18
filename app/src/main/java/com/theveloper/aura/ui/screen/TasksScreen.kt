@@ -98,7 +98,7 @@ fun TasksScreen(
                     bottom = innerPadding.calculateBottomPadding() + 216.dp
                 )
             ) {
-                item {
+                item(key = "date_progress_header", contentType = "header") {
                     DateProgressHeader(
                         modifier = Modifier.padding(horizontal = 16.dp),
                         today = uiState.today,
@@ -108,10 +108,14 @@ fun TasksScreen(
                 }
 
                 if (uiState.habitItems.isNotEmpty()) {
-                    item {
+                    item(key = "habit_streak_section", contentType = "section_header") {
                         HabitStreakSection(habits = uiState.habitItems)
                     }
-                    items(uiState.habitItems, key = { it.taskId }) { habit ->
+                    items(
+                        items = uiState.habitItems,
+                        key = { it.taskId },
+                        contentType = { "habit_card" }
+                    ) { habit ->
                         HabitCard(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -121,7 +125,7 @@ fun TasksScreen(
                         )
                     }
                 } else {
-                    item {
+                    item(key = "habit_empty_state", contentType = "empty_state") {
                         HabitEmptyState()
                     }
                 }
@@ -180,7 +184,7 @@ private fun rememberHabitTrackerTitleStyle(): TextStyle {
                     resId = R.font.google_sans_flex_variable_local,
                     weight = FontWeight(720),
                     style = FontStyle.Normal,
-                    loadingStrategy = FontLoadingStrategy.Blocking,
+                    loadingStrategy = FontLoadingStrategy.Async,
                     variationSettings = FontVariation.Settings(
                         FontVariation.weight(688),
                         FontVariation.width(134f),
@@ -312,7 +316,11 @@ private fun HabitStreakSection(habits: List<HabitItemUiState>) {
             ),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(habits, key = { it.taskId }) { habit ->
+            items(
+                items = habits,
+                key = { it.taskId },
+                contentType = { "active_streak" }
+            ) { habit ->
                 ActiveStreakBadge(habit = habit)
             }
         }

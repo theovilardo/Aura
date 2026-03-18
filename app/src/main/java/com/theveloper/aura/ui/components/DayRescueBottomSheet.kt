@@ -26,6 +26,7 @@ fun DayRescueBottomSheet(
     
     // Day rescue items mapped from suggestions
     var selectedSuggestions by remember { mutableStateOf(suggestions.toSet()) }
+    val taskById = remember(tasks) { tasks.associateBy(Task::id) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -60,9 +61,13 @@ fun DayRescueBottomSheet(
                 contentPadding = PaddingValues(horizontal = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(suggestions, key = { it.id }) { suggestion ->
+                items(
+                    items = suggestions,
+                    key = { it.id },
+                    contentType = { "day_rescue_suggestion" }
+                ) { suggestion ->
                     val isChecked = selectedSuggestions.contains(suggestion)
-                    val task = tasks.find { it.id == suggestion.taskId }
+                    val task = taskById[suggestion.taskId]
                     
                     if (task != null) {
                         Surface(

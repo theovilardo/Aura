@@ -385,7 +385,7 @@ private fun rememberSettingsTitleStyle(): TextStyle {
                     resId = R.font.google_sans_flex_variable_local,
                     weight = FontWeight(720),
                     style = FontStyle.Normal,
-                    loadingStrategy = FontLoadingStrategy.Blocking,
+                    loadingStrategy = FontLoadingStrategy.Async,
                     variationSettings = FontVariation.Settings(
                         FontVariation.weight(670),
                         FontVariation.width(138f),

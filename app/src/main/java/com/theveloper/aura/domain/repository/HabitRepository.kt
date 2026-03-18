@@ -13,5 +13,7 @@ interface HabitRepository {
 
     suspend fun getSignalsForTask(taskId: String): List<HabitSignalEntity>
 
+    suspend fun getSignalsForTasks(taskIds: Collection<String>): List<HabitSignalEntity>
+
     suspend fun getSignalsByTimeWindow(hourOfDay: Int, dayOfWeek: Int): List<HabitSignalEntity>
 }
