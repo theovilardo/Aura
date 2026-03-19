@@ -16,6 +16,17 @@ import com.theveloper.aura.engine.dsl.TaskComponentCatalog
 import com.theveloper.aura.engine.dsl.TaskComponentContext
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
 import com.theveloper.aura.engine.classifier.TaskDSLBuilder
+import com.theveloper.aura.engine.ecosystem.ConnectedDevice
+import com.theveloper.aura.engine.ecosystem.ConnectionState
+import com.theveloper.aura.engine.ecosystem.DeviceRegistry
+import com.theveloper.aura.engine.provider.ProviderAdapter
+import com.theveloper.aura.engine.provider.ProviderLocation
+import com.theveloper.aura.engine.provider.ProviderRegistry
+import com.theveloper.aura.engine.router.ComplexityScorer
+import com.theveloper.aura.engine.router.ComplexityScore
+import com.theveloper.aura.engine.router.ComplexityTier
+import com.theveloper.aura.engine.router.ExecutionMode
+import com.theveloper.aura.protocol.ExecutionTarget
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +34,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.jsonPrimitive
@@ -33,6 +46,9 @@ import javax.inject.Inject
 class CreateTaskViewModel @Inject constructor(
     private val taskClassifier: TaskClassifier,
     private val capabilityRegistry: CapabilityRegistry,
+    private val providerRegistry: ProviderRegistry,
+    private val deviceRegistry: DeviceRegistry,
+    private val complexityScorer: ComplexityScorer,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -53,8 +69,53 @@ class CreateTaskViewModel @Inject constructor(
     val effects: SharedFlow<CreateTaskEffect> = _effects.asSharedFlow()
 
     init {
+        // Observe providers and devices to keep ecosystem state in sync
+        combine(
+            providerRegistry.providers,
+            deviceRegistry.devices
+        ) { providers, devices ->
+            val providerList = providers.values.toList()
+            val deviceList = devices.values.toList()
+            val selectedProvider = _uiState.value.ecosystem.selectedProviderId
+                ?.let { providers[it] }
+            val resolvedProvider = selectedProvider ?: resolveAutoProvider(providerList)
+            val complexity = computeCurrentComplexity()
+
+            _uiState.update { state ->
+                state.copy(
+                    ecosystem = state.ecosystem.copy(
+                        availableProviders = providerList,
+                        connectedDevices = deviceList,
+                        resolvedProvider = resolvedProvider,
+                        complexityScore = complexity
+                    )
+                )
+            }
+        }.launchIn(viewModelScope)
+
         if (autoSubmit && initialInput.isNotBlank()) {
             submit()
+        }
+    }
+
+    private fun resolveAutoProvider(providers: List<ProviderAdapter>): ProviderAdapter? {
+        return providers
+            .filter { it.isAvailable() }
+            .minByOrNull { provider ->
+                when (provider.location) {
+                    ProviderLocation.LOCAL_PHONE -> 0
+                    ProviderLocation.REMOTE_DESKTOP -> 1
+                    ProviderLocation.CLOUD -> 2
+                }
+            }
+    }
+
+    private fun computeCurrentComplexity(): ComplexityScore {
+        val input = _uiState.value.input.ifBlank { _uiState.value.manual.title }
+        return if (input.isBlank()) {
+            ComplexityScore(0f, ComplexityTier.SIMPLE, emptyMap(), emptyList())
+        } else {
+            complexityScorer.score(input)
         }
     }
 
@@ -104,6 +165,55 @@ class CreateTaskViewModel @Inject constructor(
                 manual = state.manual.copy(selectedTemplateIds = updated),
                 errorMessage = null
             )
+        }
+    }
+
+    // ── Ecosystem controls ──────────────────────────────────────────
+
+    fun selectEnvironment(target: ExecutionTarget) {
+        _uiState.update { state ->
+            val newEcosystem = state.ecosystem.copy(selectedEnvironment = target)
+            state.copy(ecosystem = newEcosystem)
+        }
+    }
+
+    fun selectProvider(providerId: String?) {
+        _uiState.update { state ->
+            val resolved = if (providerId != null) {
+                providerRegistry.byId(providerId)
+            } else {
+                resolveAutoProvider(state.ecosystem.availableProviders)
+            }
+            state.copy(
+                ecosystem = state.ecosystem.copy(
+                    selectedProviderId = providerId,
+                    resolvedProvider = resolved
+                )
+            )
+        }
+    }
+
+    fun selectExecutionMode(mode: ExecutionMode) {
+        _uiState.update { state ->
+            state.copy(ecosystem = state.ecosystem.copy(executionMode = mode))
+        }
+    }
+
+    fun setShowComponentsSheet(show: Boolean) {
+        _uiState.update { state ->
+            state.copy(showComponentsSheet = show)
+        }
+    }
+
+    fun setShowExecutionModeSheet(show: Boolean) {
+        _uiState.update { state ->
+            state.copy(showExecutionModeSheet = show)
+        }
+    }
+
+    fun setShowProviderSheet(show: Boolean) {
+        _uiState.update { state ->
+            state.copy(showProviderSheet = show)
         }
     }
 
@@ -473,11 +583,20 @@ class CreateTaskViewModel @Inject constructor(
     }
 
     fun confirmPreview() {
-        val preview = uiState.value.preview ?: return
+        val state = uiState.value
+        val preview = state.preview ?: return
+        val eco = state.ecosystem
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true, errorMessage = null) }
-            val result = capabilityRegistry.execute(CapabilityRequest.CreateTask(preview.dsl))
+            val result = capabilityRegistry.execute(
+                CapabilityRequest.CreateTask(
+                    dsl = preview.dsl,
+                    preferredTarget = eco.selectedEnvironment,
+                    preferredProviderId = eco.selectedProviderId,
+                    executionMode = eco.executionMode
+                )
+            )
             when (val response = result.response) {
                 is CapabilityResponse.TaskCreated -> {
                     _uiState.value = CreateTaskUiState(
@@ -509,7 +628,21 @@ data class CreateTaskUiState(
     val isSaving: Boolean = false,
     val errorMessage: String? = null,
     val preview: TaskGenerationResult? = null,
-    val clarification: PendingClarification? = null
+    val clarification: PendingClarification? = null,
+    val ecosystem: CreateTaskEcosystemUiState = CreateTaskEcosystemUiState(),
+    val showComponentsSheet: Boolean = false,
+    val showExecutionModeSheet: Boolean = false,
+    val showProviderSheet: Boolean = false
+)
+
+data class CreateTaskEcosystemUiState(
+    val selectedEnvironment: ExecutionTarget = ExecutionTarget.ANY,
+    val selectedProviderId: String? = null,
+    val resolvedProvider: ProviderAdapter? = null,
+    val executionMode: ExecutionMode = ExecutionMode.AUTO_DECIDE,
+    val availableProviders: List<ProviderAdapter> = emptyList(),
+    val connectedDevices: List<ConnectedDevice> = emptyList(),
+    val complexityScore: ComplexityScore = ComplexityScore(0f, ComplexityTier.SIMPLE, emptyMap(), emptyList())
 )
 
 data class PendingClarification(

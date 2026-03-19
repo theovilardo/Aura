@@ -7,6 +7,8 @@ import com.theveloper.aura.domain.usecase.CreateTaskUseCase
 import com.theveloper.aura.domain.usecase.UpdateTaskStatusUseCase
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
 import com.theveloper.aura.engine.dsl.TaskDSLValidator
+import com.theveloper.aura.engine.router.ExecutionMode
+import com.theveloper.aura.protocol.ExecutionTarget
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -75,7 +77,12 @@ class CapabilityRegistry @Inject constructor(
 }
 
 sealed interface CapabilityRequest {
-    data class CreateTask(val dsl: TaskDSLOutput) : CapabilityRequest
+    data class CreateTask(
+        val dsl: TaskDSLOutput,
+        val preferredTarget: ExecutionTarget = ExecutionTarget.ANY,
+        val preferredProviderId: String? = null,
+        val executionMode: ExecutionMode = ExecutionMode.AUTO_DECIDE
+    ) : CapabilityRequest
     data class UpdateTaskStatus(val taskId: String, val status: TaskStatus) : CapabilityRequest
     data class ArchiveTask(val taskId: String) : CapabilityRequest
 }
