@@ -116,16 +116,16 @@ fun HomeScreen(
     pendingDeleteTask?.let { task ->
         AlertDialog(
             onDismissRequest = { pendingDeleteTask = null },
-            title = { Text("Eliminar tarea") },
-            text = { Text("Se va a eliminar \"${task.title}\" de forma permanente.") },
+            title = { Text("Delete task") },
+            text = { Text("\"${task.title}\" will be permanently deleted.") },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.deleteTask(task.id)
                     pendingDeleteTask = null
-                }) { Text("Eliminar") }
+                }) { Text("Delete") }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDeleteTask = null }) { Text("Cancelar") }
+                TextButton(onClick = { pendingDeleteTask = null }) { Text("Cancel") }
             }
         )
     }

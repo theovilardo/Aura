@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.theveloper.aura.domain.model.NotesConfig
@@ -84,7 +85,7 @@ private fun NotesLauncherCard(
     ComponentCard(
         title = "Notes",
         icon = Icons.AutoMirrored.Rounded.Notes,
-        modifier = Modifier.clickable(onClick = onOpenEditor),
+        modifier = Modifier.clip(RoundedCornerShape(28.dp)).clickable(onClick = onOpenEditor),
         eyebrow = if (config.isMarkdown) "Markdown" else "Plain text",
         subtitle = "Tap to open the full-screen editor",
         trailing = {

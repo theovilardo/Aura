@@ -531,7 +531,7 @@ private fun ProviderCard(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                    modifier = Modifier.clickable(onClick = onChangeClick)
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onChangeClick)
                 ) {
                     Text(
                         text = "Change",
@@ -627,6 +627,7 @@ private fun ExecutionModeCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
             .clickable(onClick = onClick)
     ) {
         Row(
@@ -871,6 +872,7 @@ private fun ExecutionModeSheet(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
                     .clickable { onSelect(mode) }
             ) {
                 Row(

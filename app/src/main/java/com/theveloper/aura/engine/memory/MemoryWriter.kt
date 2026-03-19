@@ -88,7 +88,7 @@ class MemoryWriter @Inject constructor(
                 tasks.filter {
                     it.type == TaskType.PROJECT || it.type == TaskType.FINANCE || it.type == TaskType.GOAL || it.type == TaskType.EVENT
                 },
-                "Trabajo"
+                "Work"
             )
             MemoryCategory.PERSONAL_CONTEXT -> buildContextContent(
                 tasks.filter {
@@ -110,7 +110,7 @@ class MemoryWriter @Inject constructor(
         if (bestWindows.isEmpty()) return null
 
         return bestWindows.joinToString(" ") { pattern ->
-            "Suele responder mejor a ${pattern.taskType.name.lowercase()} los ${dayName(pattern.dayOfWeek)} cerca de las ${pattern.hourOfDay}h."
+            "Usually responds better to ${pattern.taskType.name.lowercase()} on ${dayName(pattern.dayOfWeek)} around ${pattern.hourOfDay}h."
         }
     }
 
@@ -124,12 +124,12 @@ class MemoryWriter @Inject constructor(
 
         val lines = buildList {
             bestCompletion?.let { pattern ->
-                add("Responde mejor a recordatorios de ${pattern.taskType.name.lowercase()} los ${dayName(pattern.dayOfWeek)} cerca de las ${pattern.hourOfDay}h.")
+                add("Responds better to reminders for ${pattern.taskType.name.lowercase()} on ${dayName(pattern.dayOfWeek)} around ${pattern.hourOfDay}h.")
             }
             worstDismiss
                 ?.takeIf { it.dismissRate >= 0.4f }
                 ?.let { pattern ->
-                    add("Suele ignorar recordatorios de ${pattern.taskType.name.lowercase()} los ${dayName(pattern.dayOfWeek)} cerca de las ${pattern.hourOfDay}h.")
+                    add("Usually ignores reminders for ${pattern.taskType.name.lowercase()} on ${dayName(pattern.dayOfWeek)} around ${pattern.hourOfDay}h.")
                 }
         }
 
@@ -166,9 +166,9 @@ class MemoryWriter @Inject constructor(
             .joinToString(", ") { it.key }
 
         return buildString {
-            append("Prefiere estructurar tareas con $favoriteComponents.")
+            append("Prefers structuring tasks with $favoriteComponents.")
             if (frequentShoppingItems.isNotBlank()) {
-                append(" Compras frecuentes: $frequentShoppingItems.")
+                append(" Frequent purchases: $frequentShoppingItems.")
             }
         }
     }
@@ -188,7 +188,7 @@ class MemoryWriter @Inject constructor(
             .map { it.key }
         if (recurringTerms.isEmpty()) return null
 
-        return "Vocabulario recurrente: ${recurringTerms.joinToString(", ")}."
+        return "Recurring vocabulary: ${recurringTerms.joinToString(", ")}."
     }
 
     private fun buildContextContent(tasks: List<Task>, label: String): String? {
@@ -199,19 +199,19 @@ class MemoryWriter @Inject constructor(
             .filter { it.isNotBlank() }
         if (titles.isEmpty()) return null
 
-        return "$label reciente: ${titles.joinToString("; ")}."
+        return "Recent $label: ${titles.joinToString("; ")}."
     }
 
     private fun dayName(dayOfWeek: Int): String {
         return when (dayOfWeek) {
-            java.util.Calendar.MONDAY -> "lunes"
-            java.util.Calendar.TUESDAY -> "martes"
-            java.util.Calendar.WEDNESDAY -> "miercoles"
-            java.util.Calendar.THURSDAY -> "jueves"
-            java.util.Calendar.FRIDAY -> "viernes"
-            java.util.Calendar.SATURDAY -> "sabados"
-            java.util.Calendar.SUNDAY -> "domingos"
-            else -> "dias"
+            java.util.Calendar.MONDAY -> "Mondays"
+            java.util.Calendar.TUESDAY -> "Tuesdays"
+            java.util.Calendar.WEDNESDAY -> "Wednesdays"
+            java.util.Calendar.THURSDAY -> "Thursdays"
+            java.util.Calendar.FRIDAY -> "Fridays"
+            java.util.Calendar.SATURDAY -> "Saturdays"
+            java.util.Calendar.SUNDAY -> "Sundays"
+            else -> "days"
         }
     }
 

@@ -152,8 +152,8 @@ fun TaskDetailScreen(
     if (showDeleteConfirmation && uiState.task != null) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmation = false },
-            title = { Text("Eliminar tarea") },
-            text = { Text("Se va a eliminar \"${uiState.task?.title.orEmpty()}\" de forma permanente.") },
+            title = { Text("Delete task") },
+            text = { Text("\"${uiState.task?.title.orEmpty()}\" will be permanently deleted.") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -161,12 +161,12 @@ fun TaskDetailScreen(
                         viewModel.onDeleteTask()
                     }
                 ) {
-                    Text("Eliminar")
+                    Text("Delete")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirmation = false }) {
-                    Text("Cancelar")
+                    Text("Cancel")
                 }
             }
         )
@@ -269,14 +269,14 @@ private fun TaskDetailTopBar(
         ) {
             TaskDetailChromeIconButton(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Volver",
+                contentDescription = "Back",
                 onClick = onNavigateBack
             )
 
             if (showEditAction) {
                 TaskDetailChromeIconButton(
                     imageVector = Icons.Rounded.Edit,
-                    contentDescription = "Editar tarea",
+                    contentDescription = "Edit task",
                     onClick = onNavigateToEdit,
                     containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.94f),
                     contentColor = MaterialTheme.colorScheme.primary
@@ -475,7 +475,7 @@ private fun TaskMarkdownReaderTopBar(
         ) {
             TaskDetailChromeIconButton(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Volver",
+                contentDescription = "Back",
                 onClick = onNavigateBack
             )
 
@@ -652,14 +652,14 @@ private fun TaskEditTopBar(
         ) {
             TaskDetailChromeIconButton(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Volver",
+                contentDescription = "Back",
                 onClick = onNavigateBack
             )
 
             if (showReorderAction) {
                 TaskDetailChromeIconButton(
                     imageVector = Icons.Rounded.SwapVert,
-                    contentDescription = "Reordenar componentes",
+                    contentDescription = "Reorder components",
                     onClick = onOpenReorder,
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
                     contentColor = MaterialTheme.colorScheme.primary
