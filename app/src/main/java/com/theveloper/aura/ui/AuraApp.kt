@@ -88,6 +88,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.theveloper.aura.BuildConfig
 import com.theveloper.aura.ui.screen.CreateTaskScreen
+import com.theveloper.aura.ui.screen.CalendarDayScreen
 import com.theveloper.aura.ui.screen.CloudSettingsScreen
 import com.theveloper.aura.ui.screen.DeveloperSettingsScreen
 import com.theveloper.aura.ui.screen.HomeScreen
@@ -101,13 +102,18 @@ import com.theveloper.aura.ui.screen.TaskDetailScreen
 import com.theveloper.aura.ui.screen.TaskEditScreen
 import com.theveloper.aura.ui.screen.TaskMarkdownEditorScreen
 import com.theveloper.aura.ui.screen.TaskMarkdownReaderScreen
+import com.theveloper.aura.ui.screen.TasksCalendarScreen
 import com.theveloper.aura.ui.screen.TasksScreen
 import com.theveloper.aura.ui.theme.AuraFloatingBarColors
 import com.theveloper.aura.ui.theme.auraFloatingBarColors
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 private const val HOME_ROUTE = "home"
 private const val TASKS_ROUTE = "tasks"
+private const val HABITS_ROUTE = "habits"
+private const val CALENDAR_DAY_BASE_ROUTE = "calendar_day"
+private const val CALENDAR_DAY_ROUTE = "$CALENDAR_DAY_BASE_ROUTE/{date}"
 private const val TASK_DETAIL_ROUTE = "task_detail/{taskId}"
 private const val TASK_EDIT_ROUTE = "task_detail_edit/{taskId}"
 private const val TASK_NOTE_READER_ROUTE = "task_detail_note/{taskId}/{componentId}"
@@ -153,7 +159,34 @@ fun AuraApp() {
                 )
             }
             composable(TASKS_ROUTE) {
-                TasksScreen()
+                TasksCalendarScreen(
+                    onNavigateToHabits = { navController.navigate(HABITS_ROUTE) },
+                    onNavigateToDay = { date ->
+                        navController.navigate(buildCalendarDayRoute(date))
+                    },
+                    onNavigateToTaskDetail = { taskId ->
+                        navController.navigate("task_detail/$taskId")
+                    }
+                )
+            }
+            composable(HABITS_ROUTE) {
+                SecondaryScreenFrame {
+                    TasksScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+            }
+            composable(CALENDAR_DAY_ROUTE) { backStackEntry ->
+                val date = backStackEntry.arguments?.getString("date") ?: ""
+                SecondaryScreenFrame {
+                    CalendarDayScreen(
+                        initialDateValue = date,
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToTaskDetail = { taskId ->
+                            navController.navigate("task_detail/$taskId")
+                        }
+                    )
+                }
             }
             composable(TASK_DETAIL_ROUTE) { backStackEntry ->
                 val taskId = backStackEntry.arguments?.getString("taskId") ?: ""
@@ -360,7 +393,7 @@ fun AuraBottomBar(
 
     val items = listOf(
         BottomBarItem(key = HOME_ROUTE, label = "Home", icon = Icons.Rounded.Home),
-        BottomBarItem(key = TASKS_ROUTE, label = "Habits", icon = Icons.Rounded.CalendarMonth),
+        BottomBarItem(key = TASKS_ROUTE, label = "Calendar", icon = Icons.Rounded.CalendarMonth),
         BottomBarItem(key = SETTINGS_ROUTE, label = "Settings", icon = Icons.Rounded.Settings),
         BottomBarItem(key = "create", label = "Create", icon = Icons.Rounded.Add, accent = true)
     )
@@ -704,6 +737,10 @@ private fun buildTaskNoteReaderRoute(
     componentId: String
 ): String {
     return "task_detail_note/${Uri.encode(taskId)}/${Uri.encode(componentId)}"
+}
+
+private fun buildCalendarDayRoute(date: LocalDate): String {
+    return "$CALENDAR_DAY_BASE_ROUTE/${Uri.encode(date.toString())}"
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraEnterTransition(): EnterTransition {

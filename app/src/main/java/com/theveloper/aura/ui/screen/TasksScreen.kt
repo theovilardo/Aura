@@ -2,6 +2,7 @@ package com.theveloper.aura.ui.screen
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Favorite
@@ -66,13 +68,15 @@ import kotlin.math.roundToInt
 
 @Composable
 fun TasksScreen(
+    onNavigateBack: (() -> Unit)? = null,
     viewModel: HabitTrackerViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val bottomContentPadding = if (onNavigateBack != null) 40.dp else 216.dp
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = { HabitTrackerTopBar() }
+        topBar = { HabitTrackerTopBar(onNavigateBack = onNavigateBack) }
     ) { innerPadding ->
         if (uiState.isLoading) {
             Box(
@@ -95,7 +99,7 @@ fun TasksScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(
                     top = innerPadding.calculateTopPadding(),
-                    bottom = innerPadding.calculateBottomPadding() + 216.dp
+                    bottom = innerPadding.calculateBottomPadding() + bottomContentPadding
                 )
             ) {
                 item(key = "date_progress_header", contentType = "header") {
@@ -152,23 +156,70 @@ fun TasksScreen(
 // ─── Top bar ─────────────────────────────────────────────────────────────────
 
 @Composable
-private fun HabitTrackerTopBar(modifier: Modifier = Modifier) {
+private fun HabitTrackerTopBar(
+    modifier: Modifier = Modifier,
+    onNavigateBack: (() -> Unit)? = null
+) {
     val titleStyle = rememberHabitTrackerTitleStyle()
     AuraGradientTopBarContainer(
         modifier = modifier.fillMaxWidth(),
         bottomFadePadding = 20.dp
     ) {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
-            contentAlignment = Alignment.Center
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            if (onNavigateBack != null) {
+                HabitTrackerChromeButton(
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                    contentDescription = "Back",
+                    onClick = onNavigateBack
+                )
+            } else {
+                Spacer(modifier = Modifier.size(48.dp))
+            }
+
             Text(
                 text = "Habits",
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center,
                 style = titleStyle,
                 color = MaterialTheme.colorScheme.onBackground
+            )
+
+            Spacer(modifier = Modifier.size(48.dp))
+        }
+    }
+}
+
+@Composable
+private fun HabitTrackerChromeButton(
+    imageVector: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        tonalElevation = 2.dp,
+        shadowElevation = 8.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = imageVector,
+                contentDescription = contentDescription,
+                tint = MaterialTheme.colorScheme.onSurface
             )
         }
     }

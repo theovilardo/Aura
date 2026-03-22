@@ -12,6 +12,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -41,6 +44,7 @@ class AuraWebSocketClient @Inject constructor(
     private var webSocket: WebSocket? = null
     private var currentUrl: String? = null
     private var shouldReconnect = false
+    private var pendingConnect: CompletableDeferred<Unit>? = null
 
     private val _connectionState = MutableStateFlow(WsConnectionState.DISCONNECTED)
     val connectionState: StateFlow<WsConnectionState> = _connectionState.asStateFlow()
@@ -56,17 +60,37 @@ class AuraWebSocketClient @Inject constructor(
 
         currentUrl = url
         shouldReconnect = true
+        pendingConnect = CompletableDeferred()
         _connectionState.value = WsConnectionState.CONNECTING
 
         val request = Request.Builder().url(url).build()
         webSocket = okHttpClient.newWebSocket(request, createListener())
     }
 
+    suspend fun connectAndAwait(url: String, timeoutMs: Long = 10_000) {
+        connect(url)
+        val connectDeferred = pendingConnect
+        if (connectDeferred == null) {
+            if (_connectionState.value != WsConnectionState.CONNECTED) {
+                throw WebSocketDisconnectedException()
+            }
+            return
+        }
+        withTimeout(timeoutMs) {
+            connectDeferred.await()
+        }
+    }
+
     fun disconnect() {
         shouldReconnect = false
+        val url = currentUrl
+        currentUrl = null
+        pendingConnect?.cancel()
+        pendingConnect = null
         webSocket?.close(1000, "Client disconnect")
         webSocket = null
         _connectionState.value = WsConnectionState.DISCONNECTED
+        url?.let { deviceRegistry.markConnectionState(it, ConnectionState.DISCONNECTED) }
     }
 
     fun send(message: EcosystemMessage) {
@@ -97,24 +121,41 @@ class AuraWebSocketClient @Inject constructor(
         }
     }
 
+    suspend inline fun <reified T : MessagePayload> awaitPayload(
+        timeoutMs: Long = 10_000,
+        crossinline predicate: (T) -> Boolean = { true }
+    ): T = withTimeout(timeoutMs) {
+        incomingMessages
+            .mapNotNull { it.payload as? T }
+            .first { payload -> predicate(payload) }
+    }
+
     private fun createListener() = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
+            if (this@AuraWebSocketClient.webSocket !== webSocket) return
             _connectionState.value = WsConnectionState.CONNECTED
+            pendingConnect?.complete(Unit)
+            pendingConnect = null
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
+            if (this@AuraWebSocketClient.webSocket !== webSocket) return
             val message = runCatching { ProtocolSerializer.decode(text) }.getOrNull() ?: return
 
             // Route responses to pending request coroutines
             when (val payload = message.payload) {
                 is ActionResponse -> {
-                    pendingResponses[payload.requestId]?.complete(payload)
+                    val responseId = payload.requestId ?: message.id
+                    pendingResponses[responseId]?.complete(payload)
                 }
                 is DeviceCapabilityReport -> {
                     deviceRegistry.updateFromCapabilityReport(payload, currentUrl ?: "")
                 }
                 is DeviceHeartbeat -> {
-                    deviceRegistry.updateHeartbeat(payload.deviceId)
+                    deviceRegistry.updateHeartbeat(
+                        deviceId = payload.deviceId,
+                        connectionUrl = currentUrl
+                    )
                 }
                 else -> {}
             }
@@ -124,29 +165,40 @@ class AuraWebSocketClient @Inject constructor(
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            if (this@AuraWebSocketClient.webSocket !== webSocket) return
+            pendingConnect?.completeExceptionally(WebSocketDisconnectedException())
+            pendingConnect = null
             webSocket.close(1000, null)
             handleDisconnect()
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            if (this@AuraWebSocketClient.webSocket !== webSocket) return
+            pendingConnect?.completeExceptionally(t)
+            pendingConnect = null
             handleDisconnect()
         }
     }
 
     private fun handleDisconnect() {
-        _connectionState.value = WsConnectionState.DISCONNECTED
+        val url = currentUrl
+        webSocket = null
         // Cancel all pending requests
         pendingResponses.values.forEach {
             it.completeExceptionally(WebSocketDisconnectedException())
         }
         pendingResponses.clear()
 
-        if (shouldReconnect) {
+        if (shouldReconnect && url != null) {
+            _connectionState.value = WsConnectionState.RECONNECTING
+            deviceRegistry.markConnectionState(url, ConnectionState.RECONNECTING)
             scope.launch {
-                _connectionState.value = WsConnectionState.RECONNECTING
                 delay(3000)
-                currentUrl?.let { connect(it) }
+                connect(url)
             }
+        } else {
+            _connectionState.value = WsConnectionState.DISCONNECTED
+            url?.let { deviceRegistry.markConnectionState(it, ConnectionState.DISCONNECTED) }
         }
     }
 }

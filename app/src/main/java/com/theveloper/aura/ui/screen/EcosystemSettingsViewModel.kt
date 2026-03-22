@@ -4,12 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.theveloper.aura.data.db.PairedDeviceDao
 import com.theveloper.aura.data.db.PairedDeviceEntity
+import com.theveloper.aura.data.repository.AppSettingsSnapshot
 import com.theveloper.aura.data.repository.AppSettingsRepository
 import com.theveloper.aura.engine.ecosystem.AuraWebSocketClient
 import com.theveloper.aura.engine.ecosystem.ConnectedDevice
 import com.theveloper.aura.engine.ecosystem.DeviceRegistry
+import com.theveloper.aura.engine.ecosystem.PairingInvitation
 import com.theveloper.aura.engine.ecosystem.PairingManager
 import com.theveloper.aura.engine.ecosystem.PairingResult
+import com.theveloper.aura.engine.ecosystem.PairingSessionState
 import com.theveloper.aura.engine.ecosystem.WsConnectionState
 import com.theveloper.aura.engine.provider.ProviderAdapter
 import com.theveloper.aura.engine.provider.ProviderRegistry
@@ -19,11 +22,24 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+private data class EcosystemCoreInputs(
+    val settings: AppSettingsSnapshot,
+    val devices: Map<String, ConnectedDevice>,
+    val pairedDevices: List<PairedDeviceEntity>,
+    val wsState: WsConnectionState
+)
+
+private data class EcosystemUiInputs(
+    val providers: Map<String, ProviderAdapter>,
+    val fallbackTree: List<FallbackNode>,
+    val pairingState: PairingSessionState,
+    val pairingPin: String
+)
 
 data class EcosystemUiState(
     val ecosystemEnabled: Boolean = false,
@@ -34,7 +50,10 @@ data class EcosystemUiState(
     val fallbackTree: List<FallbackNode> = emptyList(),
     val pairingInProgress: Boolean = false,
     val pairingResult: PairingResult? = null,
-    val pairingUrl: String = ""
+    val pendingInvitation: PairingInvitation? = null,
+    val activeInvitation: PairingInvitation? = null,
+    val awaitingPin: Boolean = false,
+    val pairingPin: String = ""
 )
 
 @HiltViewModel
@@ -45,28 +64,53 @@ class EcosystemSettingsViewModel @Inject constructor(
     private val pairingManager: PairingManager,
     private val providerRegistry: ProviderRegistry,
     private val fallbackTreeStore: FallbackTreeStore,
-    private val pairedDeviceDao: PairedDeviceDao
+    pairedDeviceDao: PairedDeviceDao
 ) : ViewModel() {
 
-    private val _pairingState = MutableStateFlow(PairingUiState())
     private val _fallbackTree = MutableStateFlow<List<FallbackNode>>(emptyList())
+    private val _pairingPin = MutableStateFlow("")
 
     val uiState: StateFlow<EcosystemUiState> = combine(
-        appSettingsRepository.settingsFlow,
-        deviceRegistry.devices,
-        webSocketClient.connectionState,
-        providerRegistry.providers,
-        combine(_fallbackTree, _pairingState) { t, p -> t to p }
-    ) { settings, devices, wsState, providers, (tree, pairing) ->
+        combine(
+            appSettingsRepository.settingsFlow,
+            deviceRegistry.devices,
+            pairedDeviceDao.observeAll(),
+            webSocketClient.connectionState
+        ) { settings, devices, pairedDevices, wsState ->
+            EcosystemCoreInputs(
+                settings = settings,
+                devices = devices,
+                pairedDevices = pairedDevices,
+                wsState = wsState
+            )
+        },
+        combine(
+            providerRegistry.providers,
+            _fallbackTree,
+            pairingManager.sessionState,
+            _pairingPin
+        ) { providers, tree, pairingState, pairingPin ->
+            EcosystemUiInputs(
+                providers = providers,
+                fallbackTree = tree,
+                pairingState = pairingState,
+                pairingPin = pairingPin
+            )
+        }
+    ) { core, ui ->
         EcosystemUiState(
-            ecosystemEnabled = settings.ecosystemEnabled,
-            connectedDevices = devices,
-            wsConnectionState = wsState,
-            providers = providers.values.toList(),
-            fallbackTree = tree,
-            pairingInProgress = pairing.inProgress,
-            pairingResult = pairing.result,
-            pairingUrl = pairing.url
+            ecosystemEnabled = core.settings.ecosystemEnabled,
+            connectedDevices = core.devices,
+            pairedDevices = core.pairedDevices,
+            wsConnectionState = core.wsState,
+            providers = ui.providers.values.toList(),
+            fallbackTree = ui.fallbackTree,
+            pairingInProgress = ui.pairingState.inProgress,
+            pairingResult = ui.pairingState.result,
+            pendingInvitation = ui.pairingState.pendingInvitation,
+            activeInvitation = ui.pairingState.activeInvitation,
+            awaitingPin = ui.pairingState.awaitingPin,
+            pairingPin = ui.pairingPin
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), EcosystemUiState())
 
@@ -82,32 +126,37 @@ class EcosystemSettingsViewModel @Inject constructor(
         }
     }
 
-    fun updatePairingUrl(url: String) {
-        _pairingState.value = _pairingState.value.copy(url = url)
+    fun acceptInvitation() {
+        viewModelScope.launch {
+            pairingManager.acceptInvitation()
+        }
     }
 
-    fun startPairing() {
-        val url = _pairingState.value.url
-        if (url.isBlank()) return
+    fun dismissInvitation() {
+        pairingManager.dismissInvitation()
+    }
+
+    fun updatePairingPin(pin: String) {
+        _pairingPin.value = pin.filter(Char::isDigit).take(MAX_PIN_LENGTH)
+    }
+
+    fun confirmPairing() {
+        val pin = _pairingPin.value
+        if (pin.isBlank()) return
 
         viewModelScope.launch {
-            _pairingState.value = _pairingState.value.copy(inProgress = true, result = null)
-            val result = pairingManager.initiatePairing(url)
-            _pairingState.value = _pairingState.value.copy(inProgress = false, result = result)
-
-            if (result.success) {
-                pairedDeviceDao.insert(
-                    PairedDeviceEntity(
-                        id = result.deviceId ?: "",
-                        name = result.deviceName ?: "Desktop",
-                        platform = "MACOS",
-                        connectionUrl = url,
-                        lastSeenAt = System.currentTimeMillis(),
-                        pairedAt = System.currentTimeMillis()
-                    )
-                )
-            }
+            pairingManager.confirmPairing(pin)
+            _pairingPin.value = ""
         }
+    }
+
+    fun cancelActivePairing() {
+        _pairingPin.value = ""
+        pairingManager.cancelActivePairing()
+    }
+
+    fun clearPairingResult() {
+        pairingManager.clearResult()
     }
 
     fun disconnectDevice(deviceId: String) {
@@ -129,9 +178,7 @@ class EcosystemSettingsViewModel @Inject constructor(
         viewModelScope.launch { fallbackTreeStore.saveTree(updated) }
     }
 
-    private data class PairingUiState(
-        val url: String = "",
-        val inProgress: Boolean = false,
-        val result: PairingResult? = null
-    )
+    private companion object {
+        const val MAX_PIN_LENGTH = 6
+    }
 }

@@ -54,22 +54,35 @@ class DeviceRegistry @Inject constructor() {
     }
 
     fun updateFromCapabilityReport(report: DeviceCapabilityReport, connectionUrl: String) {
-        val device = ConnectedDevice(
-            id = report.deviceId,
-            name = report.deviceName,
-            platform = report.platform,
-            supportedActions = report.supportedActions,
-            ollamaModels = report.ollamaModels,
-            connectionUrl = connectionUrl,
-            connectionState = ConnectionState.CONNECTED
-        )
-        _devices.update { it + (device.id to device) }
+        _devices.update { devices ->
+            val existing = devices[report.deviceId]
+            val device = ConnectedDevice(
+                id = report.deviceId,
+                name = report.deviceName,
+                platform = report.platform,
+                supportedActions = report.supportedActions,
+                ollamaModels = report.ollamaModels,
+                connectionUrl = connectionUrl,
+                lastHeartbeatAt = existing?.lastHeartbeatAt ?: System.currentTimeMillis(),
+                connectionState = ConnectionState.CONNECTED
+            )
+            devices + (device.id to device)
+        }
     }
 
-    fun updateHeartbeat(deviceId: String) {
+    fun updateHeartbeat(deviceId: String, connectionUrl: String? = null) {
         _devices.update { map ->
-            val device = map[deviceId] ?: return@update map
-            map + (deviceId to device.copy(lastHeartbeatAt = System.currentTimeMillis()))
+            val resolvedDeviceId = when {
+                deviceId.isNotBlank() -> deviceId
+                connectionUrl != null -> map.values.firstOrNull { it.connectionUrl == connectionUrl }?.id
+                else -> null
+            } ?: return@update map
+
+            val device = map[resolvedDeviceId] ?: return@update map
+            map + (resolvedDeviceId to device.copy(
+                lastHeartbeatAt = System.currentTimeMillis(),
+                connectionState = ConnectionState.CONNECTED
+            ))
         }
     }
 
@@ -77,6 +90,18 @@ class DeviceRegistry @Inject constructor() {
         _devices.update { map ->
             val device = map[deviceId] ?: return@update map
             map + (deviceId to device.copy(connectionState = state))
+        }
+    }
+
+    fun markConnectionState(connectionUrl: String, state: ConnectionState) {
+        _devices.update { map ->
+            map.mapValues { (_, device) ->
+                if (device.connectionUrl == connectionUrl) {
+                    device.copy(connectionState = state)
+                } else {
+                    device
+                }
+            }
         }
     }
 

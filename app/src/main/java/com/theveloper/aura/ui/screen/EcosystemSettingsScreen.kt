@@ -13,7 +13,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Computer
 import androidx.compose.material.icons.rounded.DragHandle
@@ -34,9 +33,6 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -55,16 +51,32 @@ fun EcosystemSettingsScreen(
     viewModel: EcosystemSettingsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
-    var showPairingDialog by rememberSaveable { mutableStateOf(false) }
 
-    if (showPairingDialog) {
-        PairingDialog(
-            url = state.pairingUrl,
+    state.pendingInvitation?.let { invitation ->
+        PairingInvitationDialog(
+            desktopName = invitation.desktopName,
+            inProgress = state.pairingInProgress,
+            onAccept = viewModel::acceptInvitation,
+            onDismiss = viewModel::dismissInvitation
+        )
+    }
+
+    if (state.awaitingPin && state.activeInvitation != null) {
+        PairingPinDialog(
+            desktopName = state.activeInvitation?.desktopName.orEmpty(),
+            pin = state.pairingPin,
             inProgress = state.pairingInProgress,
             result = state.pairingResult,
-            onUrlChange = viewModel::updatePairingUrl,
-            onPair = viewModel::startPairing,
-            onDismiss = { showPairingDialog = false }
+            onPinChange = viewModel::updatePairingPin,
+            onConfirm = viewModel::confirmPairing,
+            onDismiss = viewModel::cancelActivePairing
+        )
+    }
+
+    if (state.pairingResult != null && (!state.awaitingPin || state.pairingResult?.success == true)) {
+        PairingStatusDialog(
+            result = state.pairingResult,
+            onDismiss = viewModel::clearPairingResult
         )
     }
 
@@ -95,6 +107,14 @@ fun EcosystemSettingsScreen(
         // --- Devices section ---
         item { SettingsGroupHeader("Devices") }
 
+        item {
+            SettingsInfoCard(
+                icon = Icons.Rounded.Lan,
+                title = "Ready for desktop invitations",
+                body = "When this screen is enabled and the app is open, Aura advertises this phone on your local network and waits for pair requests from the desktop app."
+            )
+        }
+
         if (state.connectedDevices.isEmpty() && state.pairedDevices.isEmpty()) {
             item {
                 SettingsInfoCard(
@@ -117,28 +137,39 @@ fun EcosystemSettingsScreen(
             }
         }
 
+        state.pairedDevices
+            .filterNot { paired -> state.connectedDevices.containsKey(paired.id) }
+            .forEach { device ->
+                item(key = "paired-${device.id}") {
+                    PairedDeviceCard(
+                        name = device.name,
+                        platform = device.platform,
+                        lastSeenAt = device.lastSeenAt
+                    )
+                }
+            }
+
         item {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(28.dp),
                 color = MaterialTheme.colorScheme.primaryContainer,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
-                onClick = { showPairingDialog = true }
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SettingsIconBadge(icon = Icons.Rounded.Add)
+                    SettingsIconBadge(icon = Icons.Rounded.Computer)
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = "Pair new device",
+                            text = "Start pairing from desktop",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Text(
-                            text = "Connect via local network or relay.",
+                            text = "Open Aura Desktop, find this phone and tap Pair. The invitation and PIN flow will appear here automatically.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f)
                         )
@@ -211,13 +242,58 @@ private fun ConnectedDeviceCard(
                 )
             }
 
-            val (color, label) = when (connectionState) {
-                ConnectionState.CONNECTED -> MaterialTheme.colorScheme.primary to "Connected"
-                ConnectionState.RECONNECTING -> MaterialTheme.colorScheme.tertiary to "Reconnecting"
-                ConnectionState.PAIRING -> MaterialTheme.colorScheme.tertiary to "Pairing"
-                ConnectionState.DISCONNECTED -> MaterialTheme.colorScheme.error to "Offline"
+            val label = when (connectionState) {
+                ConnectionState.CONNECTED -> "Connected"
+                ConnectionState.RECONNECTING -> "Reconnecting"
+                ConnectionState.PAIRING -> "Pairing"
+                ConnectionState.DISCONNECTED -> "Offline"
             }
             SettingsStatusChip(label)
+        }
+    }
+}
+
+@Composable
+private fun PairedDeviceCard(
+    name: String,
+    platform: String,
+    lastSeenAt: Long
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SettingsIconBadge(icon = Icons.Rounded.Computer)
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "$platform  ·  paired desktop",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "Last seen: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(lastSeenAt))}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            SettingsStatusChip("Paired")
         }
     }
 }
@@ -325,12 +401,10 @@ private fun ProviderPriorityCard(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PairingDialog(
-    url: String,
+private fun PairingInvitationDialog(
+    desktopName: String,
     inProgress: Boolean,
-    result: com.theveloper.aura.engine.ecosystem.PairingResult?,
-    onUrlChange: (String) -> Unit,
-    onPair: () -> Unit,
+    onAccept: () -> Unit,
     onDismiss: () -> Unit
 ) {
     BasicAlertDialog(onDismissRequest = { if (!inProgress) onDismiss() }) {
@@ -344,22 +418,84 @@ private fun PairingDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
-                    text = "Pair desktop",
+                    text = "Desktop wants to pair",
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold)
                 )
                 Text(
-                    text = "Enter the IP address and port shown on the Aura desktop daemon.",
+                    text = "Aura Desktop \"$desktopName\" found this phone on your local network and wants to start pairing.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (inProgress) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .padding(end = 0.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                    TextButton(
+                        onClick = onDismiss,
+                        enabled = !inProgress
+                    ) {
+                        Text("Ignore")
+                    }
+                    TextButton(
+                        onClick = onAccept,
+                        enabled = !inProgress
+                    ) {
+                        Text("Accept")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PairingPinDialog(
+    desktopName: String,
+    pin: String,
+    inProgress: Boolean,
+    result: com.theveloper.aura.engine.ecosystem.PairingResult?,
+    onPinChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    BasicAlertDialog(onDismissRequest = { if (!inProgress) onDismiss() }) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Confirm pairing PIN",
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold)
+                )
+                Text(
+                    text = "Enter the 6-digit PIN currently shown by \"$desktopName\" in Aura Desktop.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 TextField(
-                    value = url,
-                    onValueChange = onUrlChange,
-                    placeholder = { Text("192.168.1.100:8420") },
+                    value = pin,
+                    onValueChange = onPinChange,
+                    placeholder = { Text("482917") },
                     singleLine = true,
                     enabled = !inProgress,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     colors = TextFieldDefaults.colors(
@@ -370,11 +506,11 @@ private fun PairingDialog(
                     )
                 )
 
-                result?.let { r ->
+                if (result != null && !result.success && result.error != null) {
                     Text(
-                        text = if (r.success) "Paired successfully!" else "Failed: ${r.error}",
+                        text = result.error,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (r.success) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        color = MaterialTheme.colorScheme.error
                     )
                 }
 
@@ -398,10 +534,58 @@ private fun PairingDialog(
                         Text("Cancel")
                     }
                     TextButton(
-                        onClick = onPair,
-                        enabled = url.isNotBlank() && !inProgress
+                        onClick = onConfirm,
+                        enabled = pin.length == 6 && !inProgress
                     ) {
-                        Text("Connect")
+                        Text("Confirm")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PairingStatusDialog(
+    result: com.theveloper.aura.engine.ecosystem.PairingResult?,
+    onDismiss: () -> Unit
+) {
+    val pairingResult = result ?: return
+
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = if (pairingResult.success) "Desktop paired" else "Pairing error",
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold)
+                )
+                Text(
+                    text = if (pairingResult.success) {
+                        "${pairingResult.deviceName ?: "Aura Desktop"} is now trusted and ready for desktop actions."
+                    } else {
+                        pairingResult.error ?: "Aura couldn't complete the desktop connection."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (pairingResult.success) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    }
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Close")
                     }
                 }
             }

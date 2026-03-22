@@ -54,7 +54,7 @@ class DesktopActionClient @Inject constructor(
         sendAction(DesktopAction.CLIPBOARD_GET, JsonObject(emptyMap()))
 
     suspend fun setClipboard(text: String): ActionResponse =
-        sendAction(DesktopAction.CLIPBOARD_SET, buildJsonObject { put("text", text) })
+        sendAction(DesktopAction.CLIPBOARD_SET, buildJsonObject { put("content", text) })
 
     suspend fun showNotification(title: String, body: String): ActionResponse =
         sendAction(DesktopAction.NOTIFICATION, buildJsonObject {

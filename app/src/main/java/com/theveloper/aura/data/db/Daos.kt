@@ -248,6 +248,9 @@ interface PairedDeviceDao {
     @Query("SELECT * FROM paired_devices ORDER BY last_seen_at DESC")
     suspend fun getAll(): List<PairedDeviceEntity>
 
+    @Query("SELECT * FROM paired_devices ORDER BY last_seen_at DESC")
+    fun observeAll(): Flow<List<PairedDeviceEntity>>
+
     @Query("SELECT * FROM paired_devices WHERE id = :deviceId")
     suspend fun getById(deviceId: String): PairedDeviceEntity?
 

@@ -10,7 +10,7 @@ import kotlinx.serialization.json.JsonObject
  */
 @Serializable
 data class EcosystemMessage(
-    val id: String,
+    val id: String = "",
     val type: MessageType,
     val payload: MessagePayload
 )
@@ -23,6 +23,10 @@ enum class MessageType {
     CAPABILITY_REPORT,
     PAIRING_REQUEST,
     PAIRING_ACK,
+    PAIRING_CONFIRM,
+    PAIRING_RESULT,
+    AUTH_REQUEST,
+    AUTH_RESULT,
     EVENT
 }
 
@@ -44,7 +48,7 @@ data class ActionRequest(
 @Serializable
 @SerialName("action_response")
 data class ActionResponse(
-    val requestId: String,
+    val requestId: String? = null,
     val success: Boolean,
     val data: JsonObject? = null,
     val error: String? = null,
@@ -61,10 +65,10 @@ data class ActionMetadata(
 // ── Device Heartbeat (Desktop → Android, periodic) ──────────────────────────
 
 @Serializable
-@SerialName("heartbeat")
+@SerialName("device_heartbeat")
 data class DeviceHeartbeat(
-    val deviceId: String,
-    val timestamp: Long,
+    val deviceId: String = "",
+    val timestamp: Long = 0L,
     val cpuLoadPercent: Float? = null,
     val memoryUsedPercent: Float? = null,
     val thermalState: String? = null,
@@ -81,7 +85,7 @@ data class DeviceCapabilityReport(
     val platform: Platform,
     val supportedActions: List<DesktopAction>,
     val ollamaModels: List<OllamaModelInfo> = emptyList(),
-    val protocolVersion: Int = 1
+    val protocolVersion: Int = 2
 ) : MessagePayload()
 
 @Serializable
@@ -99,8 +103,7 @@ data class OllamaModelInfo(
 data class PairingRequest(
     val deviceId: String,
     val deviceName: String,
-    val platform: Platform,
-    val publicKey: String
+    val platform: Platform
 ) : MessagePayload()
 
 @Serializable
@@ -108,10 +111,44 @@ data class PairingRequest(
 data class PairingAck(
     val deviceId: String,
     val deviceName: String,
-    val platform: Platform,
-    val publicKey: String,
+    val platform: Platform? = null,
     val accepted: Boolean,
     val pairingCode: String? = null
+) : MessagePayload()
+
+@Serializable
+@SerialName("pairing_confirm")
+data class PairingConfirm(
+    val deviceId: String,
+    val pairingCode: String
+) : MessagePayload()
+
+@Serializable
+@SerialName("pairing_result")
+data class PairingResultPayload(
+    val success: Boolean,
+    val trustToken: String? = null,
+    val error: String? = null,
+    val deviceId: String? = null,
+    val deviceName: String? = null,
+    val platform: Platform? = null
+) : MessagePayload()
+
+@Serializable
+@SerialName("auth_request")
+data class AuthRequest(
+    val deviceId: String,
+    val trustToken: String
+) : MessagePayload()
+
+@Serializable
+@SerialName("auth_result")
+data class AuthResult(
+    val success: Boolean,
+    val error: String? = null,
+    val deviceId: String? = null,
+    val deviceName: String? = null,
+    val platform: Platform? = null
 ) : MessagePayload()
 
 // ── Spontaneous Event (Desktop → Android, no prior request) ─────────────────
