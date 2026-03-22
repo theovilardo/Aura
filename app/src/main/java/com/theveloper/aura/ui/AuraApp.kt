@@ -59,13 +59,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,9 +77,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -132,25 +138,31 @@ private const val ROOT_TRANSITION_DURATION_MS = 430
 private const val SECONDARY_TRANSITION_DURATION_MS = 380
 private const val DEBUG_FADE_TRANSITION_DURATION_MS = 90
 
+val LocalAuraBottomBarHeight = staticCompositionLocalOf<Dp> { 0.dp }
+
 @Composable
 fun AuraApp() {
     val navController = rememberNavController()
     var quickPrompt by rememberSaveable { mutableStateOf("") }
+    var bottomBarHeightPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val bottomBarHeight = with(density) { bottomBarHeightPx.toDp() }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        NavHost(
-            navController = navController,
-            startDestination = HOME_ROUTE,
-            modifier = Modifier.fillMaxSize(),
-            enterTransition = { auraEnterTransition() },
-            exitTransition = { auraExitTransition() },
-            popEnterTransition = { auraPopEnterTransition() },
-            popExitTransition = { auraPopExitTransition() }
+    CompositionLocalProvider(LocalAuraBottomBarHeight provides bottomBarHeight) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
         ) {
+            NavHost(
+                navController = navController,
+                startDestination = HOME_ROUTE,
+                modifier = Modifier.fillMaxSize(),
+                enterTransition = { auraEnterTransition() },
+                exitTransition = { auraExitTransition() },
+                popEnterTransition = { auraPopEnterTransition() },
+                popExitTransition = { auraPopExitTransition() }
+            ) {
             composable(HOME_ROUTE) {
                 HomeScreen(
                     onNavigateToTaskDetail = { taskId ->
@@ -314,27 +326,29 @@ fun AuraApp() {
                     )
                 }
             }
-        }
+            }
 
-        AuraBottomBar(
-            navController = navController,
-            quickPrompt = quickPrompt,
-            onQuickPromptChange = { quickPrompt = it },
-            onQuickPromptSubmit = {
-                val input = quickPrompt.trim()
-                if (input.isNotBlank()) {
-                    navController.navigate(
-                        buildCreateTaskRoute(
-                            mode = TaskCreationMode.PROMPT,
-                            input = input,
-                            autoSubmit = true
+            AuraBottomBar(
+                navController = navController,
+                quickPrompt = quickPrompt,
+                onQuickPromptChange = { quickPrompt = it },
+                onQuickPromptSubmit = {
+                    val input = quickPrompt.trim()
+                    if (input.isNotBlank()) {
+                        navController.navigate(
+                            buildCreateTaskRoute(
+                                mode = TaskCreationMode.PROMPT,
+                                input = input,
+                                autoSubmit = true
+                            )
                         )
-                    )
-                    quickPrompt = ""
-                }
-            },
-            modifier = Modifier.align(Alignment.BottomCenter)
-        )
+                        quickPrompt = ""
+                    }
+                },
+                onMeasuredHeightChanged = { bottomBarHeightPx = it },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
     }
 }
 
@@ -381,6 +395,7 @@ fun AuraBottomBar(
     quickPrompt: String,
     onQuickPromptChange: (String) -> Unit,
     onQuickPromptSubmit: () -> Unit,
+    onMeasuredHeightChanged: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -389,6 +404,9 @@ fun AuraBottomBar(
     val rootRoutes = remember { setOf(HOME_ROUTE, TASKS_ROUTE, SETTINGS_ROUTE) }
     val isVisible = remember(currentRoute, rootRoutes) {
         normalizedRoute(currentRoute) in rootRoutes
+    }
+    LaunchedEffect(isVisible) {
+        if (!isVisible) onMeasuredHeightChanged(0)
     }
 
     val items = listOf(
@@ -400,7 +418,9 @@ fun AuraBottomBar(
 
     AnimatedVisibility(
         visible = isVisible,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .onSizeChanged { onMeasuredHeightChanged(it.height) },
         enter = if (BuildConfig.DEBUG) {
             EnterTransition.None
         } else {
