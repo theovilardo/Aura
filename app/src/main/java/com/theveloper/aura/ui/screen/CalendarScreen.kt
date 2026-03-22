@@ -2,7 +2,11 @@ package com.theveloper.aura.ui.screen
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -13,6 +17,9 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +42,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Today
@@ -48,6 +57,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -57,6 +68,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -64,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.theveloper.aura.domain.model.TaskStatus
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -72,8 +86,11 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.min
+import kotlin.math.sign
 
-private const val CalendarBottomBarClearance = 92
+private const val CalendarBottomBarClearance = 136
 private val CalendarViewModeStripShape = RoundedCornerShape(26.dp)
 private val CalendarDayPillShape = RoundedCornerShape(16.dp)
 
@@ -97,6 +114,7 @@ fun TasksCalendarScreen(
     var anchorDateValue by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     var selectedDateValue by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     var viewModeKey by rememberSaveable { mutableStateOf(CalendarViewMode.MONTH.name) }
+    var periodMotionDirection by rememberSaveable { mutableStateOf(0) }
 
     val anchorDate = remember(anchorDateValue) { parseCalendarDate(anchorDateValue) }
     val selectedDate = remember(selectedDateValue) { parseCalendarDate(selectedDateValue) }
@@ -111,6 +129,12 @@ fun TasksCalendarScreen(
         uiState.eventsByDate[parseCalendarDate(selectedDateValue)].orEmpty()
     }
 
+    fun updatePeriod(direction: Int) {
+        periodMotionDirection = direction
+        anchorDateValue = shiftDateByMode(anchorDate, viewMode, direction.toLong()).toString()
+        selectedDateValue = shiftDateByMode(selectedDate, viewMode, direction.toLong()).toString()
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -120,20 +144,11 @@ fun TasksCalendarScreen(
                 periodSummary = periodSummary,
                 onViewModeChange = { mode ->
                     viewModeKey = mode.name
+                    periodMotionDirection = 0
                     anchorDateValue = selectedDate.toString()
                 },
-                onPreviousPeriod = {
-                    anchorDateValue = shiftDateByMode(anchorDate, viewMode, -1).toString()
-                    selectedDateValue = shiftDateByMode(selectedDate, viewMode, -1).toString()
-                },
-                onNextPeriod = {
-                    anchorDateValue = shiftDateByMode(anchorDate, viewMode, 1).toString()
-                    selectedDateValue = shiftDateByMode(selectedDate, viewMode, 1).toString()
-                },
-                onJumpToToday = {
-                    anchorDateValue = uiState.today.toString()
-                    selectedDateValue = uiState.today.toString()
-                },
+                onPreviousPeriod = { updatePeriod(direction = -1) },
+                onNextPeriod = { updatePeriod(direction = 1) },
                 onNavigateToHabits = onNavigateToHabits
             )
         }
@@ -159,62 +174,65 @@ fun TasksCalendarScreen(
                 .padding(bottom = CalendarBottomBarClearance.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Box(modifier = Modifier.weight(1f)) {
-                AnimatedContent(
-                    targetState = viewModeKey to anchorDateValue,
-                    transitionSpec = {
-                        (fadeIn() + slideInHorizontally { it / 10 }) togetherWith
-                            (fadeOut() + slideOutHorizontally { -it / 10 }) using
-                            SizeTransform(clip = false)
-                    },
-                    label = "calendarViewSwitcher"
-                ) { (modeKey, dateValue) ->
-                    val mode = CalendarViewMode.valueOf(modeKey)
-                    val anchoredDate = parseCalendarDate(dateValue)
-                    when (mode) {
-                        CalendarViewMode.MONTH -> CalendarMonthView(
-                            anchorDate = anchoredDate,
-                            selectedDate = selectedDate,
-                            today = uiState.today,
-                            eventsByDate = uiState.eventsByDate,
-                            onSelectDate = { date -> selectedDateValue = date.toString() },
-                            onOpenDate = onNavigateToDay,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        CalendarViewMode.WEEK -> CalendarWeekView(
-                            anchorDate = anchoredDate,
-                            selectedDate = selectedDate,
-                            today = uiState.today,
-                            eventsByDate = uiState.eventsByDate,
-                            onSelectDate = { date -> selectedDateValue = date.toString() },
-                            onOpenDate = onNavigateToDay,
-                            onOpenTask = onNavigateToTaskDetail,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        CalendarViewMode.YEAR -> CalendarYearView(
-                            anchorDate = anchoredDate,
-                            selectedDate = selectedDate,
-                            today = uiState.today,
-                            eventsByDate = uiState.eventsByDate,
-                            onOpenMonth = { month ->
-                                val preferredDate = preferredSelectionForMonth(
-                                    month = month,
-                                    selectedDate = selectedDate,
-                                    eventsByDate = uiState.eventsByDate
-                                )
-                                viewModeKey = CalendarViewMode.MONTH.name
-                                anchorDateValue = preferredDate.toString()
-                                selectedDateValue = preferredDate.toString()
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
+            CalendarSwipeViewport(
+                targetState = viewModeKey to anchorDateValue,
+                motionDirection = periodMotionDirection,
+                onSwipeToPrevious = { updatePeriod(direction = -1) },
+                onSwipeToNext = { updatePeriod(direction = 1) },
+                modifier = Modifier.weight(1f)
+            ) { (modeKey, dateValue) ->
+                val mode = CalendarViewMode.valueOf(modeKey)
+                val anchoredDate = parseCalendarDate(dateValue)
+                when (mode) {
+                    CalendarViewMode.MONTH -> CalendarMonthView(
+                        anchorDate = anchoredDate,
+                        selectedDate = selectedDate,
+                        today = uiState.today,
+                        eventsByDate = uiState.eventsByDate,
+                        onSelectDate = { date -> selectedDateValue = date.toString() },
+                        onOpenDate = onNavigateToDay,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    CalendarViewMode.WEEK -> CalendarWeekView(
+                        anchorDate = anchoredDate,
+                        selectedDate = selectedDate,
+                        today = uiState.today,
+                        eventsByDate = uiState.eventsByDate,
+                        onSelectDate = { date -> selectedDateValue = date.toString() },
+                        onOpenDate = onNavigateToDay,
+                        onOpenTask = onNavigateToTaskDetail,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    CalendarViewMode.YEAR -> CalendarYearView(
+                        anchorDate = anchoredDate,
+                        selectedDate = selectedDate,
+                        today = uiState.today,
+                        eventsByDate = uiState.eventsByDate,
+                        onOpenMonth = { month ->
+                            val preferredDate = preferredSelectionForMonth(
+                                month = month,
+                                selectedDate = selectedDate,
+                                eventsByDate = uiState.eventsByDate
+                            )
+                            periodMotionDirection = 0
+                            viewModeKey = CalendarViewMode.MONTH.name
+                            anchorDateValue = preferredDate.toString()
+                            selectedDateValue = preferredDate.toString()
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
             }
 
             SelectedDayRibbon(
                 date = selectedDate,
+                today = uiState.today,
                 events = selectedDayEvents,
+                onJumpToToday = {
+                    periodMotionDirection = compareDateForDirection(selectedDate, uiState.today)
+                    anchorDateValue = uiState.today.toString()
+                    selectedDateValue = uiState.today.toString()
+                },
                 onOpenDay = { onNavigateToDay(selectedDate) }
             )
         }
@@ -308,7 +326,6 @@ private fun CalendarTopBar(
     onViewModeChange: (CalendarViewMode) -> Unit,
     onPreviousPeriod: () -> Unit,
     onNextPeriod: () -> Unit,
-    onJumpToToday: () -> Unit,
     onNavigateToHabits: () -> Unit
 ) {
     AuraGradientTopBarContainer(
@@ -340,11 +357,6 @@ private fun CalendarTopBar(
                         ),
                         color = MaterialTheme.colorScheme.onBackground
                     )
-                    Text(
-                        text = viewMode.supporting,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
 
                 CalendarActionChip(
@@ -368,15 +380,14 @@ private fun CalendarTopBar(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CalendarChromeIconButton(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                    CalendarChevronButton(
+                        imageVector = Icons.Rounded.ChevronLeft,
                         contentDescription = "Previous period",
-                        onClick = onPreviousPeriod,
-                        buttonSize = 42.dp
+                        onClick = onPreviousPeriod
                     )
 
                     Column(
@@ -396,10 +407,10 @@ private fun CalendarTopBar(
                                 text = label,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.titleLarge.copy(
+                                style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 24.sp,
-                                    lineHeight = 26.sp
+                                    fontSize = 20.sp,
+                                    lineHeight = 22.sp
                                 ),
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -408,23 +419,15 @@ private fun CalendarTopBar(
                             text = periodSummary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.labelLarge,
+                            style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
-                    CalendarActionChip(
-                        label = "Today",
-                        icon = Icons.Rounded.Today,
-                        onClick = onJumpToToday,
-                        compact = true
-                    )
-
-                    CalendarChromeIconButton(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
+                    CalendarChevronButton(
+                        imageVector = Icons.Rounded.ChevronRight,
                         contentDescription = "Next period",
-                        onClick = onNextPeriod,
-                        buttonSize = 42.dp
+                        onClick = onNextPeriod
                     )
                 }
             }
@@ -1016,11 +1019,15 @@ private fun CalendarWeekHeader() {
 @Composable
 private fun SelectedDayRibbon(
     date: LocalDate,
+    today: LocalDate,
     events: List<CalendarTaskEventUiState>,
+    onJumpToToday: () -> Unit,
     onOpenDay: () -> Unit
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 6.dp),
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.68f))
@@ -1028,6 +1035,8 @@ private fun SelectedDayRibbon(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .clickable(onClick = onJumpToToday)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -1051,7 +1060,11 @@ private fun SelectedDayRibbon(
             }
 
             Text(
-                text = selectedRibbonSummary(events),
+                text = selectedRibbonSummary(
+                    events = events,
+                    selectedDate = date,
+                    today = today
+                ),
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1378,6 +1391,34 @@ private fun CalendarActionChip(
 }
 
 @Composable
+private fun CalendarChevronButton(
+    imageVector: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f))
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = imageVector,
+                contentDescription = contentDescription,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun CalendarChromeIconButton(
     imageVector: ImageVector,
     contentDescription: String,
@@ -1480,7 +1521,7 @@ private fun formatCalendarPeriodLabel(
     anchorDate: LocalDate
 ): String {
     return when (viewMode) {
-        CalendarViewMode.MONTH -> DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH).format(anchorDate)
+        CalendarViewMode.MONTH -> DateTimeFormatter.ofPattern("MMM yyyy", Locale.ENGLISH).format(anchorDate)
         CalendarViewMode.WEEK -> formatWeekRangeLabel(anchorDate)
         CalendarViewMode.YEAR -> anchorDate.year.toString()
     }
@@ -1499,13 +1540,13 @@ private fun formatCalendarPeriodSummary(
                 .values
                 .sumOf(List<CalendarTaskEventUiState>::size)
             val activeDays = eventsByDate.keys.count(month::contains)
-            formatPeriodSummary(totalEvents, activeDays, "days")
+            formatPeriodSummary(totalEvents, activeDays, "d")
         }
         CalendarViewMode.WEEK -> {
             val dates = weekDates(anchorDate)
             val totalEvents = dates.sumOf { date -> eventsByDate[date].orEmpty().size }
             val activeDays = dates.count { date -> eventsByDate[date].orEmpty().isNotEmpty() }
-            formatPeriodSummary(totalEvents, activeDays, "days")
+            formatPeriodSummary(totalEvents, activeDays, "d")
         }
         CalendarViewMode.YEAR -> {
             val totalEvents = eventsByDate
@@ -1517,7 +1558,7 @@ private fun formatCalendarPeriodSummary(
                 .map(LocalDate::getMonthValue)
                 .distinct()
                 .size
-            formatPeriodSummary(totalEvents, activeMonths, "months")
+            formatPeriodSummary(totalEvents, activeMonths, "m")
         }
     }
 }
@@ -1528,9 +1569,9 @@ private fun formatPeriodSummary(
     unitLabel: String
 ): String {
     return when {
-        totalEvents == 0 -> "No scheduled items"
-        totalEvents == 1 -> "1 scheduled item"
-        else -> "$totalEvents scheduled items across $activeUnits $unitLabel"
+        totalEvents == 0 -> "0 items"
+        totalEvents == 1 -> "1 item"
+        else -> "$totalEvents items · $activeUnits $unitLabel"
     }
 }
 
@@ -1572,6 +1613,29 @@ private fun selectedRibbonSummary(events: List<CalendarTaskEventUiState>): Strin
         events.isEmpty() -> "Free"
         events.size == 1 -> formatEventTime(events.first())
         else -> "${events.size} items"
+    }
+}
+
+private fun selectedRibbonSummary(
+    events: List<CalendarTaskEventUiState>,
+    selectedDate: LocalDate,
+    today: LocalDate
+): String {
+    return if (selectedDate != today) {
+        "Today"
+    } else {
+        selectedRibbonSummary(events)
+    }
+}
+
+private fun compareDateForDirection(
+    from: LocalDate,
+    to: LocalDate
+): Int {
+    return when {
+        to.isAfter(from) -> 1
+        to.isBefore(from) -> -1
+        else -> 0
     }
 }
 
@@ -1617,4 +1681,126 @@ private fun Long.toLocalDateTime(): LocalDateTime {
     return Instant.ofEpochMilli(this)
         .atZone(ZoneId.systemDefault())
         .toLocalDateTime()
+}
+
+@Composable
+private fun <T> CalendarSwipeViewport(
+    targetState: T,
+    motionDirection: Int,
+    onSwipeToPrevious: () -> Unit,
+    onSwipeToNext: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable (T) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var viewportWidthPx by remember { mutableFloatStateOf(1f) }
+    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
+
+    Box(
+        modifier = modifier
+            .onSizeChanged { viewportWidthPx = it.width.toFloat().coerceAtLeast(1f) }
+            .draggable(
+                orientation = Orientation.Horizontal,
+                state = rememberDraggableState { delta ->
+                    dragOffsetPx = (dragOffsetPx + delta).coerceIn(
+                        minimumValue = -viewportWidthPx,
+                        maximumValue = viewportWidthPx
+                    )
+                },
+                onDragStopped = { velocity ->
+                    val threshold = viewportWidthPx * 0.18f
+                    val targetDirection = when {
+                        dragOffsetPx <= -threshold || velocity < -1100f -> 1
+                        dragOffsetPx >= threshold || velocity > 1100f -> -1
+                        else -> 0
+                    }
+
+                    scope.launch {
+                        if (targetDirection == 0) {
+                            animate(
+                                initialValue = dragOffsetPx,
+                                targetValue = 0f,
+                                animationSpec = spring(
+                                    dampingRatio = 0.88f,
+                                    stiffness = 520f
+                                )
+                            ) { value, _ ->
+                                dragOffsetPx = value
+                            }
+                        } else {
+                            val exitTarget = if (targetDirection > 0) {
+                                -viewportWidthPx * 0.86f
+                            } else {
+                                viewportWidthPx * 0.86f
+                            }
+
+                            animate(
+                                initialValue = dragOffsetPx,
+                                targetValue = exitTarget,
+                                animationSpec = tween(
+                                    durationMillis = 160,
+                                    easing = FastOutSlowInEasing
+                                )
+                            ) { value, _ ->
+                                dragOffsetPx = value
+                            }
+
+                            if (targetDirection > 0) {
+                                onSwipeToNext()
+                            } else {
+                                onSwipeToPrevious()
+                            }
+
+                            dragOffsetPx = -exitTarget * 0.22f
+
+                            animate(
+                                initialValue = dragOffsetPx,
+                                targetValue = 0f,
+                                animationSpec = spring(
+                                    dampingRatio = 0.92f,
+                                    stiffness = 420f
+                                )
+                            ) { value, _ ->
+                                dragOffsetPx = value
+                            }
+                        }
+                    }
+                }
+            )
+    ) {
+        AnimatedContent(
+            targetState = targetState,
+            transitionSpec = {
+                when {
+                    motionDirection > 0 -> {
+                        (fadeIn(animationSpec = tween(220)) + slideInHorizontally { fullWidth -> fullWidth / 4 }) togetherWith
+                            (fadeOut(animationSpec = tween(180)) + slideOutHorizontally { fullWidth -> -fullWidth / 4 }) using
+                            SizeTransform(clip = false)
+                    }
+                    motionDirection < 0 -> {
+                        (fadeIn(animationSpec = tween(220)) + slideInHorizontally { fullWidth -> -fullWidth / 4 }) togetherWith
+                            (fadeOut(animationSpec = tween(180)) + slideOutHorizontally { fullWidth -> fullWidth / 4 }) using
+                            SizeTransform(clip = false)
+                    }
+                    else -> {
+                        (fadeIn(animationSpec = tween(180)) + slideInVertically { it / 8 }) togetherWith
+                            (fadeOut(animationSpec = tween(140)) + slideOutVertically { -it / 8 }) using
+                            SizeTransform(clip = false)
+                    }
+                }
+            },
+            label = "calendarSwipeViewport"
+        ) { state ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationX = dragOffsetPx
+                        alpha = 1f - min(abs(dragOffsetPx) / (viewportWidthPx * 1.6f), 0.16f)
+                    }
+            ) {
+                content(state)
+            }
+        }
+    }
 }
