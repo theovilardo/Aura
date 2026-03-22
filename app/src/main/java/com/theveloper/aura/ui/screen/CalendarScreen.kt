@@ -5,12 +5,13 @@ import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -71,9 +73,18 @@ import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 
-private const val CalendarBottomBarClearance = 112
-private val CalendarBoardShape = RoundedCornerShape(30.dp)
-private val CalendarCellShape = RoundedCornerShape(18.dp)
+private const val CalendarBottomBarClearance = 92
+private val CalendarViewModeStripShape = RoundedCornerShape(26.dp)
+private val CalendarDayPillShape = RoundedCornerShape(16.dp)
+
+private enum class CalendarViewMode(
+    val label: String,
+    val supporting: String
+) {
+    MONTH("Month", "Month overview"),
+    WEEK("Week", "Week agenda"),
+    YEAR("Year", "Year index")
+}
 
 @Composable
 fun TasksCalendarScreen(
@@ -83,30 +94,46 @@ fun TasksCalendarScreen(
     viewModel: TasksCalendarViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var displayedMonthValue by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
+    var anchorDateValue by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     var selectedDateValue by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
+    var viewModeKey by rememberSaveable { mutableStateOf(CalendarViewMode.MONTH.name) }
 
-    val displayedMonth = remember(displayedMonthValue) { YearMonth.parse(displayedMonthValue) }
-    val selectedDate = remember(selectedDateValue) { LocalDate.parse(selectedDateValue) }
-    val monthEvents = remember(uiState.eventsByDate, displayedMonthValue) {
-        uiState.eventsByDate
-            .filterKeys { date -> displayedMonth.contains(date) }
-            .values
-            .flatten()
+    val anchorDate = remember(anchorDateValue) { parseCalendarDate(anchorDateValue) }
+    val selectedDate = remember(selectedDateValue) { parseCalendarDate(selectedDateValue) }
+    val viewMode = remember(viewModeKey) { CalendarViewMode.valueOf(viewModeKey) }
+    val periodLabel = remember(viewModeKey, anchorDateValue) {
+        formatCalendarPeriodLabel(viewMode, anchorDate)
     }
-    val activeDayCount = remember(uiState.eventsByDate, displayedMonthValue) {
-        uiState.eventsByDate.keys.count { date ->
-            displayedMonth.contains(date) && uiState.eventsByDate[date].orEmpty().isNotEmpty()
-        }
+    val periodSummary = remember(uiState.eventsByDate, viewModeKey, anchorDateValue) {
+        formatCalendarPeriodSummary(viewMode, anchorDate, uiState.eventsByDate)
     }
     val selectedDayEvents = remember(uiState.eventsByDate, selectedDateValue) {
-        uiState.eventsByDate[LocalDate.parse(selectedDateValue)].orEmpty()
+        uiState.eventsByDate[parseCalendarDate(selectedDateValue)].orEmpty()
     }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             CalendarTopBar(
+                viewMode = viewMode,
+                periodLabel = periodLabel,
+                periodSummary = periodSummary,
+                onViewModeChange = { mode ->
+                    viewModeKey = mode.name
+                    anchorDateValue = selectedDate.toString()
+                },
+                onPreviousPeriod = {
+                    anchorDateValue = shiftDateByMode(anchorDate, viewMode, -1).toString()
+                    selectedDateValue = shiftDateByMode(selectedDate, viewMode, -1).toString()
+                },
+                onNextPeriod = {
+                    anchorDateValue = shiftDateByMode(anchorDate, viewMode, 1).toString()
+                    selectedDateValue = shiftDateByMode(selectedDate, viewMode, 1).toString()
+                },
+                onJumpToToday = {
+                    anchorDateValue = uiState.today.toString()
+                    selectedDateValue = uiState.today.toString()
+                },
                 onNavigateToHabits = onNavigateToHabits
             )
         }
@@ -130,75 +157,65 @@ fun TasksCalendarScreen(
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp)
                 .padding(bottom = CalendarBottomBarClearance.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            CalendarMonthHeader(
-                month = displayedMonth,
-                eventCount = monthEvents.size,
-                activeDayCount = activeDayCount,
-                onPreviousMonth = {
-                    val updatedMonth = displayedMonth.minusMonths(1)
-                    displayedMonthValue = updatedMonth.toString()
-                    selectedDateValue = preferredDateForMonth(updatedMonth, uiState.today).toString()
-                },
-                onNextMonth = {
-                    val updatedMonth = displayedMonth.plusMonths(1)
-                    displayedMonthValue = updatedMonth.toString()
-                    selectedDateValue = preferredDateForMonth(updatedMonth, uiState.today).toString()
-                },
-                onJumpToToday = {
-                    displayedMonthValue = YearMonth.from(uiState.today).toString()
-                    selectedDateValue = uiState.today.toString()
-                }
-            )
-
-            Surface(
-                modifier = Modifier.weight(1f),
-                shape = CalendarBoardShape,
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 10.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    CalendarWeekHeader()
-                    Box(modifier = Modifier.weight(1f)) {
-                        AnimatedContent(
-                            targetState = displayedMonthValue,
-                            transitionSpec = {
-                                (fadeIn() + slideInVertically { it / 8 }) togetherWith
-                                    (fadeOut() + slideOutVertically { -it / 8 }) using
-                                    SizeTransform(clip = false)
+            Box(modifier = Modifier.weight(1f)) {
+                AnimatedContent(
+                    targetState = viewModeKey to anchorDateValue,
+                    transitionSpec = {
+                        (fadeIn() + slideInHorizontally { it / 10 }) togetherWith
+                            (fadeOut() + slideOutHorizontally { -it / 10 }) using
+                            SizeTransform(clip = false)
+                    },
+                    label = "calendarViewSwitcher"
+                ) { (modeKey, dateValue) ->
+                    val mode = CalendarViewMode.valueOf(modeKey)
+                    val anchoredDate = parseCalendarDate(dateValue)
+                    when (mode) {
+                        CalendarViewMode.MONTH -> CalendarMonthView(
+                            anchorDate = anchoredDate,
+                            selectedDate = selectedDate,
+                            today = uiState.today,
+                            eventsByDate = uiState.eventsByDate,
+                            onSelectDate = { date -> selectedDateValue = date.toString() },
+                            onOpenDate = onNavigateToDay,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        CalendarViewMode.WEEK -> CalendarWeekView(
+                            anchorDate = anchoredDate,
+                            selectedDate = selectedDate,
+                            today = uiState.today,
+                            eventsByDate = uiState.eventsByDate,
+                            onSelectDate = { date -> selectedDateValue = date.toString() },
+                            onOpenDate = onNavigateToDay,
+                            onOpenTask = onNavigateToTaskDetail,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        CalendarViewMode.YEAR -> CalendarYearView(
+                            anchorDate = anchoredDate,
+                            selectedDate = selectedDate,
+                            today = uiState.today,
+                            eventsByDate = uiState.eventsByDate,
+                            onOpenMonth = { month ->
+                                val preferredDate = preferredSelectionForMonth(
+                                    month = month,
+                                    selectedDate = selectedDate,
+                                    eventsByDate = uiState.eventsByDate
+                                )
+                                viewModeKey = CalendarViewMode.MONTH.name
+                                anchorDateValue = preferredDate.toString()
+                                selectedDateValue = preferredDate.toString()
                             },
-                            label = "calendarMonthContent"
-                        ) { monthKey ->
-                            CalendarMonthBoard(
-                                month = YearMonth.parse(monthKey),
-                                today = uiState.today,
-                                selectedDate = selectedDate,
-                                eventsByDate = uiState.eventsByDate,
-                                onSelectDate = { date ->
-                                    selectedDateValue = date.toString()
-                                    if (!displayedMonth.contains(date)) {
-                                        displayedMonthValue = YearMonth.from(date).toString()
-                                    }
-                                },
-                                onOpenDate = onNavigateToDay,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
                 }
             }
 
-            SelectedDayDock(
+            SelectedDayRibbon(
                 date = selectedDate,
                 events = selectedDayEvents,
-                onOpenDay = { onNavigateToDay(selectedDate) },
-                onOpenTask = onNavigateToTaskDetail
+                onOpenDay = { onNavigateToDay(selectedDate) }
             )
         }
     }
@@ -216,7 +233,7 @@ fun CalendarDayScreen(
     var selectedDateValue by rememberSaveable(initialDateValue) { mutableStateOf(initialDate.toString()) }
     val selectedDate = remember(selectedDateValue) { LocalDate.parse(selectedDateValue) }
     val dayEvents = remember(uiState.eventsByDate, selectedDateValue) {
-        uiState.eventsByDate[LocalDate.parse(selectedDateValue)].orEmpty()
+        uiState.eventsByDate[parseCalendarDate(selectedDateValue)].orEmpty()
     }
 
     Scaffold(
@@ -285,150 +302,693 @@ fun CalendarDayScreen(
 
 @Composable
 private fun CalendarTopBar(
+    viewMode: CalendarViewMode,
+    periodLabel: String,
+    periodSummary: String,
+    onViewModeChange: (CalendarViewMode) -> Unit,
+    onPreviousPeriod: () -> Unit,
+    onNextPeriod: () -> Unit,
+    onJumpToToday: () -> Unit,
     onNavigateToHabits: () -> Unit
 ) {
     AuraGradientTopBarContainer(
         style = AuraGradientTopBarStyle.Extended,
-        bottomFadePadding = 12.dp
+        bottomFadePadding = 10.dp
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = "Calendar",
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 30.sp,
-                        lineHeight = 32.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    text = "Schedule by day",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = "Calendar",
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 30.sp,
+                            lineHeight = 32.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = viewMode.supporting,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                CalendarActionChip(
+                    label = "Habits",
+                    icon = Icons.Rounded.Repeat,
+                    onClick = onNavigateToHabits
                 )
             }
 
-            CalendarShortcutChip(
-                label = "Habits",
-                icon = Icons.Rounded.Repeat,
-                onClick = onNavigateToHabits
+            CalendarViewModeStrip(
+                selected = viewMode,
+                onSelect = onViewModeChange
             )
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.68f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CalendarChromeIconButton(
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                        contentDescription = "Previous period",
+                        onClick = onPreviousPeriod,
+                        buttonSize = 42.dp
+                    )
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        AnimatedContent(
+                            targetState = periodLabel,
+                            transitionSpec = {
+                                (fadeIn() + slideInVertically { it / 8 }) togetherWith
+                                    (fadeOut() + slideOutVertically { -it / 8 }) using
+                                    SizeTransform(clip = false)
+                            },
+                            label = "calendarPeriodTitle"
+                        ) { label ->
+                            Text(
+                                text = label,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 24.sp,
+                                    lineHeight = 26.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Text(
+                            text = periodSummary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    CalendarActionChip(
+                        label = "Today",
+                        icon = Icons.Rounded.Today,
+                        onClick = onJumpToToday,
+                        compact = true
+                    )
+
+                    CalendarChromeIconButton(
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
+                        contentDescription = "Next period",
+                        onClick = onNextPeriod,
+                        buttonSize = 42.dp
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun CalendarDayTopBar(
-    onNavigateBack: () -> Unit
+private fun CalendarViewModeStrip(
+    selected: CalendarViewMode,
+    onSelect: (CalendarViewMode) -> Unit
 ) {
-    AuraGradientTopBarContainer(
-        style = AuraGradientTopBarStyle.Linear,
-        bottomFadePadding = 12.dp
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = CalendarViewModeStripShape,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.68f))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            CalendarChromeIconButton(
-                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                contentDescription = "Back",
-                onClick = onNavigateBack
-            )
+            CalendarViewMode.entries.forEach { mode ->
+                val selectedMode = mode == selected
+                val containerColor by animateColorAsState(
+                    targetValue = if (selectedMode) {
+                        MaterialTheme.colorScheme.inverseSurface
+                    } else {
+                        Color.Transparent
+                    },
+                    label = "calendarModeContainer"
+                )
+                val contentColor by animateColorAsState(
+                    targetValue = if (selectedMode) {
+                        MaterialTheme.colorScheme.inverseOnSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    label = "calendarModeContent"
+                )
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(containerColor)
+                        .clickable { onSelect(mode) }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = mode.label,
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = contentColor
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun CalendarMonthHeader(
-    month: YearMonth,
-    eventCount: Int,
-    activeDayCount: Int,
-    onPreviousMonth: () -> Unit,
-    onNextMonth: () -> Unit,
-    onJumpToToday: () -> Unit
+private fun CalendarMonthView(
+    anchorDate: LocalDate,
+    selectedDate: LocalDate,
+    today: LocalDate,
+    eventsByDate: Map<LocalDate, List<CalendarTaskEventUiState>>,
+    onSelectDate: (LocalDate) -> Unit,
+    onOpenDate: (LocalDate) -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    val month = remember(anchorDate) { YearMonth.from(anchorDate) }
+    val cells = remember(month) { buildCalendarCells(month) }
+
     Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
+        CalendarWeekHeader()
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Box(modifier = Modifier.weight(1f)) {
-                AnimatedContent(
-                    targetState = month.toString(),
-                    transitionSpec = {
-                        (fadeIn() + slideInVertically { it / 8 }) togetherWith
-                            (fadeOut() + slideOutVertically { -it / 8 }) using
-                            SizeTransform(clip = false)
-                    },
-                    label = "calendarMonthHeader"
-                ) { monthValue ->
-                    val currentMonth = YearMonth.parse(monthValue)
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = currentMonth.month.getDisplayName(TextStyle.SHORT, Locale.ENGLISH).uppercase(),
-                            style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.3.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "${currentMonth.month.getDisplayName(TextStyle.FULL, Locale.ENGLISH)} ${currentMonth.year}",
-                            style = MaterialTheme.typography.displaySmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 34.sp,
-                                lineHeight = 34.sp
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface
+            cells.chunked(7).forEach { week ->
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    week.forEach { cell ->
+                        CalendarMonthDayCell(
+                            cell = cell,
+                            events = eventsByDate[cell.date].orEmpty(),
+                            today = today,
+                            selectedDate = selectedDate,
+                            onSelectDate = onSelectDate,
+                            onOpenDate = onOpenDate,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
                         )
                     }
                 }
             }
+        }
+    }
+}
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+@Composable
+private fun CalendarMonthDayCell(
+    cell: CalendarCellUiState,
+    events: List<CalendarTaskEventUiState>,
+    today: LocalDate,
+    selectedDate: LocalDate,
+    onSelectDate: (LocalDate) -> Unit,
+    onOpenDate: (LocalDate) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isToday = cell.date == today
+    val isSelected = cell.date == selectedDate
+    val dayContainerColor by animateColorAsState(
+        targetValue = when {
+            isSelected -> MaterialTheme.colorScheme.inverseSurface
+            isToday -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.94f)
+            else -> Color.Transparent
+        },
+        label = "calendarMonthDayContainer"
+    )
+    val dayContentColor by animateColorAsState(
+        targetValue = when {
+            isSelected -> MaterialTheme.colorScheme.inverseOnSurface
+            !cell.isInMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.54f)
+            isToday -> MaterialTheme.colorScheme.onPrimaryContainer
+            else -> MaterialTheme.colorScheme.onSurface
+        },
+        label = "calendarMonthDayContent"
+    )
+    val dayBorder = when {
+        isSelected -> BorderStroke(1.dp, MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.12f))
+        isToday -> BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+        else -> null
+    }
+
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(24.dp))
+            .clickable {
+                if (isSelected) onOpenDate(cell.date) else onSelectDate(cell.date)
+            }
+            .padding(vertical = 4.dp, horizontal = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                modifier = Modifier.size(width = 48.dp, height = 40.dp),
+                shape = CalendarDayPillShape,
+                color = dayContainerColor,
+                border = dayBorder
             ) {
-                CalendarChromeIconButton(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "Previous month",
-                    onClick = onPreviousMonth,
-                    buttonSize = 44.dp
-                )
-                CalendarShortcutChip(
-                    label = "Today",
-                    icon = Icons.Rounded.Today,
-                    onClick = onJumpToToday
-                )
-                CalendarChromeIconButton(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
-                    contentDescription = "Next month",
-                    onClick = onNextMonth,
-                    buttonSize = 44.dp
-                )
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = cell.date.dayOfMonth.toString(),
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = dayContentColor
+                    )
+                }
             }
         }
 
-        Text(
-            text = when {
-                eventCount == 0 -> "No scheduled items in this month"
-                else -> "$eventCount scheduled items across $activeDayCount days"
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+        Spacer(modifier = Modifier.weight(1f))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(18.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            CalendarMonthEventMarkers(
+                events = events,
+                isSelected = isSelected,
+                visible = cell.isInMonth
+            )
+        }
+    }
+}
+
+@Composable
+private fun CalendarMonthEventMarkers(
+    events: List<CalendarTaskEventUiState>,
+    isSelected: Boolean,
+    visible: Boolean
+) {
+    if (!visible || events.isEmpty()) return
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        events.take(3).forEach { event ->
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(calendarEventAccent(event, isSelected))
+            )
+        }
+        if (events.size > 3) {
+            Text(
+                text = "+${events.size - 3}",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = if (isSelected) {
+                    MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.82f)
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun CalendarWeekView(
+    anchorDate: LocalDate,
+    selectedDate: LocalDate,
+    today: LocalDate,
+    eventsByDate: Map<LocalDate, List<CalendarTaskEventUiState>>,
+    onSelectDate: (LocalDate) -> Unit,
+    onOpenDate: (LocalDate) -> Unit,
+    onOpenTask: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val dates = remember(anchorDate) { weekDates(anchorDate) }
+
+    LazyColumn(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(vertical = 4.dp)
+    ) {
+        items(
+            items = dates,
+            key = LocalDate::toString
+        ) { date ->
+            CalendarWeekRow(
+                date = date,
+                events = eventsByDate[date].orEmpty(),
+                isToday = date == today,
+                isSelected = date == selectedDate,
+                onSelectDate = onSelectDate,
+                onOpenDate = onOpenDate,
+                onOpenTask = onOpenTask
+            )
+        }
+    }
+}
+
+@Composable
+private fun CalendarWeekRow(
+    date: LocalDate,
+    events: List<CalendarTaskEventUiState>,
+    isToday: Boolean,
+    isSelected: Boolean,
+    onSelectDate: (LocalDate) -> Unit,
+    onOpenDate: (LocalDate) -> Unit,
+    onOpenTask: (String) -> Unit
+) {
+    val rowColor = when {
+        isSelected -> MaterialTheme.colorScheme.surfaceContainerHigh
+        isToday -> MaterialTheme.colorScheme.surfaceContainerLow
+        events.isNotEmpty() -> MaterialTheme.colorScheme.surface
+        else -> MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.18f)
+    }
+    val rowBorder = when {
+        isSelected -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.78f))
+        events.isNotEmpty() -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.58f))
+        else -> null
+    }
+    val badgeColor = when {
+        isSelected -> MaterialTheme.colorScheme.inverseSurface
+        isToday -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.94f)
+        else -> MaterialTheme.colorScheme.surfaceContainerLow
+    }
+    val badgeContentColor = when {
+        isSelected -> MaterialTheme.colorScheme.inverseOnSurface
+        isToday -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    val badgeBorder = when {
+        isSelected -> BorderStroke(1.dp, MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.12f))
+        isToday -> BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+        else -> null
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        color = rowColor,
+        border = rowBorder
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    if (isSelected) onOpenDate(date) else onSelectDate(date)
+                }
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.size(width = 64.dp, height = 68.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = badgeColor,
+                border = badgeBorder
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.ENGLISH).uppercase(),
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.8.sp),
+                        color = badgeContentColor.copy(alpha = 0.78f)
+                    )
+                    Text(
+                        text = date.dayOfMonth.toString(),
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = badgeContentColor
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = formatWeekRowDate(date),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = weekRowSummary(events),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (events.isNotEmpty()) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CompactEventBadge(
+                            event = events.first(),
+                            onClick = { onOpenTask(events.first().taskId) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (events.size > 1) {
+                            Text(
+                                text = "+${events.size - 1}",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            CalendarChromeIconButton(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
+                contentDescription = "Open day",
+                onClick = { onOpenDate(date) },
+                buttonSize = 38.dp
+            )
+        }
+    }
+}
+
+@Composable
+private fun CalendarYearView(
+    anchorDate: LocalDate,
+    selectedDate: LocalDate,
+    today: LocalDate,
+    eventsByDate: Map<LocalDate, List<CalendarTaskEventUiState>>,
+    onOpenMonth: (YearMonth) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val year = anchorDate.year
+    val months = remember(year) { (1..12).map { monthValue -> YearMonth.of(year, monthValue) } }
+
+    LazyColumn(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(vertical = 4.dp)
+    ) {
+        items(
+            items = months.chunked(2),
+            key = { row -> row.first().toString() }
+        ) { rowMonths ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                rowMonths.forEach { month ->
+                    YearMonthTile(
+                        month = month,
+                        selectedDate = selectedDate,
+                        today = today,
+                        eventsByDate = eventsByDate,
+                        onClick = { onOpenMonth(month) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (rowMonths.size == 1) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun YearMonthTile(
+    month: YearMonth,
+    selectedDate: LocalDate,
+    today: LocalDate,
+    eventsByDate: Map<LocalDate, List<CalendarTaskEventUiState>>,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val cells = remember(month) { buildCalendarCells(month) }
+    val selectedMonth = month.contains(selectedDate)
+    val eventCount = remember(eventsByDate, month) {
+        eventsByDate
+            .filterKeys(month::contains)
+            .values
+            .sumOf(List<CalendarTaskEventUiState>::size)
+    }
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        color = if (selectedMonth) {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = BorderStroke(
+            1.dp,
+            if (selectedMonth) {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.82f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.58f)
+            }
         )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = month.month.getDisplayName(TextStyle.SHORT, Locale.ENGLISH).uppercase(),
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.8.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = month.month.getDisplayName(TextStyle.FULL, Locale.ENGLISH),
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Text(
+                    text = if (eventCount == 0) "Free" else "$eventCount",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                cells.chunked(7).forEach { week ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        week.forEach { cell ->
+                            MiniMonthDayCell(
+                                cell = cell,
+                                hasEvents = eventsByDate[cell.date].orEmpty().isNotEmpty(),
+                                isToday = cell.date == today,
+                                isSelected = cell.date == selectedDate,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniMonthDayCell(
+    cell: CalendarCellUiState,
+    hasEvents: Boolean,
+    isToday: Boolean,
+    isSelected: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val containerColor = when {
+        isSelected -> MaterialTheme.colorScheme.inverseSurface
+        isToday -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f)
+        hasEvents -> MaterialTheme.colorScheme.surfaceContainerHigh
+        else -> Color.Transparent
+    }
+    val contentColor = when {
+        isSelected -> MaterialTheme.colorScheme.inverseOnSurface
+        isToday -> MaterialTheme.colorScheme.onPrimaryContainer
+        cell.isInMonth -> MaterialTheme.colorScheme.onSurface
+        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.36f)
+    }
+
+    Box(
+        modifier = modifier.height(18.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        if (cell.isInMonth || isSelected || isToday || hasEvents) {
+            Surface(
+                modifier = Modifier.size(18.dp),
+                shape = CircleShape,
+                color = containerColor
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (cell.isInMonth) {
+                        Text(
+                            text = cell.date.dayOfMonth.toString(),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 9.sp),
+                            color = contentColor
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -454,259 +1014,116 @@ private fun CalendarWeekHeader() {
 }
 
 @Composable
-private fun CalendarMonthBoard(
-    month: YearMonth,
-    today: LocalDate,
-    selectedDate: LocalDate,
-    eventsByDate: Map<LocalDate, List<CalendarTaskEventUiState>>,
-    onSelectDate: (LocalDate) -> Unit,
-    onOpenDate: (LocalDate) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val cells = remember(month) { buildCalendarCells(month) }
-
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        cells.chunked(7).forEach { week ->
-            Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                week.forEach { cell ->
-                    CalendarDayCell(
-                        cell = cell,
-                        events = eventsByDate[cell.date].orEmpty(),
-                        today = today,
-                        isSelected = selectedDate == cell.date,
-                        onSelect = {
-                            if (selectedDate == cell.date) {
-                                onOpenDate(cell.date)
-                            } else {
-                                onSelectDate(cell.date)
-                            }
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CalendarDayCell(
-    cell: CalendarCellUiState,
-    events: List<CalendarTaskEventUiState>,
-    today: LocalDate,
-    isSelected: Boolean,
-    onSelect: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val isToday = cell.date == today
-    val containerColor by animateColorAsState(
-        targetValue = when {
-            isSelected -> MaterialTheme.colorScheme.inverseSurface
-            isToday -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f)
-            events.isNotEmpty() -> MaterialTheme.colorScheme.surface
-            else -> Color.Transparent
-        },
-        label = "calendarDayContainer"
-    )
-    val contentColor by animateColorAsState(
-        targetValue = when {
-            isSelected -> MaterialTheme.colorScheme.inverseOnSurface
-            isToday -> MaterialTheme.colorScheme.onPrimaryContainer
-            else -> MaterialTheme.colorScheme.onSurface
-        },
-        label = "calendarDayContent"
-    )
-    val borderColor by animateColorAsState(
-        targetValue = when {
-            isSelected -> MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.14f)
-            isToday -> MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-            cell.isInMonth && events.isNotEmpty() -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)
-            else -> Color.Transparent
-        },
-        label = "calendarDayBorder"
-    )
-
-    Column(
-        modifier = modifier
-            .clip(CalendarCellShape)
-            .background(containerColor)
-            .border(1.dp, borderColor, CalendarCellShape)
-            .clickable(onClick = onSelect)
-            .padding(8.dp)
-            .alpha(if (cell.isInMonth) 1f else 0.36f),
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
-        ) {
-            Text(
-                text = cell.date.dayOfMonth.toString(),
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = contentColor
-            )
-            if (events.isNotEmpty()) {
-                Text(
-                    text = events.size.toString(),
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = if (isSelected) {
-                        contentColor.copy(alpha = 0.72f)
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
-            }
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            events.take(3).forEach { event ->
-                val eventColor = calendarEventAccent(event = event, selected = isSelected)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .clip(CircleShape)
-                        .background(eventColor)
-                )
-            }
-
-            if (events.size > 3) {
-                Text(
-                    text = "+${events.size - 3}",
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                    color = if (isSelected) contentColor.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SelectedDayDock(
+private fun SelectedDayRibbon(
     date: LocalDate,
     events: List<CalendarTaskEventUiState>,
-    onOpenDay: () -> Unit,
-    onOpenTask: (String) -> Unit
+    onOpenDay: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.68f))
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.ENGLISH).uppercase(),
-                        style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.1.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = formatDockDate(date),
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                CalendarShortcutChip(
-                    label = "Open day",
-                    icon = Icons.Rounded.CalendarMonth,
-                    onClick = onOpenDay
+                Text(
+                    text = date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.ENGLISH).uppercase(),
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.9.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = formatSelectedRibbonDate(date),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
-            AnimatedContent(
-                targetState = date.toString(),
-                transitionSpec = {
-                    (fadeIn() + slideInVertically { it / 10 }) togetherWith
-                        (fadeOut() + slideOutVertically { -it / 10 }) using
-                        SizeTransform(clip = false)
-                },
-                label = "selectedDayDockContent"
-            ) { _ ->
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (events.isEmpty()) {
-                        Text(
-                            text = "No scheduled items for this day.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        events.take(3).forEach { event ->
-                            CalendarDockEventRow(
-                                event = event,
-                                onClick = { onOpenTask(event.taskId) }
-                            )
-                        }
-                    }
-                }
-            }
+            Text(
+                text = selectedRibbonSummary(events),
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            CalendarChromeIconButton(
+                imageVector = Icons.Rounded.CalendarMonth,
+                contentDescription = "Open day",
+                onClick = onOpenDay,
+                buttonSize = 40.dp
+            )
         }
     }
 }
 
 @Composable
-private fun CalendarDockEventRow(
+private fun CompactEventBadge(
     event: CalendarTaskEventUiState,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val tone = taskTone(event.type)
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Surface(
+        modifier = modifier,
+        shape = CircleShape,
+        color = tone.container,
+        border = BorderStroke(1.dp, tone.content.copy(alpha = 0.12f))
     ) {
-        Box(
+        Row(
             modifier = Modifier
-                .size(width = 10.dp, height = 34.dp)
+                .fillMaxWidth()
                 .clip(CircleShape)
-                .background(tone.content.copy(alpha = 0.88f))
-        )
-        Text(
-            text = formatEventTime(event),
-            modifier = Modifier.width(56.dp),
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = event.title,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                text = formatEventTime(event),
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                color = tone.content
             )
             Text(
-                text = calendarEventMeta(event),
+                text = event.title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = tone.content
+            )
+        }
+    }
+}
+
+@Composable
+private fun CalendarDayTopBar(
+    onNavigateBack: () -> Unit
+) {
+    AuraGradientTopBarContainer(
+        style = AuraGradientTopBarStyle.Linear,
+        bottomFadePadding = 12.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CalendarChromeIconButton(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = "Back",
+                onClick = onNavigateBack
             )
         }
     }
@@ -757,10 +1174,11 @@ private fun CalendarDayHero(
                 }
 
                 if (!isToday) {
-                    CalendarShortcutChip(
+                    CalendarActionChip(
                         label = "Today",
                         icon = Icons.Rounded.Today,
-                        onClick = onJumpToToday
+                        onClick = onJumpToToday,
+                        compact = true
                     )
                 }
             }
@@ -776,15 +1194,17 @@ private fun CalendarDayHero(
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                CalendarShortcutChip(
+                CalendarActionChip(
                     label = "Previous",
                     icon = Icons.AutoMirrored.Rounded.ArrowBack,
-                    onClick = onPreviousDay
+                    onClick = onPreviousDay,
+                    compact = true
                 )
-                CalendarShortcutChip(
+                CalendarActionChip(
                     label = "Next",
                     icon = Icons.AutoMirrored.Rounded.ArrowForward,
-                    onClick = onNextDay
+                    onClick = onNextDay,
+                    compact = true
                 )
             }
         }
@@ -813,7 +1233,10 @@ private fun CalendarDayEmptyState(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 modifier = Modifier.size(60.dp)
             ) {
-                Box(contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(
                         imageVector = Icons.Rounded.Schedule,
                         contentDescription = null,
@@ -868,7 +1291,10 @@ private fun CalendarAgendaItem(
                 color = tone.container,
                 modifier = Modifier.size(56.dp)
             ) {
-                Box(contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(
                         imageVector = taskTypeIcon(event.type),
                         contentDescription = null,
@@ -914,10 +1340,11 @@ private fun CalendarAgendaItem(
 }
 
 @Composable
-private fun CalendarShortcutChip(
+private fun CalendarActionChip(
     label: String,
     icon: ImageVector,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    compact: Boolean = false
 ) {
     Surface(
         shape = CircleShape,
@@ -928,7 +1355,10 @@ private fun CalendarShortcutChip(
             modifier = Modifier
                 .clip(CircleShape)
                 .clickable(onClick = onClick)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(
+                    horizontal = if (compact) 11.dp else 12.dp,
+                    vertical = if (compact) 8.dp else 10.dp
+                ),
             horizontalArrangement = Arrangement.spacedBy(7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -936,7 +1366,7 @@ private fun CalendarShortcutChip(
                 imageVector = icon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(if (compact) 15.dp else 16.dp)
             )
             Text(
                 text = label,
@@ -952,7 +1382,7 @@ private fun CalendarChromeIconButton(
     imageVector: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
-    buttonSize: androidx.compose.ui.unit.Dp = 48.dp
+    buttonSize: Dp = 48.dp
 ) {
     Surface(
         shape = CircleShape,
@@ -1012,12 +1442,142 @@ private fun YearMonth.contains(date: LocalDate): Boolean {
     return year == date.year && month == date.month
 }
 
-private fun preferredDateForMonth(month: YearMonth, today: LocalDate): LocalDate {
-    return if (month.contains(today)) today else month.atDay(1)
+private fun preferredSelectionForMonth(
+    month: YearMonth,
+    selectedDate: LocalDate,
+    eventsByDate: Map<LocalDate, List<CalendarTaskEventUiState>>
+): LocalDate {
+    if (month.contains(selectedDate)) return selectedDate
+    return eventsByDate.keys
+        .filter(month::contains)
+        .minOrNull()
+        ?: month.atDay(1)
+}
+
+private fun shiftDateByMode(
+    date: LocalDate,
+    mode: CalendarViewMode,
+    amount: Long
+): LocalDate {
+    return when (mode) {
+        CalendarViewMode.MONTH -> date.plusMonths(amount)
+        CalendarViewMode.WEEK -> date.plusWeeks(amount)
+        CalendarViewMode.YEAR -> date.plusYears(amount)
+    }
+}
+
+private fun weekDates(anchorDate: LocalDate): List<LocalDate> {
+    val start = anchorDate.minusDays((anchorDate.dayOfWeek.value - 1).toLong())
+    return List(7) { offset -> start.plusDays(offset.toLong()) }
 }
 
 private fun parseCalendarDate(value: String): LocalDate {
     return runCatching { LocalDate.parse(value) }.getOrElse { LocalDate.now() }
+}
+
+private fun formatCalendarPeriodLabel(
+    viewMode: CalendarViewMode,
+    anchorDate: LocalDate
+): String {
+    return when (viewMode) {
+        CalendarViewMode.MONTH -> DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH).format(anchorDate)
+        CalendarViewMode.WEEK -> formatWeekRangeLabel(anchorDate)
+        CalendarViewMode.YEAR -> anchorDate.year.toString()
+    }
+}
+
+private fun formatCalendarPeriodSummary(
+    viewMode: CalendarViewMode,
+    anchorDate: LocalDate,
+    eventsByDate: Map<LocalDate, List<CalendarTaskEventUiState>>
+): String {
+    return when (viewMode) {
+        CalendarViewMode.MONTH -> {
+            val month = YearMonth.from(anchorDate)
+            val totalEvents = eventsByDate
+                .filterKeys(month::contains)
+                .values
+                .sumOf(List<CalendarTaskEventUiState>::size)
+            val activeDays = eventsByDate.keys.count(month::contains)
+            formatPeriodSummary(totalEvents, activeDays, "days")
+        }
+        CalendarViewMode.WEEK -> {
+            val dates = weekDates(anchorDate)
+            val totalEvents = dates.sumOf { date -> eventsByDate[date].orEmpty().size }
+            val activeDays = dates.count { date -> eventsByDate[date].orEmpty().isNotEmpty() }
+            formatPeriodSummary(totalEvents, activeDays, "days")
+        }
+        CalendarViewMode.YEAR -> {
+            val totalEvents = eventsByDate
+                .filterKeys { date -> date.year == anchorDate.year }
+                .values
+                .sumOf(List<CalendarTaskEventUiState>::size)
+            val activeMonths = eventsByDate.keys
+                .filter { date -> date.year == anchorDate.year }
+                .map(LocalDate::getMonthValue)
+                .distinct()
+                .size
+            formatPeriodSummary(totalEvents, activeMonths, "months")
+        }
+    }
+}
+
+private fun formatPeriodSummary(
+    totalEvents: Int,
+    activeUnits: Int,
+    unitLabel: String
+): String {
+    return when {
+        totalEvents == 0 -> "No scheduled items"
+        totalEvents == 1 -> "1 scheduled item"
+        else -> "$totalEvents scheduled items across $activeUnits $unitLabel"
+    }
+}
+
+private fun formatWeekRangeLabel(anchorDate: LocalDate): String {
+    val dates = weekDates(anchorDate)
+    val start = dates.first()
+    val end = dates.last()
+
+    return when {
+        start.year != end.year -> {
+            "${start.dayOfMonth} ${start.month.getDisplayName(TextStyle.SHORT, Locale.ENGLISH)} - " +
+                "${end.dayOfMonth} ${end.month.getDisplayName(TextStyle.SHORT, Locale.ENGLISH)} ${end.year}"
+        }
+        start.month != end.month -> {
+            "${start.dayOfMonth} ${start.month.getDisplayName(TextStyle.SHORT, Locale.ENGLISH)} - " +
+                "${end.dayOfMonth} ${end.month.getDisplayName(TextStyle.SHORT, Locale.ENGLISH)} ${end.year}"
+        }
+        else -> {
+            "${start.dayOfMonth}-${end.dayOfMonth} ${end.month.getDisplayName(TextStyle.SHORT, Locale.ENGLISH)} ${end.year}"
+        }
+    }
+}
+
+private fun formatWeekRowDate(date: LocalDate): String {
+    val formatter = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.ENGLISH)
+    return formatter.format(date)
+}
+
+private fun weekRowSummary(events: List<CalendarTaskEventUiState>): String {
+    return when {
+        events.isEmpty() -> "No scheduled items"
+        events.size == 1 -> "${calendarEventMeta(events.first())} at ${formatEventTime(events.first())}"
+        else -> "${events.size} scheduled items"
+    }
+}
+
+private fun selectedRibbonSummary(events: List<CalendarTaskEventUiState>): String {
+    return when {
+        events.isEmpty() -> "Free"
+        events.size == 1 -> formatEventTime(events.first())
+        else -> "${events.size} items"
+    }
+}
+
+private fun formatSelectedRibbonDate(date: LocalDate): String {
+    val formatter = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
+    return formatter.format(date)
 }
 
 private fun formatDockDate(date: LocalDate): String {
