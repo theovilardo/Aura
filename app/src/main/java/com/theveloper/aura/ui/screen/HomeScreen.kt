@@ -275,7 +275,7 @@ private fun HomeTopBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Aura",
+                    text = "AURA",
                     style = auraWordmarkStyle,
                     color = MaterialTheme.colorScheme.onBackground
                 )
