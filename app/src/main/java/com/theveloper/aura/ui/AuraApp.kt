@@ -19,6 +19,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -126,10 +128,14 @@ private const val TASKS_ROUTE = "tasks"
 private const val HABITS_ROUTE = "habits"
 private const val CALENDAR_DAY_BASE_ROUTE = "calendar_day"
 private const val CALENDAR_DAY_ROUTE = "$CALENDAR_DAY_BASE_ROUTE/{date}"
-private const val TASK_DETAIL_ROUTE = "task_detail/{taskId}"
-private const val TASK_EDIT_ROUTE = "task_detail_edit/{taskId}"
-private const val TASK_NOTE_READER_ROUTE = "task_detail_note/{taskId}/{componentId}"
-private const val TASK_NOTE_EDITOR_ROUTE = "task_detail_edit_note/{taskId}/{componentId}"
+private const val TASK_DETAIL_BASE_ROUTE = "task_detail"
+private const val TASK_DETAIL_ROUTE = "$TASK_DETAIL_BASE_ROUTE/{taskId}"
+private const val TASK_EDIT_BASE_ROUTE = "task_detail_edit"
+private const val TASK_EDIT_ROUTE = "$TASK_EDIT_BASE_ROUTE/{taskId}"
+private const val TASK_NOTE_READER_BASE_ROUTE = "task_detail_note"
+private const val TASK_NOTE_READER_ROUTE = "$TASK_NOTE_READER_BASE_ROUTE/{taskId}/{componentId}"
+private const val TASK_NOTE_EDITOR_BASE_ROUTE = "task_detail_edit_note"
+private const val TASK_NOTE_EDITOR_ROUTE = "$TASK_NOTE_EDITOR_BASE_ROUTE/{taskId}/{componentId}"
 private const val SETTINGS_ROUTE = "settings"
 private const val SETTINGS_INTELLIGENCE_ROUTE = "settings/intelligence"
 private const val SETTINGS_INTELLIGENCE_APIS_ROUTE = "settings/intelligence/apis"
@@ -141,8 +147,8 @@ private const val CREATE_TASK_BASE_ROUTE = "create_task"
 private const val CREATE_TASK_ROUTE =
     "$CREATE_TASK_BASE_ROUTE?mode={mode}&input={input}&autoSubmit={autoSubmit}"
 private const val ROOT_TRANSITION_DURATION_MS = 430
-private const val SECONDARY_TRANSITION_DURATION_MS = 380
-private const val DEBUG_FADE_TRANSITION_DURATION_MS = 90
+private const val STACK_TRANSITION_DURATION_MS = 400
+private const val MODAL_TRANSITION_DURATION_MS = 420
 private const val CREATE_ITEM_KEY = "create"
 
 val LocalAuraBottomBarHeight = staticCompositionLocalOf<Dp> { 0.dp }
@@ -348,13 +354,6 @@ fun AuraApp() {
 private fun SecondaryScreenFrame(
     content: @Composable () -> Unit
 ) {
-    if (BuildConfig.DEBUG) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            content()
-        }
-        return
-    }
-
     var entered by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { entered = true }
     val scale by animateFloatAsState(
@@ -1087,97 +1086,246 @@ private fun buildCalendarDayRoute(date: LocalDate): String {
     return "$CALENDAR_DAY_BASE_ROUTE/${Uri.encode(date.toString())}"
 }
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraEnterTransition(): EnterTransition {
-    if (BuildConfig.DEBUG) {
-        return fadeIn(animationSpec = tween(durationMillis = DEBUG_FADE_TRANSITION_DURATION_MS))
+private enum class AuraRoutePresentation {
+    ROOT,
+    STACK,
+    MODAL
+}
+
+private data class AuraRouteMotion(
+    val presentation: AuraRoutePresentation,
+    val depth: Int,
+    val rootIndex: Int? = null
+)
+
+private fun routeMotion(route: String): AuraRouteMotion {
+    val rootIndex = rootRouteIndex(route)
+    if (rootIndex != null) {
+        return AuraRouteMotion(
+            presentation = AuraRoutePresentation.ROOT,
+            depth = 0,
+            rootIndex = rootIndex
+        )
     }
 
+    return when (route) {
+        CREATE_TASK_BASE_ROUTE -> AuraRouteMotion(AuraRoutePresentation.MODAL, depth = 1)
+        HABITS_ROUTE,
+        CALENDAR_DAY_BASE_ROUTE,
+        TASK_DETAIL_BASE_ROUTE,
+        SETTINGS_INTELLIGENCE_ROUTE,
+        SETTINGS_CLOUD_ROUTE,
+        SETTINGS_ECOSYSTEM_ROUTE,
+        SETTINGS_DEVELOPER_ROUTE -> AuraRouteMotion(AuraRoutePresentation.STACK, depth = 1)
+
+        TASK_NOTE_READER_BASE_ROUTE,
+        TASK_EDIT_BASE_ROUTE,
+        SETTINGS_INTELLIGENCE_APIS_ROUTE,
+        SETTINGS_INTELLIGENCE_LIBRARY_ROUTE -> AuraRouteMotion(AuraRoutePresentation.STACK, depth = 2)
+
+        TASK_NOTE_EDITOR_BASE_ROUTE -> AuraRouteMotion(AuraRoutePresentation.STACK, depth = 3)
+        else -> AuraRouteMotion(AuraRoutePresentation.STACK, depth = 1)
+    }
+}
+
+private fun stackPushOffsetFraction(depth: Int): Float {
+    return when {
+        depth >= 3 -> 0.66f
+        depth == 2 -> 0.78f
+        else -> 0.9f
+    }
+}
+
+private fun stackParallaxFraction(depth: Int): Float {
+    return when {
+        depth >= 3 -> 0.08f
+        depth == 2 -> 0.12f
+        else -> 0.18f
+    }
+}
+
+private fun stackPopExitFraction(depth: Int): Float {
+    return when {
+        depth >= 3 -> 0.72f
+        depth == 2 -> 0.84f
+        else -> 0.94f
+    }
+}
+
+private fun incomingStackScale(depth: Int): Float {
+    return when {
+        depth >= 3 -> 0.95f
+        depth == 2 -> 0.965f
+        else -> 0.98f
+    }
+}
+
+private fun outgoingStackScale(depth: Int): Float {
+    return when {
+        depth >= 3 -> 0.91f
+        depth == 2 -> 0.935f
+        else -> 0.96f
+    }
+}
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraEnterTransition(): EnterTransition {
     val initialRoute = normalizedRoute(initialState.destination.route)
     val targetRoute = normalizedRoute(targetState.destination.route)
+    val targetMotion = routeMotion(targetRoute)
     val rootDirection = rootSlideDirection(initialRoute, targetRoute)
 
     return when {
         rootDirection != null -> slideInHorizontally(
             animationSpec = tween(durationMillis = ROOT_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
             initialOffsetX = { fullWidth -> if (rootDirection > 0) fullWidth else -fullWidth }
-        ) + fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 70))
+        ) + fadeIn(animationSpec = tween(durationMillis = 240, delayMillis = 70)) +
+            scaleIn(
+                animationSpec = tween(durationMillis = ROOT_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+                initialScale = 0.96f
+            )
 
-        isSecondaryRoute(targetRoute) -> slideInHorizontally(
-            animationSpec = tween(durationMillis = SECONDARY_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
-            initialOffsetX = { fullWidth -> (fullWidth * 0.92f).toInt() }
-        ) + fadeIn(animationSpec = tween(durationMillis = 240, delayMillis = 50))
+        targetMotion.presentation == AuraRoutePresentation.MODAL -> slideInVertically(
+            animationSpec = tween(durationMillis = MODAL_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+            initialOffsetY = { fullHeight -> (fullHeight * 0.16f).toInt() }
+        ) + fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 40)) +
+            scaleIn(
+                animationSpec = tween(durationMillis = MODAL_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+                initialScale = 0.97f
+            )
+
+        targetMotion.presentation == AuraRoutePresentation.STACK -> slideInHorizontally(
+            animationSpec = tween(durationMillis = STACK_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+            initialOffsetX = { fullWidth ->
+                (fullWidth * stackPushOffsetFraction(targetMotion.depth)).toInt()
+            }
+        ) + fadeIn(animationSpec = tween(durationMillis = 240, delayMillis = 45)) +
+            scaleIn(
+                animationSpec = tween(durationMillis = STACK_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+                initialScale = incomingStackScale(targetMotion.depth)
+            )
 
         else -> fadeIn(animationSpec = tween(durationMillis = 180))
     }
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraExitTransition(): ExitTransition {
-    if (BuildConfig.DEBUG) {
-        return fadeOut(animationSpec = tween(durationMillis = DEBUG_FADE_TRANSITION_DURATION_MS))
-    }
-
     val initialRoute = normalizedRoute(initialState.destination.route)
     val targetRoute = normalizedRoute(targetState.destination.route)
+    val targetMotion = routeMotion(targetRoute)
+    val initialMotion = routeMotion(initialRoute)
     val rootDirection = rootSlideDirection(initialRoute, targetRoute)
+    val stackDepth = maxOf(initialMotion.depth, targetMotion.depth)
 
     return when {
         rootDirection != null -> slideOutHorizontally(
             animationSpec = tween(durationMillis = ROOT_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
             targetOffsetX = { fullWidth -> if (rootDirection > 0) -fullWidth else fullWidth }
-        ) + fadeOut(animationSpec = tween(durationMillis = 220))
+        ) + fadeOut(animationSpec = tween(durationMillis = 220)) +
+            scaleOut(
+                animationSpec = tween(durationMillis = ROOT_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+                targetScale = 0.94f
+            )
 
-        isSecondaryRoute(targetRoute) -> slideOutHorizontally(
-            animationSpec = tween(durationMillis = SECONDARY_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
-            targetOffsetX = { fullWidth -> -(fullWidth / 4) }
-        ) + fadeOut(animationSpec = tween(durationMillis = 200))
+        targetMotion.presentation == AuraRoutePresentation.MODAL -> slideOutVertically(
+            animationSpec = tween(durationMillis = MODAL_TRANSITION_DURATION_MS, easing = EaseOutCubic),
+            targetOffsetY = { fullHeight -> -(fullHeight * 0.06f).toInt() }
+        ) + fadeOut(animationSpec = tween(durationMillis = 180)) +
+            scaleOut(
+                animationSpec = tween(durationMillis = MODAL_TRANSITION_DURATION_MS, easing = EaseOutCubic),
+                targetScale = 0.985f
+            )
+
+        targetMotion.presentation == AuraRoutePresentation.STACK -> slideOutHorizontally(
+            animationSpec = tween(durationMillis = STACK_TRANSITION_DURATION_MS, easing = EaseOutCubic),
+            targetOffsetX = { fullWidth ->
+                -(fullWidth * stackParallaxFraction(stackDepth)).toInt()
+            }
+        ) + fadeOut(animationSpec = tween(durationMillis = 190)) +
+            scaleOut(
+                animationSpec = tween(durationMillis = STACK_TRANSITION_DURATION_MS, easing = EaseOutCubic),
+                targetScale = outgoingStackScale(stackDepth)
+            )
 
         else -> fadeOut(animationSpec = tween(durationMillis = 180))
     }
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraPopEnterTransition(): EnterTransition {
-    if (BuildConfig.DEBUG) {
-        return fadeIn(animationSpec = tween(durationMillis = DEBUG_FADE_TRANSITION_DURATION_MS))
-    }
-
     val initialRoute = normalizedRoute(initialState.destination.route)
     val targetRoute = normalizedRoute(targetState.destination.route)
+    val initialMotion = routeMotion(initialRoute)
+    val targetMotion = routeMotion(targetRoute)
     val rootDirection = rootSlideDirection(targetRoute, initialRoute)
 
     return when {
         rootDirection != null -> slideInHorizontally(
             animationSpec = tween(durationMillis = ROOT_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
             initialOffsetX = { fullWidth -> if (rootDirection > 0) -fullWidth else fullWidth }
-        ) + fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 70))
+        ) + fadeIn(animationSpec = tween(durationMillis = 240, delayMillis = 70)) +
+            scaleIn(
+                animationSpec = tween(durationMillis = ROOT_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+                initialScale = 0.96f
+            )
 
-        isSecondaryRoute(initialRoute) -> slideInHorizontally(
-            animationSpec = tween(durationMillis = SECONDARY_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
-            initialOffsetX = { fullWidth -> -(fullWidth / 3) }
-        ) + fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 40))
+        initialMotion.presentation == AuraRoutePresentation.MODAL -> slideInVertically(
+            animationSpec = tween(durationMillis = MODAL_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+            initialOffsetY = { fullHeight -> -(fullHeight * 0.06f).toInt() }
+        ) + fadeIn(animationSpec = tween(durationMillis = 200, delayMillis = 30)) +
+            scaleIn(
+                animationSpec = tween(durationMillis = MODAL_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+                initialScale = 0.985f
+            )
+
+        initialMotion.presentation == AuraRoutePresentation.STACK -> slideInHorizontally(
+            animationSpec = tween(durationMillis = STACK_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+            initialOffsetX = { fullWidth ->
+                -(fullWidth * stackParallaxFraction(targetMotion.depth)).toInt()
+            }
+        ) + fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 35)) +
+            scaleIn(
+                animationSpec = tween(durationMillis = STACK_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+                initialScale = outgoingStackScale(targetMotion.depth)
+            )
 
         else -> fadeIn(animationSpec = tween(durationMillis = 180))
     }
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.auraPopExitTransition(): ExitTransition {
-    if (BuildConfig.DEBUG) {
-        return fadeOut(animationSpec = tween(durationMillis = DEBUG_FADE_TRANSITION_DURATION_MS))
-    }
-
     val initialRoute = normalizedRoute(initialState.destination.route)
     val targetRoute = normalizedRoute(targetState.destination.route)
+    val initialMotion = routeMotion(initialRoute)
     val rootDirection = rootSlideDirection(targetRoute, initialRoute)
 
     return when {
         rootDirection != null -> slideOutHorizontally(
             animationSpec = tween(durationMillis = ROOT_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
             targetOffsetX = { fullWidth -> if (rootDirection > 0) fullWidth else -fullWidth }
-        ) + fadeOut(animationSpec = tween(durationMillis = 220))
+        ) + fadeOut(animationSpec = tween(durationMillis = 220)) +
+            scaleOut(
+                animationSpec = tween(durationMillis = ROOT_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
+                targetScale = 0.94f
+            )
 
-        isSecondaryRoute(initialRoute) -> slideOutHorizontally(
-            animationSpec = tween(durationMillis = SECONDARY_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
-            targetOffsetX = { fullWidth -> fullWidth }
-        ) + fadeOut(animationSpec = tween(durationMillis = 200))
+        initialMotion.presentation == AuraRoutePresentation.MODAL -> slideOutVertically(
+            animationSpec = tween(durationMillis = MODAL_TRANSITION_DURATION_MS, easing = EaseOutCubic),
+            targetOffsetY = { fullHeight -> (fullHeight * 0.14f).toInt() }
+        ) + fadeOut(animationSpec = tween(durationMillis = 180)) +
+            scaleOut(
+                animationSpec = tween(durationMillis = MODAL_TRANSITION_DURATION_MS, easing = EaseOutCubic),
+                targetScale = 0.97f
+            )
+
+        initialMotion.presentation == AuraRoutePresentation.STACK -> slideOutHorizontally(
+            animationSpec = tween(durationMillis = STACK_TRANSITION_DURATION_MS, easing = EaseOutCubic),
+            targetOffsetX = { fullWidth ->
+                (fullWidth * stackPopExitFraction(initialMotion.depth)).toInt()
+            }
+        ) + fadeOut(animationSpec = tween(durationMillis = 190)) +
+            scaleOut(
+                animationSpec = tween(durationMillis = STACK_TRANSITION_DURATION_MS, easing = EaseOutCubic),
+                targetScale = incomingStackScale(initialMotion.depth)
+            )
 
         else -> fadeOut(animationSpec = tween(durationMillis = 180))
     }
@@ -1189,8 +1337,6 @@ private fun normalizedRoute(route: String?): String {
         ?.replace(Regex("/\\{[^}]+\\}"), "")
         .orEmpty()
 }
-
-private fun isSecondaryRoute(route: String): Boolean = route.isNotBlank() && rootRouteIndex(route) == null
 
 private fun rootSlideDirection(initialRoute: String, targetRoute: String): Int? {
     val initialIndex = rootRouteIndex(initialRoute) ?: return null
