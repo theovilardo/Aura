@@ -23,6 +23,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -50,7 +51,7 @@ fun DataFeedComponent(
         subtitle = uiState.lastUpdatedAt?.let(::feedTimestampText) ?: "Waiting for the first sync",
         trailing = {
             Surface(
-                modifier = Modifier.clickable { viewModel.refreshFeed() },
+                modifier = Modifier.clip(CircleShape).clickable { viewModel.refreshFeed() },
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.surface
             ) {
@@ -102,7 +103,7 @@ fun DataFeedComponent(
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
                         Text(
-                            text = uiState.lastUpdatedAt?.let(::feedTimestampText) ?: "Sin cache disponible",
+                            text = uiState.lastUpdatedAt?.let(::feedTimestampText) ?: "No cache available",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.72f)
                         )
@@ -112,8 +113,8 @@ fun DataFeedComponent(
 
             DataFeedStatus.STALE -> {
                 FeedValueBlock(
-                    value = uiState.lastValue ?: config.lastValue ?: "Sin cache disponible",
-                    supporting = "Mostrando el ultimo valor conocido"
+                    value = uiState.lastValue ?: config.lastValue ?: "No cache available",
+                    supporting = "Showing the last known value"
                 )
             }
         }

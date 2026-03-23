@@ -24,7 +24,7 @@ private fun auraLocalFont(
         resId = AuraLocalFontResId,
         weight = weight,
         style = style,
-        loadingStrategy = FontLoadingStrategy.Blocking,
+        loadingStrategy = FontLoadingStrategy.Async,
         variationSettings = FontVariation.Settings(
             weight = weight,
             style = style

@@ -50,7 +50,7 @@ class ApplySuggestionUseCase @Inject constructor(
             SuggestionType.RESURRECT_TASK -> {
                 val newTargetDate = System.currentTimeMillis() + (1000 * 60 * 60 * 24) // Schedule it for tomorrow
                 taskRepository.updateTask(task.copy(targetDate = newTargetDate))
-                // F5-09 mentions 'crea Reminder nuevo' and modifies Task. 
+                // F5-09 mentions 'create new Reminder' and modifies Task. 
             }
             SuggestionType.SIMPLIFY_TASK -> {
                 // Reduces components: For example, remove checklist

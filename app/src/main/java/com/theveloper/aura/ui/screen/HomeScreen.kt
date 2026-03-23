@@ -116,16 +116,16 @@ fun HomeScreen(
     pendingDeleteTask?.let { task ->
         AlertDialog(
             onDismissRequest = { pendingDeleteTask = null },
-            title = { Text("Eliminar tarea") },
-            text = { Text("Se va a eliminar \"${task.title}\" de forma permanente.") },
+            title = { Text("Delete task") },
+            text = { Text("\"${task.title}\" will be permanently deleted.") },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.deleteTask(task.id)
                     pendingDeleteTask = null
-                }) { Text("Eliminar") }
+                }) { Text("Delete") }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDeleteTask = null }) { Text("Cancelar") }
+                TextButton(onClick = { pendingDeleteTask = null }) { Text("Cancel") }
             }
         )
     }
@@ -161,7 +161,7 @@ fun HomeScreen(
                     bottom = innerPadding.calculateBottomPadding() + 216.dp
                 )
             ) {
-                item {
+                item(key = "tasks_overview", contentType = "overview") {
                     TasksOverviewRow(
                         activeCount = activeCount,
                         completedCount = completedCount,
@@ -172,23 +172,38 @@ fun HomeScreen(
                 }
 
                 when {
-                    uiState.errorMessage != null && uiState.tasks.isEmpty() -> item {
+                    uiState.errorMessage != null && uiState.tasks.isEmpty() -> item(
+                        key = "tasks_error_empty",
+                        contentType = "state"
+                    ) {
                         TasksStatePanel("Couldn't load tasks", uiState.errorMessage.orEmpty())
                     }
-                    uiState.tasks.isEmpty() -> item {
+                    uiState.tasks.isEmpty() -> item(
+                        key = "tasks_empty",
+                        contentType = "state"
+                    ) {
                         TasksStatePanel(
                             "No tasks yet",
                             "Use the quick prompt or the add circle below to make the first one."
                         )
                     }
-                    visibleTasks.isEmpty() -> item {
+                    visibleTasks.isEmpty() -> item(
+                        key = "tasks_no_matches",
+                        contentType = "state"
+                    ) {
                         TasksStatePanel("No matches", "Try a different filter or create a fresh task.")
                     }
                     else -> {
                         if (uiState.errorMessage != null) {
-                            item { TasksStatePanel("Sync needs attention", uiState.errorMessage.orEmpty()) }
+                            item(key = "tasks_sync_warning", contentType = "state") {
+                                TasksStatePanel("Sync needs attention", uiState.errorMessage.orEmpty())
+                            }
                         }
-                        items(visibleTasks, key = { it.id }) { task ->
+                        items(
+                            items = visibleTasks,
+                            key = { it.id },
+                            contentType = { "task_card" }
+                        ) { task ->
                             CompactTaskBoardCard(
                                 task = task,
                                 onClick = { onNavigateToTaskDetail(task.id) },
@@ -260,7 +275,7 @@ private fun HomeTopBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Aura",
+                    text = "AURA",
                     style = auraWordmarkStyle,
                     color = MaterialTheme.colorScheme.onBackground
                 )
@@ -292,7 +307,7 @@ private fun rememberAuraWordmarkStyle(): TextStyle {
                     resId = R.font.google_sans_flex_variable_local,
                     weight = FontWeight(760),
                     style = FontStyle.Normal,
-                    loadingStrategy = FontLoadingStrategy.Blocking,
+                    loadingStrategy = FontLoadingStrategy.Async,
                     variationSettings = FontVariation.Settings(
                         FontVariation.weight(636),
                         FontVariation.width(152f),
@@ -515,30 +530,32 @@ private fun TaskFilterRow(
             horizontal = 20.dp
         )
     ) {
-        TaskFilter.entries.forEach { filter ->
+        items(
+            items = TaskFilter.entries,
+            key = { it.key },
+            contentType = { "task_filter" }
+        ) { filter ->
             val active = filter == selected
-            item {
-                Surface(
-                    shape = CircleShape,
+            Surface(
+                shape = CircleShape,
+                color = if (active) MaterialTheme.colorScheme.inverseSurface
+                else MaterialTheme.colorScheme.surface,
+                border = BorderStroke(
+                    width = 1.dp,
                     color = if (active) MaterialTheme.colorScheme.inverseSurface
-                    else MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(
-                        width = 1.dp,
-                        color = if (active) MaterialTheme.colorScheme.inverseSurface
-                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
-                    ),
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .clickable { onSelect(filter) }
-                ) {
-                    Text(
-                        text = filter.label,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = if (active) MaterialTheme.colorScheme.inverseOnSurface
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
+                ),
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable { onSelect(filter) }
+            ) {
+                Text(
+                    text = filter.label,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (active) MaterialTheme.colorScheme.inverseOnSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

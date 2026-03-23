@@ -113,6 +113,9 @@ interface HabitSignalDao {
     @Query("SELECT * FROM habit_signals WHERE task_id = :taskId")
     suspend fun getSignalsForTask(taskId: String): List<HabitSignalEntity>
 
+    @Query("SELECT * FROM habit_signals WHERE task_id IN (:taskIds)")
+    suspend fun getSignalsForTasks(taskIds: List<String>): List<HabitSignalEntity>
+
     @Query("SELECT * FROM habit_signals WHERE hour_of_day = :hourOfDay AND day_of_week = :dayOfWeek")
     suspend fun getSignalsByTimeWindow(hourOfDay: Int, dayOfWeek: Int): List<HabitSignalEntity>
 }
@@ -238,4 +241,25 @@ interface ComponentRuleDao {
 
     @Delete
     suspend fun deleteRule(rule: ComponentRuleEntity)
+}
+
+@Dao
+interface PairedDeviceDao {
+    @Query("SELECT * FROM paired_devices ORDER BY last_seen_at DESC")
+    suspend fun getAll(): List<PairedDeviceEntity>
+
+    @Query("SELECT * FROM paired_devices ORDER BY last_seen_at DESC")
+    fun observeAll(): Flow<List<PairedDeviceEntity>>
+
+    @Query("SELECT * FROM paired_devices WHERE id = :deviceId")
+    suspend fun getById(deviceId: String): PairedDeviceEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(device: PairedDeviceEntity)
+
+    @Query("UPDATE paired_devices SET last_seen_at = :timestamp WHERE id = :deviceId")
+    suspend fun updateLastSeen(deviceId: String, timestamp: Long)
+
+    @Query("DELETE FROM paired_devices WHERE id = :deviceId")
+    suspend fun delete(deviceId: String)
 }

@@ -12,6 +12,14 @@ class AuraApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
+    @Inject
+    lateinit var ecosystemLifecycleManager: com.theveloper.aura.engine.ecosystem.EcosystemLifecycleManager
+
+    override fun onCreate() {
+        super.onCreate()
+        ecosystemLifecycleManager.attach()
+    }
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)

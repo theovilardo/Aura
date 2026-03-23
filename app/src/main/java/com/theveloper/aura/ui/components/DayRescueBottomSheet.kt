@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.theveloper.aura.domain.model.Suggestion
@@ -26,6 +27,7 @@ fun DayRescueBottomSheet(
     
     // Day rescue items mapped from suggestions
     var selectedSuggestions by remember { mutableStateOf(suggestions.toSet()) }
+    val taskById = remember(tasks) { tasks.associateBy(Task::id) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -46,7 +48,7 @@ fun DayRescueBottomSheet(
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    text = "Parece que el día se complicó. Hemos reorganizado tus tareas según tus patrones y el tiempo restante.",
+                    text = "It seems the day got complicated. We have reorganized your tasks based on your patterns and the remaining time.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -60,13 +62,17 @@ fun DayRescueBottomSheet(
                 contentPadding = PaddingValues(horizontal = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(suggestions, key = { it.id }) { suggestion ->
+                items(
+                    items = suggestions,
+                    key = { it.id },
+                    contentType = { "day_rescue_suggestion" }
+                ) { suggestion ->
                     val isChecked = selectedSuggestions.contains(suggestion)
-                    val task = tasks.find { it.id == suggestion.taskId }
+                    val task = taskById[suggestion.taskId]
                     
                     if (task != null) {
                         Surface(
-                            modifier = Modifier.fillMaxWidth().clickable { 
+                            modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { 
                                 if (isChecked) selectedSuggestions = selectedSuggestions - suggestion else selectedSuggestions = selectedSuggestions + suggestion 
                             },
                             shape = MaterialTheme.shapes.medium,
@@ -111,13 +117,13 @@ fun DayRescueBottomSheet(
                     onClick = onDismiss,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("Cancelar")
+                    Text("Cancel")
                 }
                 Button(
                     onClick = { onApply(selectedSuggestions.toList()) },
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("Aplicar selección")
+                    Text("Apply selection")
                 }
             }
         }

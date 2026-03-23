@@ -35,6 +35,11 @@ class HabitRepositoryImpl @Inject constructor(
         return habitSignalDao.getSignalsForTask(taskId)
     }
 
+    override suspend fun getSignalsForTasks(taskIds: Collection<String>): List<HabitSignalEntity> {
+        if (taskIds.isEmpty()) return emptyList()
+        return habitSignalDao.getSignalsForTasks(taskIds.toList())
+    }
+
     override suspend fun getSignalsByTimeWindow(hourOfDay: Int, dayOfWeek: Int): List<HabitSignalEntity> {
         return habitSignalDao.getSignalsByTimeWindow(hourOfDay, dayOfWeek)
     }

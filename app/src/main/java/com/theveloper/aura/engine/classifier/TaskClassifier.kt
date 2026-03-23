@@ -1,10 +1,15 @@
 package com.theveloper.aura.engine.classifier
 
+import com.theveloper.aura.data.repository.AppSettingsRepository
 import com.theveloper.aura.domain.model.MemorySlot
 import com.theveloper.aura.domain.repository.MemoryRepository
 import com.theveloper.aura.engine.dsl.TaskDSLValidator
 import com.theveloper.aura.engine.llm.LLMServiceFactory
+import com.theveloper.aura.engine.llm.ResolvedLLMRoute
 import com.theveloper.aura.engine.memory.MemoryContextBuilder
+import com.theveloper.aura.engine.provider.LLMServiceAdapter
+import com.theveloper.aura.engine.router.ExecutionRequest
+import com.theveloper.aura.engine.router.ExecutionRouter
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,7 +23,9 @@ class TaskClassifier @Inject constructor(
     private val completenessValidator: CompletenessValidator,
     private val qualityGate: TaskDSLQualityGate,
     private val memoryRepository: MemoryRepository,
-    private val memoryContextBuilder: MemoryContextBuilder
+    private val memoryContextBuilder: MemoryContextBuilder,
+    private val executionRouter: ExecutionRouter,
+    private val appSettingsRepository: AppSettingsRepository
 ) {
 
     suspend fun classify(
@@ -43,7 +50,16 @@ class TaskClassifier @Inject constructor(
         )
         val executionMode = aiExecutionModeStore.getMode()
         val warnings = mutableListOf<String>()
-        val route = llmServiceFactory.resolvePrimaryService(executionMode)
+        val ecosystemEnabled = appSettingsRepository.getSnapshot().ecosystemEnabled
+
+        // When ecosystem mode is enabled, use the ExecutionRouter to resolve
+        // providers across all devices (phone + desktop + cloud).
+        // Otherwise, use the legacy LLMServiceFactory path unchanged.
+        val route = if (ecosystemEnabled) {
+            resolveViaRouter(normalizedInput, extractedEntities, context, executionMode)
+        } else {
+            llmServiceFactory.resolvePrimaryService(executionMode)
+        }
 
         if (route.reason.isNotBlank() && route.source == TaskGenerationSource.RULES) {
             warnings += route.reason
@@ -61,10 +77,14 @@ class TaskClassifier @Inject constructor(
             allowClarification = allowClarification
         )?.let { return it }
 
-        // Primary LLM failed — try the advanced model before falling to heuristics.
-        // This gives the larger model (e.g. Qwen 2.5 1.5B) a chance to handle inputs
-        // that the smaller primary model (e.g. Qwen 3 0.6B) could not parse.
-        val advancedRoute = llmServiceFactory.resolveAdvancedService(executionMode)
+        // Primary route failed — try the advanced model before falling to heuristics.
+        val advancedRoute = if (ecosystemEnabled) {
+            // In ecosystem mode, the fallback chain is already in the ExecutionPlan.
+            // Try the next provider in the chain instead of the factory's advanced service.
+            llmServiceFactory.resolveAdvancedService(executionMode)
+        } else {
+            llmServiceFactory.resolveAdvancedService(executionMode)
+        }
         if (advancedRoute.service !== route.service && advancedRoute.source != TaskGenerationSource.RULES) {
             buildRouteResult(
                 input = normalizedInput,
@@ -253,6 +273,58 @@ class TaskClassifier @Inject constructor(
             completenessCheck = completeness.check,
             clarifications = if (allowClarification) completeness.clarifications else emptyList()
         )
+    }
+
+    /**
+     * Resolves a [ResolvedLLMRoute] via the [ExecutionRouter] when ecosystem mode is active.
+     * Bridges the router's [ExecutionPlan] back into the legacy [ResolvedLLMRoute] format
+     * so the rest of the classification pipeline works unchanged.
+     */
+    private suspend fun resolveViaRouter(
+        input: String,
+        entities: ExtractedEntities,
+        context: LLMClassificationContext,
+        executionMode: AiExecutionMode
+    ): ResolvedLLMRoute {
+        return runCatching {
+            val plan = executionRouter.route(
+                ExecutionRequest(
+                    input = input,
+                    entities = entities,
+                    context = context
+                )
+            )
+            val provider = plan.primaryProvider
+            val service = if (provider is LLMServiceAdapter) {
+                provider.unwrap()
+            } else {
+                // For non-LLMService providers (e.g. DesktopOllamaProvider),
+                // wrap their classify() call through a lightweight bridge.
+                object : com.theveloper.aura.engine.llm.LLMService {
+                    override val tier = provider.tier
+                    override fun isAvailable() = provider.isAvailable()
+                    override suspend fun classify(input: String, context: LLMClassificationContext) =
+                        provider.classify(input, context)
+                    override suspend fun complete(prompt: String) = provider.complete(prompt)
+                    override suspend fun getDayRescuePlan(tasksJson: String, patternsJson: String, currentTime: String) =
+                        provider.getDayRescuePlan(tasksJson, patternsJson, currentTime)
+                }
+            }
+            val source = when (provider.location) {
+                com.theveloper.aura.engine.provider.ProviderLocation.CLOUD -> TaskGenerationSource.GROQ_API
+                com.theveloper.aura.engine.provider.ProviderLocation.LOCAL_PHONE -> TaskGenerationSource.LOCAL_AI
+                com.theveloper.aura.engine.provider.ProviderLocation.REMOTE_DESKTOP -> TaskGenerationSource.LOCAL_AI
+            }
+            ResolvedLLMRoute(
+                service = service,
+                tier = provider.tier,
+                source = source,
+                reason = plan.reasoning.providerReason
+            )
+        }.getOrElse {
+            // Router failed — fall back to legacy factory
+            llmServiceFactory.resolvePrimaryService(executionMode)
+        }
     }
 
     private fun TaskGenerationSource.confidenceHint(intentConfidence: Float): Float {

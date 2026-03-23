@@ -42,7 +42,7 @@ class ReminderWorker @AssistedInject constructor(
                 "Recordatorios AURA",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Notificaciones para los recordatorios de tus tareas"
+                description = "Notifications for your task reminders"
             }
             notificationManager.createNotificationChannel(channel)
         }

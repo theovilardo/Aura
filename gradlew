@@ -116,6 +116,31 @@ esac
 
 CLASSPATH="\\\"\\\""
 
+# Prefer the project-local Gradle JDK when Android Studio has written one,
+# then fall back to a compatible macOS JDK before using whatever `java` is on PATH.
+if [ -z "$JAVA_HOME" ] ; then
+    project_java_config="$APP_HOME/.gradle/config.properties"
+    if [ -f "$project_java_config" ] ; then
+        project_java_home=$(
+            sed -n 's/^java\.home=//p' "$project_java_config" | tail -n 1
+        )
+        if [ -n "$project_java_home" ] && [ -x "$project_java_home/bin/java" ] ; then
+            JAVA_HOME=$project_java_home
+        fi
+    fi
+
+    if [ -z "$JAVA_HOME" ] && "$darwin" ; then
+        for compatible_java in 21 17
+        do
+            mac_java_home=$( /usr/libexec/java_home -v "$compatible_java" 2>/dev/null ) || mac_java_home=
+            if [ -n "$mac_java_home" ] && [ -x "$mac_java_home/bin/java" ] ; then
+                JAVA_HOME=$mac_java_home
+                break
+            fi
+        done
+    fi
+fi
+
 
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then

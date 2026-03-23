@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material3.AlertDialog
@@ -70,6 +71,7 @@ import com.theveloper.aura.engine.classifier.AiExecutionMode
 fun SettingsScreen(
     onOpenIntelligenceSettings: () -> Unit,
     onOpenCloudSettings: () -> Unit,
+    onOpenEcosystemSettings: () -> Unit,
     onOpenDeveloperSettings: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
@@ -106,6 +108,16 @@ fun SettingsScreen(
                 summary = "Control encrypted cross-device sync and the current replication state.",
                 status = if (uiState.syncEnabled) "On" else "Off",
                 onClick = onOpenCloudSettings
+            )
+        }
+
+        item {
+            SettingsNavigationCard(
+                icon = Icons.Rounded.Lan,
+                title = "Ecosystem",
+                summary = "Connect desktop devices, configure provider priority and route tasks across your network.",
+                status = if (uiState.ecosystemEnabled) "On" else "Off",
+                onClick = onOpenEcosystemSettings
             )
         }
 
@@ -373,7 +385,7 @@ private fun rememberSettingsTitleStyle(): TextStyle {
                     resId = R.font.google_sans_flex_variable_local,
                     weight = FontWeight(720),
                     style = FontStyle.Normal,
-                    loadingStrategy = FontLoadingStrategy.Blocking,
+                    loadingStrategy = FontLoadingStrategy.Async,
                     variationSettings = FontVariation.Settings(
                         FontVariation.weight(670),
                         FontVariation.width(138f),
