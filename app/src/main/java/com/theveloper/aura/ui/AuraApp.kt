@@ -121,6 +121,7 @@ import com.theveloper.aura.ui.screen.TasksScreen
 import com.theveloper.aura.ui.theme.AuraFloatingBarColors
 import com.theveloper.aura.ui.theme.auraFloatingBarColors
 import kotlinx.coroutines.launch
+import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 import java.time.LocalDate
 
 private const val HOME_ROUTE = "home"
@@ -472,6 +473,18 @@ fun AuraBottomBar(
         label = "bottomBarDividerHeight"
     )
 
+    val shape = AbsoluteSmoothCornerShape(
+        cornerRadiusBL = surfaceCornerRadius,
+        smoothnessAsPercentBL = 70,
+        cornerRadiusBR = surfaceCornerRadius,
+        smoothnessAsPercentBR = 70,
+        cornerRadiusTL = surfaceCornerRadius,
+        smoothnessAsPercentTL = 70,
+        cornerRadiusTR = surfaceCornerRadius,
+        smoothnessAsPercentTR = 70
+    )
+        //RoundedCornerShape(surfaceCornerRadius)
+
     AnimatedVisibility(
         visible = isVisible,
         modifier = modifier.fillMaxSize(),
@@ -526,7 +539,7 @@ fun AuraBottomBar(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter),
-                    shape = RoundedCornerShape(surfaceCornerRadius),
+                    shape = shape,
                     color = colors.container,
                     border = BorderStroke(width = 2.dp, color = containerBorderColor),
                     shadowElevation = containerShadowElevation

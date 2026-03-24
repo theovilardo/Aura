@@ -16,6 +16,7 @@ hiltNavigationCompose = "1.2.0"
 navigationCompose = "2.8.5"
 room = "2.6.1"
 coroutines = "1.9.0"
+smoothCornerRectAndroidCompose = "v1.0.0"
 workManager = "2.10.0"
 datastore = "1.1.2"
 securityCrypto = "1.1.0-alpha06"
@@ -84,6 +85,7 @@ retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = 
 retrofit-kotlinx-serialization-converter = { group = "com.jakewharton.retrofit", name = "retrofit2-kotlinx-serialization-converter", version.ref = "retrofitKotlinxSerializationConverter" }
 
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+smooth-corner-rect-android-compose = { module = "com.github.racra:smooth-corner-rect-android-compose", version.ref = "smoothCornerRectAndroidCompose" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtxVersion" }
 
