@@ -18,6 +18,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
@@ -67,6 +68,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -97,7 +99,6 @@ import androidx.navigation.NavType
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.theveloper.aura.BuildConfig
@@ -150,6 +151,7 @@ private const val CREATE_TASK_ROUTE =
 private const val ROOT_TRANSITION_DURATION_MS = 430
 private const val STACK_TRANSITION_DURATION_MS = 400
 private const val MODAL_TRANSITION_DURATION_MS = 420
+private const val BOTTOM_BAR_TRANSITION_DURATION_MS = 280
 private const val CREATE_ITEM_KEY = "create"
 
 val LocalAuraBottomBarHeight = staticCompositionLocalOf<Dp> { 0.dp }
@@ -160,9 +162,44 @@ fun AuraApp() {
     var quickPrompt by rememberSaveable { mutableStateOf("") }
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
+    val rootRoutes = remember { setOf(HOME_ROUTE, TASKS_ROUTE, SETTINGS_ROUTE) }
+    val visibleEntries by navController.visibleEntries.collectAsState()
+    val topVisibleRoute = remember(visibleEntries) {
+        normalizedRoute(visibleEntries.lastOrNull()?.destination?.route)
+    }
+    val bottomBarVisible = remember(topVisibleRoute, rootRoutes) {
+        topVisibleRoute in rootRoutes
+    }
+    val shouldComposeBottomBar = remember(visibleEntries, rootRoutes) {
+        visibleEntries.any { entry ->
+            normalizedRoute(entry.destination.route) in rootRoutes
+        }
+    }
+    val selectedBottomBarRoute = remember(visibleEntries, rootRoutes) {
+        visibleEntries
+            .asReversed()
+            .firstOrNull { entry ->
+                normalizedRoute(entry.destination.route) in rootRoutes
+            }
+            ?.destination
+            ?.route
+            .let(::normalizedRoute)
+    }
     val bottomBarHeight = with(density) { bottomBarHeightPx.toDp() }
+    val animatedBottomBarHeight by animateDpAsState(
+        targetValue = if (bottomBarVisible) bottomBarHeight else 0.dp,
+        animationSpec = if (BuildConfig.DEBUG) {
+            snap()
+        } else {
+            tween(
+                durationMillis = BOTTOM_BAR_TRANSITION_DURATION_MS,
+                easing = FastOutSlowInEasing
+            )
+        },
+        label = "auraBottomBarHeight"
+    )
 
-    CompositionLocalProvider(LocalAuraBottomBarHeight provides bottomBarHeight) {
+    CompositionLocalProvider(LocalAuraBottomBarHeight provides animatedBottomBarHeight) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -344,6 +381,9 @@ fun AuraApp() {
 
             AuraBottomBar(
                 navController = navController,
+                selectedRoute = selectedBottomBarRoute,
+                visible = bottomBarVisible,
+                keepComposed = shouldComposeBottomBar,
                 onMeasuredHeightChanged = { bottomBarHeightPx = it },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
@@ -384,15 +424,13 @@ private fun SecondaryScreenFrame(
 @Composable
 fun AuraBottomBar(
     navController: NavHostController,
+    selectedRoute: String,
+    visible: Boolean,
+    keepComposed: Boolean,
     onMeasuredHeightChanged: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
-    val currentRootRoute = remember(currentRoute) { normalizedRoute(currentRoute) }
     val colors = auraFloatingBarColors()
-    val rootRoutes = remember { setOf(HOME_ROUTE, TASKS_ROUTE, SETTINGS_ROUTE) }
-    val isVisible = remember(currentRootRoute, rootRoutes) { currentRootRoute in rootRoutes }
     var isCreateSheetExpanded by remember { mutableStateOf(false) }
     var collapsedBarHeightPx by remember { mutableIntStateOf(0) }
     val optionRowHeight = 76.dp
@@ -401,14 +439,12 @@ fun AuraBottomBar(
     val footerHeight = 96.dp
     val optionCount = 5
 
-    LaunchedEffect(isVisible) {
-        if (!isVisible) {
+    LaunchedEffect(visible) {
+        if (!visible) {
             isCreateSheetExpanded = false
-            collapsedBarHeightPx = 0
-            onMeasuredHeightChanged(0)
         }
     }
-    LaunchedEffect(currentRootRoute) {
+    LaunchedEffect(selectedRoute) {
         isCreateSheetExpanded = false
     }
     BackHandler(enabled = isCreateSheetExpanded) {
@@ -485,22 +521,9 @@ fun AuraBottomBar(
     )
         //RoundedCornerShape(surfaceCornerRadius)
 
-    AnimatedVisibility(
-        visible = isVisible,
-        modifier = modifier.fillMaxSize(),
-        enter = if (BuildConfig.DEBUG) {
-            EnterTransition.None
-        } else {
-            fadeIn(animationSpec = tween(durationMillis = 220, delayMillis = 40))
-        },
-        exit = if (BuildConfig.DEBUG) {
-            ExitTransition.None
-        } else {
-            fadeOut(animationSpec = tween(durationMillis = 180))
-        }
-    ) {
+    if (keepComposed) {
         Box(
-            modifier = Modifier.fillMaxSize()
+            modifier = modifier.fillMaxSize()
         ) {
             AnimatedVisibility(
                 visible = isCreateSheetExpanded,
@@ -518,191 +541,224 @@ fun AuraBottomBar(
                             indication = null
                         ) {
                             isCreateSheetExpanded = false
-                        }
+                    }
                 )
             }
 
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 12.dp)
-                    .onSizeChanged { size ->
-                        if (!isCreateSheetExpanded || collapsedBarHeightPx == 0) {
-                            collapsedBarHeightPx = size.height
-                            onMeasuredHeightChanged(size.height)
-                        }
-                    }
+            AnimatedVisibility(
+                visible = visible,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = if (BuildConfig.DEBUG) {
+                    EnterTransition.None
+                } else {
+                    slideInVertically(
+                        animationSpec = tween(
+                            durationMillis = BOTTOM_BAR_TRANSITION_DURATION_MS,
+                            easing = FastOutSlowInEasing
+                        ),
+                        initialOffsetY = { fullHeight -> fullHeight / 2 }
+                    ) + fadeIn(
+                        animationSpec = tween(
+                            durationMillis = BOTTOM_BAR_TRANSITION_DURATION_MS,
+                            delayMillis = 30
+                        )
+                    )
+                },
+                exit = if (BuildConfig.DEBUG) {
+                    ExitTransition.None
+                } else {
+                    slideOutVertically(
+                        animationSpec = tween(
+                            durationMillis = BOTTOM_BAR_TRANSITION_DURATION_MS,
+                            easing = FastOutSlowInEasing
+                        ),
+                        targetOffsetY = { fullHeight -> fullHeight / 2 }
+                    ) + fadeOut(
+                        animationSpec = tween(durationMillis = BOTTOM_BAR_TRANSITION_DURATION_MS - 40)
+                    )
+                }
             ) {
-                Surface(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .align(Alignment.BottomCenter),
-                    shape = shape,
-                    color = colors.container,
-                    border = BorderStroke(width = 2.dp, color = containerBorderColor),
-                    shadowElevation = containerShadowElevation
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(optionsContainerHeight)
-                                .clipToBounds()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        start = 14.dp,
-                                        top = optionSectionVerticalPadding,
-                                        end = 14.dp,
-                                        bottom = optionSectionVerticalPadding
-                                    )
-                            ) {
-                                createOptions.forEachIndexed { index, option ->
-                                    AnimatedVisibility(
-                                        visible = isCreateSheetExpanded,
-                                        enter = if (BuildConfig.DEBUG) {
-                                            EnterTransition.None
-                                        } else {
-                                            slideInVertically(
-                                                animationSpec = tween(
-                                                    durationMillis = 320,
-                                                    delayMillis = 56 + (index * 34),
-                                                    easing = FastOutSlowInEasing
-                                                ),
-                                                initialOffsetY = { it / 4 }
-                                            ) + fadeIn(
-                                                animationSpec = tween(
-                                                    durationMillis = 220,
-                                                    delayMillis = 36 + (index * 34)
-                                                )
-                                            )
-                                        },
-                                        exit = if (BuildConfig.DEBUG) {
-                                            ExitTransition.None
-                                        } else {
-                                            slideOutVertically(
-                                                animationSpec = tween(
-                                                    durationMillis = 150,
-                                                    delayMillis = (createOptions.lastIndex - index) * 12,
-                                                    easing = FastOutSlowInEasing
-                                                ),
-                                                targetOffsetY = { it / 6 }
-                                            ) + fadeOut(
-                                                animationSpec = tween(
-                                                    durationMillis = 120,
-                                                    delayMillis = (createOptions.lastIndex - index) * 10
-                                                )
-                                            )
-                                        }
-                                    ) {
-                                        Column(modifier = Modifier.fillMaxWidth()) {
-                                            CreateSheetOptionRow(
-                                                option = option,
-                                                colors = colors,
-                                                rowHeight = optionRowHeight,
-                                                onClick = {
-                                                    isCreateSheetExpanded = false
-                                                    navController.navigate(
-                                                        buildCreateTaskRoute(mode = TaskCreationMode.MANUAL)
-                                                    )
-                                                }
-                                            )
-                                            if (index < createOptions.lastIndex) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(optionDividerHeight)
-                                                        .background(colors.outline.copy(alpha = 0.46f))
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
+                        .navigationBarsPadding()
+                        .padding(horizontal = 12.dp)
+                        .onSizeChanged { size ->
+                            if (!isCreateSheetExpanded || collapsedBarHeightPx == 0) {
+                                collapsedBarHeightPx = size.height
+                                onMeasuredHeightChanged(size.height)
                             }
                         }
-
-                        if (footerDividerHeight > 0.dp) {
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter),
+                        shape = shape,
+                        color = colors.container,
+                        border = BorderStroke(width = 2.dp, color = containerBorderColor),
+                        shadowElevation = containerShadowElevation
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp)
-                                    .height(footerDividerHeight)
-                                    .background(colors.outline.copy(alpha = 0.58f))
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(footerHeight)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .height(optionsContainerHeight)
+                                    .clipToBounds()
                             ) {
-                                items.filter { it.key != CREATE_ITEM_KEY }.forEach { item ->
-                                    Box(
-                                        modifier = Modifier.weight(1f),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        androidx.compose.animation.AnimatedVisibility(
-                                            visible = !isCreateSheetExpanded,
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(
+                                            start = 14.dp,
+                                            top = optionSectionVerticalPadding,
+                                            end = 14.dp,
+                                            bottom = optionSectionVerticalPadding
+                                        )
+                                ) {
+                                    createOptions.forEachIndexed { index, option ->
+                                        AnimatedVisibility(
+                                            visible = isCreateSheetExpanded,
                                             enter = if (BuildConfig.DEBUG) {
                                                 EnterTransition.None
                                             } else {
                                                 slideInVertically(
                                                     animationSpec = tween(
-                                                        durationMillis = 240,
+                                                        durationMillis = 320,
+                                                        delayMillis = 56 + (index * 34),
                                                         easing = FastOutSlowInEasing
                                                     ),
-                                                    initialOffsetY = { it / 3 }
-                                                ) + fadeIn(animationSpec = tween(durationMillis = 180))
+                                                    initialOffsetY = { it / 4 }
+                                                ) + fadeIn(
+                                                    animationSpec = tween(
+                                                        durationMillis = 220,
+                                                        delayMillis = 36 + (index * 34)
+                                                    )
+                                                )
                                             },
                                             exit = if (BuildConfig.DEBUG) {
                                                 ExitTransition.None
                                             } else {
                                                 slideOutVertically(
                                                     animationSpec = tween(
-                                                        durationMillis = 180,
+                                                        durationMillis = 150,
+                                                        delayMillis = (createOptions.lastIndex - index) * 12,
                                                         easing = FastOutSlowInEasing
                                                     ),
-                                                    targetOffsetY = { it / 3 }
-                                                ) + fadeOut(animationSpec = tween(durationMillis = 120))
+                                                    targetOffsetY = { it / 6 }
+                                                ) + fadeOut(
+                                                    animationSpec = tween(
+                                                        durationMillis = 120,
+                                                        delayMillis = (createOptions.lastIndex - index) * 10
+                                                    )
+                                                )
                                             }
                                         ) {
-                                            AuraBottomBarItem(
-                                                item = item,
-                                                selected = item.key == currentRootRoute,
-                                                rotationDegrees = 0f,
-                                                buttonSize = 62.dp,
-                                                iconSize = 30.dp,
-                                                onClick = { navController.navigateToRootRoute(item.key) },
-                                                colors = colors
-                                            )
+                                            Column(modifier = Modifier.fillMaxWidth()) {
+                                                CreateSheetOptionRow(
+                                                    option = option,
+                                                    colors = colors,
+                                                    rowHeight = optionRowHeight,
+                                                    onClick = {
+                                                        isCreateSheetExpanded = false
+                                                        navController.navigate(
+                                                            buildCreateTaskRoute(mode = TaskCreationMode.MANUAL)
+                                                        )
+                                                    }
+                                                )
+                                                if (index < createOptions.lastIndex) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(optionDividerHeight)
+                                                            .background(colors.outline.copy(alpha = 0.46f))
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
+                            }
 
+                            if (footerDividerHeight > 0.dp) {
                                 Box(
-                                    modifier = Modifier.weight(1f),
-                                    contentAlignment = Alignment.Center
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp)
+                                        .height(footerDividerHeight)
+                                        .background(colors.outline.copy(alpha = 0.58f))
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(footerHeight)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    AuraBottomBarItem(
-                                        item = items.first { it.key == CREATE_ITEM_KEY },
-                                        selected = isCreateSheetExpanded,
-                                        rotationDegrees = if (isCreateSheetExpanded) 45f else 0f,
-                                        buttonSize = if (isCreateSheetExpanded) 70.dp else 62.dp,
-                                        iconSize = if (isCreateSheetExpanded) 34.dp else 30.dp,
-                                        onClick = { isCreateSheetExpanded = !isCreateSheetExpanded },
-                                        colors = colors
-                                    )
+                                    items.filter { it.key != CREATE_ITEM_KEY }.forEach { item ->
+                                        Box(
+                                            modifier = Modifier.weight(1f),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            androidx.compose.animation.AnimatedVisibility(
+                                                visible = !isCreateSheetExpanded,
+                                                enter = if (BuildConfig.DEBUG) {
+                                                    EnterTransition.None
+                                                } else {
+                                                    slideInVertically(
+                                                        animationSpec = tween(
+                                                            durationMillis = 240,
+                                                            easing = FastOutSlowInEasing
+                                                        ),
+                                                        initialOffsetY = { it / 3 }
+                                                    ) + fadeIn(animationSpec = tween(durationMillis = 180))
+                                                },
+                                                exit = if (BuildConfig.DEBUG) {
+                                                    ExitTransition.None
+                                                } else {
+                                                    slideOutVertically(
+                                                        animationSpec = tween(
+                                                            durationMillis = 180,
+                                                            easing = FastOutSlowInEasing
+                                                        ),
+                                                        targetOffsetY = { it / 3 }
+                                                    ) + fadeOut(animationSpec = tween(durationMillis = 120))
+                                                }
+                                            ) {
+                                                AuraBottomBarItem(
+                                                    item = item,
+                                                    selected = item.key == selectedRoute,
+                                                    rotationDegrees = 0f,
+                                                    buttonSize = 62.dp,
+                                                    iconSize = 30.dp,
+                                                    onClick = { navController.navigateToRootRoute(item.key) },
+                                                    colors = colors
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Box(
+                                        modifier = Modifier.weight(1f),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        AuraBottomBarItem(
+                                            item = items.first { it.key == CREATE_ITEM_KEY },
+                                            selected = isCreateSheetExpanded,
+                                            rotationDegrees = if (isCreateSheetExpanded) 45f else 0f,
+                                            buttonSize = if (isCreateSheetExpanded) 70.dp else 62.dp,
+                                            iconSize = if (isCreateSheetExpanded) 34.dp else 30.dp,
+                                            onClick = { isCreateSheetExpanded = !isCreateSheetExpanded },
+                                            colors = colors
+                                        )
+                                    }
                                 }
                             }
                         }
