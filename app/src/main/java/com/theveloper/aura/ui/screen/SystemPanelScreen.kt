@@ -1,38 +1,41 @@
 package com.theveloper.aura.ui.screen
 
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.rounded.Bolt
-import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.rounded.Alarm
+import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Checklist
+import androidx.compose.material.icons.rounded.Event
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.theveloper.aura.domain.model.AuraAutomation
+import com.theveloper.aura.domain.model.AuraEvent
+import com.theveloper.aura.domain.model.AuraReminder
+import com.theveloper.aura.domain.model.AutomationStatus
+import com.theveloper.aura.domain.model.EventStatus
+import com.theveloper.aura.domain.model.AutomationOutputType
+import com.theveloper.aura.domain.model.ReminderType
+import com.theveloper.aura.domain.model.ReminderStatus
 
 @Composable
 fun SystemPanelScreen(
@@ -40,78 +43,72 @@ fun SystemPanelScreen(
     viewModel: SystemPanelViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val automations = uiState.automations.sortedWith(
+        compareByDescending<AuraAutomation> { it.status == AutomationStatus.ACTIVE }
+            .thenBy { it.title.lowercase() }
+    )
+    val reminders = uiState.reminders.sortedBy { it.scheduledAt }
+    val events = uiState.events.sortedBy { it.startAt }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-    ) {
-        // Top bar
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 12.dp)
-        ) {
-            IconButton(onClick = onNavigateBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-            }
-            Spacer(Modifier.width(8.dp))
-            Icon(Icons.Rounded.Tune, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("System Panel", style = MaterialTheme.typography.titleLarge)
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            CreationTopBar(
+                title = "System",
+                onNavigateBack = onNavigateBack
+            )
         }
-
+    ) { paddingValues ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp)
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = paddingValues.calculateTopPadding(),
+                end = 16.dp,
+                bottom = 32.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // ── Active Automations ──────────────────────────────────────
             item {
-                SectionHeader(icon = Icons.Rounded.Bolt, title = "Active Automations")
+                CreationHeroCard(
+                    icon = Icons.Rounded.Tune,
+                    title = "System Panel",
+                    description = "Inspect the live state of automations, reminders and events from a single, coherent overview.",
+                    pills = listOf(
+                        "${automations.count { it.status == AutomationStatus.ACTIVE }} active automations",
+                        "${reminders.count { it.status == ReminderStatus.PENDING }} pending reminders",
+                        "${events.size} events"
+                    )
+                )
             }
-            if (uiState.automations.isEmpty()) {
+
+            if (automations.isEmpty() && reminders.isEmpty() && events.isEmpty()) {
                 item {
-                    Text(
-                        "No automations yet",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 8.dp, bottom = 16.dp)
+                    CreationNoticeCard(
+                        title = "Nothing is running yet",
+                        body = "When you create automations, reminders or events, Aura will surface them here with their current status.",
+                        icon = Icons.Rounded.Tune
                     )
                 }
-            } else {
-                items(uiState.automations, key = { it.id }) { automation ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            }
+
+            item {
+                CreationSection(
+                    title = "Automations",
+                    body = "Toggle recurring flows and keep an eye on their schedule, failures and latest execution."
+                ) {
+                    if (automations.isEmpty()) {
+                        CreationNoticeCard(
+                            title = "No automations yet",
+                            body = "Create an automation to monitor it from this panel.",
+                            icon = Icons.Rounded.Bolt
                         )
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(12.dp)
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(automation.title, style = MaterialTheme.typography.bodyLarge)
-                                Text(
-                                    "Schedule: ${automation.cronExpression}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                automation.lastExecutionAt?.let {
-                                    Text(
-                                        "Last run: ${java.text.SimpleDateFormat("MMM dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(it))}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            Switch(
-                                checked = automation.status == com.theveloper.aura.domain.model.AutomationStatus.ACTIVE,
-                                onCheckedChange = { enabled ->
+                    } else {
+                        automations.forEach { automation ->
+                            AutomationPanelCard(
+                                automation = automation,
+                                onToggle = { enabled ->
                                     viewModel.toggleAutomation(automation.id, enabled)
                                 }
                             )
@@ -120,101 +117,246 @@ fun SystemPanelScreen(
                 }
             }
 
-            item { Spacer(Modifier.height(16.dp)) }
-
-            // ── Upcoming Reminders ──────────────────────────────────────
             item {
-                SectionHeader(icon = Icons.Rounded.Alarm, title = "Upcoming Reminders")
-            }
-            if (uiState.reminders.isEmpty()) {
-                item {
-                    Text(
-                        "No upcoming reminders",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 8.dp, bottom = 16.dp)
-                    )
-                }
-            } else {
-                items(uiState.reminders, key = { it.id }) { reminder ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                CreationSection(
+                    title = "Reminders",
+                    body = "Upcoming standalone reminders appear here with their timing and any attached context."
+                ) {
+                    if (reminders.isEmpty()) {
+                        CreationNoticeCard(
+                            title = "No upcoming reminders",
+                            body = "Standalone reminders will show up here once you create them.",
+                            icon = Icons.Rounded.Alarm
                         )
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(reminder.title, style = MaterialTheme.typography.bodyLarge)
-                            Text(
-                                "${reminder.reminderType} | ${
-                                    java.text.SimpleDateFormat("MMM dd HH:mm", java.util.Locale.getDefault())
-                                        .format(java.util.Date(reminder.scheduledAt))
-                                }",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    } else {
+                        reminders.forEach { reminder ->
+                            ReminderPanelCard(reminder = reminder)
                         }
                     }
                 }
             }
 
-            item { Spacer(Modifier.height(16.dp)) }
-
-            // ── Active Events ───────────────────────────────────────────
             item {
-                SectionHeader(icon = Icons.Rounded.Event, title = "Events")
-            }
-            if (uiState.events.isEmpty()) {
-                item {
-                    Text(
-                        "No events",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 8.dp, bottom = 16.dp)
-                    )
-                }
-            } else {
-                items(uiState.events, key = { it.id }) { event ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                CreationSection(
+                    title = "Events",
+                    body = "Track the lifecycle of time-bound plans and the amount of automation attached to each one."
+                ) {
+                    if (events.isEmpty()) {
+                        CreationNoticeCard(
+                            title = "No events",
+                            body = "Events and their sub-actions will appear here after creation.",
+                            icon = Icons.Rounded.Event
                         )
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(event.title, style = MaterialTheme.typography.bodyLarge)
-                            Text(
-                                "${event.status} | ${event.subActions.size} sub-actions",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    } else {
+                        events.forEach { event ->
+                            EventPanelCard(event = event)
                         }
                     }
                 }
             }
-
-            item { Spacer(Modifier.height(32.dp)) }
         }
     }
 }
 
 @Composable
-private fun SectionHeader(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String
+private fun AutomationPanelCard(
+    automation: AuraAutomation,
+    onToggle: (Boolean) -> Unit
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(vertical = 12.dp)
+    val isActive = automation.status == AutomationStatus.ACTIVE
+    CreationCard(
+        modifier = Modifier.fillMaxWidth(),
+        highlighted = isActive
     ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.width(8.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            androidx.compose.foundation.layout.Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = automation.title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = automation.prompt,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Switch(
+                checked = isActive,
+                onCheckedChange = onToggle,
+                modifier = Modifier.semantics {
+                    stateDescription = if (isActive) "Active" else "Paused"
+                }
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            CreationChip(
+                text = automation.status.displayLabel(),
+                icon = Icons.Rounded.Bolt,
+                emphasized = isActive
+            )
+            CreationChip(
+                text = automation.outputType.displayLabel(),
+                icon = Icons.Rounded.Tune
+            )
+            CreationChip(text = "${automation.executionPlan.steps.size} steps")
+        }
+
+        CreationDetailRow(
+            label = "Schedule",
+            value = automation.cronExpression.ifBlank { "No cron expression saved" }
+        )
+        CreationDetailRow(
+            label = "Last run",
+            value = automation.lastExecutionAt?.let(::formatCreationDateTime) ?: "Never"
+        )
+        if (automation.failureCount > 0) {
+            CreationDetailRow(
+                label = "Failures",
+                value = "${automation.failureCount}/${automation.maxRetries}"
+            )
+        }
     }
-    HorizontalDivider()
-    Spacer(Modifier.height(8.dp))
+}
+
+@Composable
+private fun ReminderPanelCard(reminder: AuraReminder) {
+    CreationCard(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = reminder.title,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        if (reminder.body.isNotBlank()) {
+            Text(
+                text = reminder.body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            CreationChip(
+                text = reminder.status.displayLabel(),
+                icon = Icons.Rounded.Alarm,
+                emphasized = reminder.status == ReminderStatus.PENDING
+            )
+            CreationChip(text = reminder.reminderType.displayLabel(), icon = Icons.Rounded.Schedule)
+            if (reminder.checklistItems.isNotEmpty()) {
+                CreationChip(
+                    text = "${reminder.checklistItems.size} checklist items",
+                    icon = Icons.Rounded.Checklist
+                )
+            }
+        }
+
+        CreationDetailRow(label = "Scheduled", value = formatCreationDateTime(reminder.scheduledAt))
+        if (reminder.repeatCount > 0) {
+            CreationDetailRow(label = "Repeats", value = reminder.repeatCount.toString())
+        }
+        if (reminder.intervalMs > 0L) {
+            CreationDetailRow(label = "Interval", value = formatCreationDuration(reminder.intervalMs))
+        }
+        if (reminder.links.isNotEmpty()) {
+            CreationDetailRow(label = "Links", value = reminder.links.size.toString())
+        }
+    }
+}
+
+@Composable
+private fun EventPanelCard(event: AuraEvent) {
+    CreationCard(
+        modifier = Modifier.fillMaxWidth(),
+        highlighted = event.status == EventStatus.ACTIVE
+    ) {
+        Text(
+            text = event.title,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        if (event.description.isNotBlank()) {
+            Text(
+                text = event.description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            CreationChip(
+                text = event.status.displayLabel(),
+                icon = Icons.Rounded.Event,
+                emphasized = event.status == EventStatus.ACTIVE
+            )
+            CreationChip(text = "${event.subActions.size} sub-actions")
+            if (event.components.isNotEmpty()) {
+                CreationChip(text = "${event.components.size} components")
+            }
+        }
+
+        CreationDetailRow(label = "Starts", value = formatCreationDateTime(event.startAt))
+        CreationDetailRow(label = "Ends", value = formatCreationDateTime(event.endAt))
+        if (event.endAt > event.startAt) {
+            CreationDetailRow(
+                label = "Duration",
+                value = formatCreationDuration(event.endAt - event.startAt)
+            )
+        }
+    }
+}
+
+private fun AutomationStatus.displayLabel(): String = when (this) {
+    AutomationStatus.ACTIVE -> "Active"
+    AutomationStatus.PAUSED -> "Paused"
+    AutomationStatus.FAILED -> "Failed"
+    AutomationStatus.COMPLETED -> "Completed"
+}
+
+private fun ReminderStatus.displayLabel(): String = when (this) {
+    ReminderStatus.PENDING -> "Pending"
+    ReminderStatus.TRIGGERED -> "Triggered"
+    ReminderStatus.COMPLETED -> "Completed"
+    ReminderStatus.CANCELLED -> "Cancelled"
+}
+
+private fun EventStatus.displayLabel(): String = when (this) {
+    EventStatus.UPCOMING -> "Upcoming"
+    EventStatus.ACTIVE -> "Active"
+    EventStatus.COMPLETED -> "Completed"
+}
+
+private fun ReminderType.displayLabel(): String = when (this) {
+    ReminderType.ONE_TIME -> "One time"
+    ReminderType.REPEATING -> "Repeating"
+    ReminderType.CYCLICAL -> "Cyclical"
+}
+
+private fun AutomationOutputType.displayLabel(): String = when (this) {
+    AutomationOutputType.NOTIFICATION -> "Notification"
+    AutomationOutputType.TASK_UPDATE -> "Task update"
+    AutomationOutputType.SUMMARY -> "Summary"
+    AutomationOutputType.CUSTOM -> "Custom"
 }
