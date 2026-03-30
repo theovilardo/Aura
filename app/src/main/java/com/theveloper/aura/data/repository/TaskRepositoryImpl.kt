@@ -12,6 +12,7 @@ import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.repository.TaskRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -42,6 +43,12 @@ class TaskRepositoryImpl @Inject constructor(
     override suspend fun getTask(taskId: String): Task? {
         return withContext(Dispatchers.Default) {
             taskDao.getTaskWithDetails(taskId)?.toDomain()
+        }
+    }
+
+    override suspend fun getAllTasks(): List<Task> {
+        return withContext(Dispatchers.Default) {
+            taskDao.getTasksDetailedFlow().first().map { it.toDomain() }
         }
     }
 

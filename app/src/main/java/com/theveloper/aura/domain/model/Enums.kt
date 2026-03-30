@@ -72,3 +72,70 @@ enum class MemoryCategory {
 enum class SuggestionStatus {
     PENDING, APPROVED, REJECTED, EXPIRED
 }
+
+// ── Multi-Creation-Type System ──────────────────────────────────────────────
+
+/**
+ * Top-level discriminator for the 5 creation options in the bottom bar.
+ * [TASK] maps to the existing TaskClassifier pipeline; the others have dedicated classifiers.
+ */
+@Serializable
+enum class CreationType {
+    SYSTEM, REMINDER, AUTOMATION, EVENT, TASK
+}
+
+/** Schedule pattern for standalone reminders (not SM-2 task reminders). */
+@Serializable
+enum class ReminderType {
+    /** Fires once at the scheduled time. */
+    ONE_TIME,
+    /** Fires a fixed number of times at the given interval. */
+    REPEATING,
+    /** Fires indefinitely on a cron-like cycle. */
+    CYCLICAL
+}
+
+@Serializable
+enum class ReminderStatus {
+    PENDING, TRIGGERED, COMPLETED, CANCELLED
+}
+
+@Serializable
+enum class AutomationStatus {
+    ACTIVE, PAUSED, FAILED, COMPLETED
+}
+
+@Serializable
+enum class EventStatus {
+    UPCOMING, ACTIVE, COMPLETED
+}
+
+/** The kind of action that runs during an active [AuraEvent]. */
+@Serializable
+enum class EventSubActionType {
+    /** Plain notification at interval. */
+    NOTIFICATION,
+    /** Popup with an input field (e.g. "How much did you spend?"). */
+    METRIC_PROMPT,
+    /** Triggers a full automation execution. */
+    AUTOMATION,
+    /** Remind user about a checklist inside the event. */
+    CHECKLIST_REMIND
+}
+
+/** How an automation delivers its result. */
+@Serializable
+enum class AutomationOutputType {
+    NOTIFICATION, TASK_UPDATE, SUMMARY, CUSTOM
+}
+
+/** Steps inside an [AutomationExecutionPlan]. */
+@Serializable
+enum class AutomationStepType {
+    /** Gather data from local DB (tasks, events, metrics, etc.). */
+    GATHER_CONTEXT,
+    /** Send gathered context to LLM for processing. */
+    LLM_PROCESS,
+    /** Deliver the result (notification, task mutation, etc.). */
+    OUTPUT
+}

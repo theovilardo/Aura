@@ -27,7 +27,15 @@ enum class MessageType {
     PAIRING_RESULT,
     AUTH_REQUEST,
     AUTH_RESULT,
-    EVENT
+    EVENT,
+
+    // v3: Multi-Creation-Type sync
+    /** Sync any creation type (REMINDER, AUTOMATION, EVENT, TASK) across devices. */
+    SYNC_ITEM,
+    /** Phone requests desktop to execute an automation step (typically Ollama). */
+    AUTOMATION_EXEC,
+    /** Desktop returns the result of an automation step execution. */
+    AUTOMATION_EXEC_RESULT
 }
 
 @Serializable
@@ -85,7 +93,7 @@ data class DeviceCapabilityReport(
     val platform: Platform,
     val supportedActions: List<DesktopAction>,
     val ollamaModels: List<OllamaModelInfo> = emptyList(),
-    val protocolVersion: Int = 2
+    val protocolVersion: Int = 3
 ) : MessagePayload()
 
 @Serializable
@@ -158,4 +166,45 @@ data class AuthResult(
 data class DeviceEvent(
     val event: String,
     val data: JsonObject = JsonObject(emptyMap())
+) : MessagePayload()
+
+// ── v3: Multi-Creation-Type Sync ────────────────────────────────────────────
+
+/**
+ * Syncs any creation type across devices.
+ * [itemType] discriminates: "TASK", "REMINDER", "AUTOMATION", "EVENT".
+ * [operation] is one of: "CREATE", "UPDATE", "DELETE".
+ * [payload] carries the full entity JSON.
+ */
+@Serializable
+@SerialName("sync_item")
+data class SyncItemPayload(
+    val itemType: String,
+    val itemId: String,
+    val operation: String,
+    val payload: JsonObject
+) : MessagePayload()
+
+/**
+ * Phone requests desktop to execute a single automation step.
+ * Typically used for LLM_PROCESS steps routed to desktop Ollama.
+ */
+@Serializable
+@SerialName("automation_exec")
+data class AutomationExecRequest(
+    val automationId: String,
+    val step: JsonObject,
+    val context: JsonObject = JsonObject(emptyMap())
+) : MessagePayload()
+
+/**
+ * Desktop returns the result of an automation step execution.
+ */
+@Serializable
+@SerialName("automation_exec_result")
+data class AutomationExecResult(
+    val automationId: String,
+    val success: Boolean,
+    val result: JsonObject? = null,
+    val error: String? = null
 ) : MessagePayload()

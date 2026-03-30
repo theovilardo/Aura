@@ -18,9 +18,16 @@ import com.theveloper.aura.data.db.Converters
         SyncQueueEntity::class,
         MemorySlotEntity::class,
         ComponentRuleEntity::class,
-        PairedDeviceEntity::class
+        PairedDeviceEntity::class,
+        // v5: Multi-Creation-Type
+        AuraReminderEntity::class,
+        ReminderChecklistItemEntity::class,
+        AuraAutomationEntity::class,
+        AuraEventEntity::class,
+        EventSubActionEntity::class,
+        EventComponentEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -37,4 +44,12 @@ abstract class AuraDatabase : RoomDatabase() {
     abstract fun memorySlotDao(): MemorySlotDao
     abstract fun componentRuleDao(): ComponentRuleDao
     abstract fun pairedDeviceDao(): PairedDeviceDao
+
+    // v5: Multi-Creation-Type DAOs
+    abstract fun auraReminderDao(): AuraReminderDao
+    abstract fun reminderChecklistItemDao(): ReminderChecklistItemDao
+    abstract fun auraAutomationDao(): AuraAutomationDao
+    abstract fun auraEventDao(): AuraEventDao
+    abstract fun eventSubActionDao(): EventSubActionDao
+    abstract fun eventComponentDao(): EventComponentDao
 }

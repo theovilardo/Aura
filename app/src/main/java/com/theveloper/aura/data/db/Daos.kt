@@ -263,3 +263,174 @@ interface PairedDeviceDao {
     @Query("DELETE FROM paired_devices WHERE id = :deviceId")
     suspend fun delete(deviceId: String)
 }
+
+// ── Multi-Creation-Type DAOs ────────────────────────────────────────────────
+
+data class AuraReminderWithChecklist(
+    @Embedded val reminder: AuraReminderEntity,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "reminder_id"
+    )
+    val checklistItems: List<ReminderChecklistItemEntity>
+)
+
+data class AuraEventWithDetails(
+    @Embedded val event: AuraEventEntity,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "event_id"
+    )
+    val subActions: List<EventSubActionEntity>,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "event_id",
+        entity = EventComponentEntity::class
+    )
+    val componentLinks: List<EventComponentEntity>
+)
+
+@Dao
+interface AuraReminderDao {
+    @Transaction
+    @Query("SELECT * FROM aura_reminders ORDER BY scheduled_at ASC")
+    fun observeAll(): Flow<List<AuraReminderWithChecklist>>
+
+    @Transaction
+    @Query("SELECT * FROM aura_reminders WHERE id = :id")
+    suspend fun getWithChecklist(id: String): AuraReminderWithChecklist?
+
+    @Transaction
+    @Query("SELECT * FROM aura_reminders WHERE id = :id")
+    fun observeById(id: String): Flow<AuraReminderWithChecklist?>
+
+    @Query("SELECT * FROM aura_reminders WHERE status = 'PENDING' AND scheduled_at <= :beforeTime")
+    suspend fun getDueReminders(beforeTime: Long): List<AuraReminderEntity>
+
+    @Query("SELECT * FROM aura_reminders WHERE status = 'PENDING' ORDER BY scheduled_at ASC")
+    suspend fun getUpcoming(): List<AuraReminderEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(reminder: AuraReminderEntity)
+
+    @Update
+    suspend fun update(reminder: AuraReminderEntity)
+
+    @Query("UPDATE aura_reminders SET status = :status, updated_at = :now WHERE id = :id")
+    suspend fun updateStatus(id: String, status: com.theveloper.aura.domain.model.ReminderStatus, now: Long)
+
+    @Query("DELETE FROM aura_reminders WHERE id = :id")
+    suspend fun delete(id: String)
+}
+
+@Dao
+interface ReminderChecklistItemDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertItems(items: List<ReminderChecklistItemEntity>)
+
+    @Update
+    suspend fun update(item: ReminderChecklistItemEntity)
+
+    @Query("DELETE FROM reminder_checklist_items WHERE reminder_id = :reminderId")
+    suspend fun deleteForReminder(reminderId: String)
+}
+
+@Dao
+interface AuraAutomationDao {
+    @Query("SELECT * FROM aura_automations ORDER BY created_at DESC")
+    fun observeAll(): Flow<List<AuraAutomationEntity>>
+
+    @Query("SELECT * FROM aura_automations WHERE id = :id")
+    suspend fun getById(id: String): AuraAutomationEntity?
+
+    @Query("SELECT * FROM aura_automations WHERE id = :id")
+    fun observeById(id: String): Flow<AuraAutomationEntity?>
+
+    @Query("SELECT * FROM aura_automations WHERE status = 'ACTIVE'")
+    suspend fun getActive(): List<AuraAutomationEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(automation: AuraAutomationEntity)
+
+    @Update
+    suspend fun update(automation: AuraAutomationEntity)
+
+    @Query("UPDATE aura_automations SET status = :status, updated_at = :now WHERE id = :id")
+    suspend fun updateStatus(id: String, status: com.theveloper.aura.domain.model.AutomationStatus, now: Long)
+
+    @Query("""
+        UPDATE aura_automations
+        SET last_execution_at = :executedAt, last_result_json = :resultJson,
+            failure_count = :failureCount, updated_at = :now
+        WHERE id = :id
+    """)
+    suspend fun updateExecutionResult(
+        id: String, executedAt: Long, resultJson: String?, failureCount: Int, now: Long
+    )
+
+    @Query("DELETE FROM aura_automations WHERE id = :id")
+    suspend fun delete(id: String)
+}
+
+@Dao
+interface AuraEventDao {
+    @Transaction
+    @Query("SELECT * FROM aura_events ORDER BY start_at ASC")
+    fun observeAll(): Flow<List<AuraEventWithDetails>>
+
+    @Transaction
+    @Query("SELECT * FROM aura_events WHERE id = :id")
+    suspend fun getWithDetails(id: String): AuraEventWithDetails?
+
+    @Transaction
+    @Query("SELECT * FROM aura_events WHERE id = :id")
+    fun observeById(id: String): Flow<AuraEventWithDetails?>
+
+    @Query("SELECT * FROM aura_events WHERE status = 'UPCOMING' AND start_at <= :now")
+    suspend fun getEventsToActivate(now: Long): List<AuraEventEntity>
+
+    @Query("SELECT * FROM aura_events WHERE status = 'ACTIVE' AND end_at <= :now")
+    suspend fun getEventsToComplete(now: Long): List<AuraEventEntity>
+
+    @Query("SELECT * FROM aura_events WHERE status = 'ACTIVE'")
+    suspend fun getActiveEvents(): List<AuraEventEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(event: AuraEventEntity)
+
+    @Update
+    suspend fun update(event: AuraEventEntity)
+
+    @Query("UPDATE aura_events SET status = :status, updated_at = :now WHERE id = :id")
+    suspend fun updateStatus(id: String, status: com.theveloper.aura.domain.model.EventStatus, now: Long)
+
+    @Query("DELETE FROM aura_events WHERE id = :id")
+    suspend fun delete(id: String)
+}
+
+@Dao
+interface EventSubActionDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(subActions: List<EventSubActionEntity>)
+
+    @Update
+    suspend fun update(subAction: EventSubActionEntity)
+
+    @Query("SELECT * FROM event_sub_actions WHERE event_id = :eventId AND enabled = 1")
+    suspend fun getEnabledForEvent(eventId: String): List<EventSubActionEntity>
+
+    @Query("DELETE FROM event_sub_actions WHERE event_id = :eventId")
+    suspend fun deleteForEvent(eventId: String)
+}
+
+@Dao
+interface EventComponentDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(links: List<EventComponentEntity>)
+
+    @Query("SELECT component_id FROM event_components WHERE event_id = :eventId")
+    suspend fun getComponentIdsForEvent(eventId: String): List<String>
+
+    @Query("DELETE FROM event_components WHERE event_id = :eventId")
+    suspend fun deleteForEvent(eventId: String)
+}

@@ -22,6 +22,8 @@ class FakeTaskRepository @Inject constructor() : TaskRepository {
 
     override suspend fun getTask(taskId: String): Task? = tasks.value.find { it.id == taskId }
 
+    override suspend fun getAllTasks(): List<Task> = tasks.value
+
     override suspend fun insertTask(task: Task) {
         tasks.update { it + task }
     }

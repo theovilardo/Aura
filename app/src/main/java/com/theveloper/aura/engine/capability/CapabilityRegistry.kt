@@ -3,8 +3,14 @@ package com.theveloper.aura.engine.capability
 import android.util.Log
 import com.theveloper.aura.domain.model.TaskStatus
 import com.theveloper.aura.domain.usecase.ArchiveTaskUseCase
+import com.theveloper.aura.domain.usecase.CreateAutomationUseCase
+import com.theveloper.aura.domain.usecase.CreateEventUseCase
+import com.theveloper.aura.domain.usecase.CreateReminderUseCase
 import com.theveloper.aura.domain.usecase.CreateTaskUseCase
 import com.theveloper.aura.domain.usecase.UpdateTaskStatusUseCase
+import com.theveloper.aura.engine.dsl.AutomationDSLOutput
+import com.theveloper.aura.engine.dsl.EventDSLOutput
+import com.theveloper.aura.engine.dsl.ReminderDSLOutput
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
 import com.theveloper.aura.engine.dsl.TaskDSLValidator
 import com.theveloper.aura.engine.router.ExecutionMode
@@ -16,7 +22,10 @@ import javax.inject.Singleton
 class CapabilityRegistry @Inject constructor(
     private val createTaskUseCase: CreateTaskUseCase,
     private val updateTaskStatusUseCase: UpdateTaskStatusUseCase,
-    private val archiveTaskUseCase: ArchiveTaskUseCase
+    private val archiveTaskUseCase: ArchiveTaskUseCase,
+    private val createReminderUseCase: CreateReminderUseCase,
+    private val createAutomationUseCase: CreateAutomationUseCase,
+    private val createEventUseCase: CreateEventUseCase
 ) {
 
     suspend fun execute(request: CapabilityRequest): CapabilityExecutionResult {
@@ -41,6 +50,18 @@ class CapabilityRegistry @Inject constructor(
                     updateTaskStatusUseCase(sanitizedRequest.taskId, sanitizedRequest.status)
                     CapabilityExecutionResult(response = CapabilityResponse.Success)
                 }
+                is CapabilityRequest.CreateReminder -> {
+                    val reminder = createReminderUseCase(sanitizedRequest.dsl)
+                    CapabilityExecutionResult(response = CapabilityResponse.ReminderCreated(reminder.id))
+                }
+                is CapabilityRequest.CreateAutomation -> {
+                    val automation = createAutomationUseCase(sanitizedRequest.dsl)
+                    CapabilityExecutionResult(response = CapabilityResponse.AutomationCreated(automation.id))
+                }
+                is CapabilityRequest.CreateEvent -> {
+                    val event = createEventUseCase(sanitizedRequest.dsl)
+                    CapabilityExecutionResult(response = CapabilityResponse.EventCreated(event.id))
+                }
             }
         }.getOrElse { error ->
             CapabilityExecutionResult(errorMessage = error.message ?: "Capability execution failed")
@@ -57,6 +78,15 @@ class CapabilityRegistry @Inject constructor(
                 )
             )
             is CapabilityRequest.UpdateTaskStatus -> request.copy(taskId = request.taskId.trim())
+            is CapabilityRequest.CreateReminder -> request.copy(
+                dsl = request.dsl.copy(title = request.dsl.title.trim())
+            )
+            is CapabilityRequest.CreateAutomation -> request.copy(
+                dsl = request.dsl.copy(title = request.dsl.title.trim())
+            )
+            is CapabilityRequest.CreateEvent -> request.copy(
+                dsl = request.dsl.copy(title = request.dsl.title.trim())
+            )
         }
     }
 
@@ -68,6 +98,17 @@ class CapabilityRegistry @Inject constructor(
                 is TaskDSLValidator.ValidationResult.Invalid -> validation.reason
             }
             is CapabilityRequest.UpdateTaskStatus -> request.taskId.takeIf { it.isBlank() }?.let { "Task id is required" }
+            is CapabilityRequest.CreateReminder -> {
+                if (request.dsl.title.isBlank()) "Reminder title is required" else null
+            }
+            is CapabilityRequest.CreateAutomation -> {
+                if (request.dsl.title.isBlank()) "Automation title is required"
+                else if (request.dsl.prompt.isBlank()) "Automation prompt is required"
+                else null
+            }
+            is CapabilityRequest.CreateEvent -> {
+                if (request.dsl.title.isBlank()) "Event title is required" else null
+            }
         }
     }
 
@@ -85,6 +126,11 @@ sealed interface CapabilityRequest {
     ) : CapabilityRequest
     data class UpdateTaskStatus(val taskId: String, val status: TaskStatus) : CapabilityRequest
     data class ArchiveTask(val taskId: String) : CapabilityRequest
+
+    // Multi-Creation-Type capabilities
+    data class CreateReminder(val dsl: ReminderDSLOutput) : CapabilityRequest
+    data class CreateAutomation(val dsl: AutomationDSLOutput) : CapabilityRequest
+    data class CreateEvent(val dsl: EventDSLOutput) : CapabilityRequest
 }
 
 data class CapabilityExecutionResult(
@@ -95,4 +141,9 @@ data class CapabilityExecutionResult(
 sealed interface CapabilityResponse {
     data class TaskCreated(val taskId: String) : CapabilityResponse
     data object Success : CapabilityResponse
+
+    // Multi-Creation-Type responses
+    data class ReminderCreated(val reminderId: String) : CapabilityResponse
+    data class AutomationCreated(val automationId: String) : CapabilityResponse
+    data class EventCreated(val eventId: String) : CapabilityResponse
 }

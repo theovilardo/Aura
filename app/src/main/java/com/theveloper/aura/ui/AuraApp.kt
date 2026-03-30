@@ -102,7 +102,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.theveloper.aura.BuildConfig
+import com.theveloper.aura.ui.screen.CreateAutomationScreen
+import com.theveloper.aura.ui.screen.CreateEventScreen
+import com.theveloper.aura.ui.screen.CreateReminderScreen
 import com.theveloper.aura.ui.screen.CreateTaskScreen
+import com.theveloper.aura.ui.screen.SystemPanelScreen
 import com.theveloper.aura.ui.screen.CalendarDayScreen
 import com.theveloper.aura.ui.screen.CloudSettingsScreen
 import com.theveloper.aura.ui.screen.DeveloperSettingsScreen
@@ -148,6 +152,21 @@ private const val SETTINGS_ECOSYSTEM_ROUTE = "settings/ecosystem"
 private const val CREATE_TASK_BASE_ROUTE = "create_task"
 private const val CREATE_TASK_ROUTE =
     "$CREATE_TASK_BASE_ROUTE?mode={mode}&input={input}&autoSubmit={autoSubmit}"
+
+// Multi-Creation-Type routes
+private const val CREATE_REMINDER_BASE_ROUTE = "create_reminder"
+private const val CREATE_REMINDER_ROUTE = "$CREATE_REMINDER_BASE_ROUTE?mode={mode}"
+private const val CREATE_AUTOMATION_BASE_ROUTE = "create_automation"
+private const val CREATE_AUTOMATION_ROUTE = "$CREATE_AUTOMATION_BASE_ROUTE?mode={mode}"
+private const val CREATE_EVENT_BASE_ROUTE = "create_event"
+private const val CREATE_EVENT_ROUTE = "$CREATE_EVENT_BASE_ROUTE?mode={mode}"
+private const val SYSTEM_PANEL_ROUTE = "system_panel"
+private const val REMINDER_DETAIL_BASE_ROUTE = "reminder_detail"
+private const val REMINDER_DETAIL_ROUTE = "$REMINDER_DETAIL_BASE_ROUTE/{reminderId}"
+private const val AUTOMATION_DETAIL_BASE_ROUTE = "automation_detail"
+private const val AUTOMATION_DETAIL_ROUTE = "$AUTOMATION_DETAIL_BASE_ROUTE/{automationId}"
+private const val EVENT_DETAIL_BASE_ROUTE = "event_detail"
+private const val EVENT_DETAIL_ROUTE = "$EVENT_DETAIL_BASE_ROUTE/{eventId}"
 private const val ROOT_TRANSITION_DURATION_MS = 430
 private const val STACK_TRANSITION_DURATION_MS = 400
 private const val MODAL_TRANSITION_DURATION_MS = 420
@@ -321,6 +340,59 @@ fun AuraApp() {
             ) {
                 SecondaryScreenFrame {
                     CreateTaskScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+            }
+            // ── Multi-Creation-Type Screens ─────────────────────────────────
+            composable(
+                route = CREATE_REMINDER_ROUTE,
+                arguments = listOf(
+                    navArgument("mode") {
+                        type = NavType.StringType
+                        defaultValue = "prompt"
+                    }
+                )
+            ) {
+                SecondaryScreenFrame {
+                    CreateReminderScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+            }
+            composable(
+                route = CREATE_AUTOMATION_ROUTE,
+                arguments = listOf(
+                    navArgument("mode") {
+                        type = NavType.StringType
+                        defaultValue = "prompt"
+                    }
+                )
+            ) {
+                SecondaryScreenFrame {
+                    CreateAutomationScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+            }
+            composable(
+                route = CREATE_EVENT_ROUTE,
+                arguments = listOf(
+                    navArgument("mode") {
+                        type = NavType.StringType
+                        defaultValue = "prompt"
+                    }
+                )
+            ) {
+                SecondaryScreenFrame {
+                    CreateEventScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+            }
+            composable(SYSTEM_PANEL_ROUTE) {
+                SecondaryScreenFrame {
+                    SystemPanelScreen(
                         onNavigateBack = { navController.popBackStack() }
                     )
                 }
@@ -661,9 +733,15 @@ fun AuraBottomBar(
                                                     rowHeight = optionRowHeight,
                                                     onClick = {
                                                         isCreateSheetExpanded = false
-                                                        navController.navigate(
-                                                            buildCreateTaskRoute(mode = TaskCreationMode.MANUAL)
-                                                        )
+                                                        when (option.key) {
+                                                            "system" -> navController.navigate(SYSTEM_PANEL_ROUTE)
+                                                            "reminder" -> navController.navigate("$CREATE_REMINDER_BASE_ROUTE?mode=prompt")
+                                                            "automation" -> navController.navigate("$CREATE_AUTOMATION_BASE_ROUTE?mode=prompt")
+                                                            "event" -> navController.navigate("$CREATE_EVENT_BASE_ROUTE?mode=prompt")
+                                                            else -> navController.navigate(
+                                                                buildCreateTaskRoute(mode = TaskCreationMode.MANUAL)
+                                                            )
+                                                        }
                                                     }
                                                 )
                                                 if (index < createOptions.lastIndex) {

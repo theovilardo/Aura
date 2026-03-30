@@ -607,6 +607,9 @@ class CreateTaskViewModel @Inject constructor(
                 }
 
                 CapabilityResponse.Success,
+                is CapabilityResponse.ReminderCreated,
+                is CapabilityResponse.AutomationCreated,
+                is CapabilityResponse.EventCreated,
                 null -> {
                     _uiState.update {
                         it.copy(
