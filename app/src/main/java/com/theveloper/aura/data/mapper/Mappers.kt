@@ -1,8 +1,15 @@
 package com.theveloper.aura.data.mapper
 
 import com.theveloper.aura.core.json.auraJson
+import com.theveloper.aura.data.db.AuraAutomationEntity
+import com.theveloper.aura.data.db.AuraEventEntity
+import com.theveloper.aura.data.db.AuraEventWithDetails
+import com.theveloper.aura.data.db.AuraReminderEntity
+import com.theveloper.aura.data.db.AuraReminderWithChecklist
 import com.theveloper.aura.data.db.ChecklistItemEntity
+import com.theveloper.aura.data.db.EventSubActionEntity
 import com.theveloper.aura.data.db.MemorySlotEntity
+import com.theveloper.aura.data.db.ReminderChecklistItemEntity
 import com.theveloper.aura.data.db.ReminderEntity
 import com.theveloper.aura.data.db.TaskComponentEntity
 import com.theveloper.aura.data.db.TaskEntity
@@ -220,5 +227,185 @@ fun com.theveloper.aura.domain.model.rule.ComponentRule.toEntity(): com.thevelop
         priority = priority,
         createdAt = createdAt,
         createdBy = createdBy.name
+    )
+}
+
+// ── Multi-Creation-Type Mappers ─────────────────────────────────────────────
+
+// ── AuraReminder ────────────────────────────────────────────────────────────
+
+fun AuraReminderWithChecklist.toDomain(): AuraReminder {
+    return AuraReminder(
+        id = reminder.id,
+        title = reminder.title,
+        body = reminder.body,
+        reminderType = reminder.reminderType,
+        scheduledAt = reminder.scheduledAt,
+        repeatCount = reminder.repeatCount,
+        intervalMs = reminder.intervalMs,
+        cronExpression = reminder.cronExpression,
+        linkedTaskId = reminder.linkedTaskId,
+        checklistItems = checklistItems
+            .map { it.toDomain() }
+            .sortedBy { it.sortOrder },
+        links = runCatching {
+            auraJson.decodeFromString<List<String>>(reminder.links)
+        }.getOrDefault(emptyList()),
+        status = reminder.status,
+        createdAt = reminder.createdAt,
+        updatedAt = reminder.updatedAt
+    )
+}
+
+fun ReminderChecklistItemEntity.toDomain(): ChecklistItem {
+    return ChecklistItem(
+        id = id,
+        componentId = reminderId, // reuse componentId field for the parent FK
+        text = text,
+        isCompleted = isCompleted,
+        sortOrder = sortOrder
+    )
+}
+
+fun AuraReminder.toEntity(): AuraReminderEntity {
+    return AuraReminderEntity(
+        id = id,
+        title = title,
+        body = body,
+        reminderType = reminderType,
+        scheduledAt = scheduledAt,
+        repeatCount = repeatCount,
+        intervalMs = intervalMs,
+        cronExpression = cronExpression,
+        linkedTaskId = linkedTaskId,
+        links = auraJson.encodeToString(links),
+        status = status,
+        createdAt = createdAt,
+        updatedAt = updatedAt
+    )
+}
+
+fun AuraReminder.toChecklistEntities(): List<ReminderChecklistItemEntity> {
+    return checklistItems.map {
+        ReminderChecklistItemEntity(
+            id = it.id,
+            reminderId = id,
+            text = it.text,
+            isCompleted = it.isCompleted,
+            sortOrder = it.sortOrder
+        )
+    }
+}
+
+// ── AuraAutomation ──────────────────────────────────────────────────────────
+
+fun AuraAutomationEntity.toDomain(): AuraAutomation {
+    return AuraAutomation(
+        id = id,
+        title = title,
+        prompt = prompt,
+        cronExpression = cronExpression,
+        executionPlan = runCatching {
+            auraJson.decodeFromString<AutomationExecutionPlan>(executionPlan)
+        }.getOrDefault(AutomationExecutionPlan()),
+        outputType = outputType,
+        lastExecutionAt = lastExecutionAt,
+        lastResultJson = lastResultJson,
+        status = status,
+        failureCount = failureCount,
+        maxRetries = maxRetries,
+        createdAt = createdAt,
+        updatedAt = updatedAt
+    )
+}
+
+fun AuraAutomation.toEntity(): AuraAutomationEntity {
+    return AuraAutomationEntity(
+        id = id,
+        title = title,
+        prompt = prompt,
+        cronExpression = cronExpression,
+        executionPlan = auraJson.encodeToString(executionPlan),
+        outputType = outputType,
+        lastExecutionAt = lastExecutionAt,
+        lastResultJson = lastResultJson,
+        status = status,
+        failureCount = failureCount,
+        maxRetries = maxRetries,
+        createdAt = createdAt,
+        updatedAt = updatedAt
+    )
+}
+
+// ── AuraEvent ───────────────────────────────────────────────────────────────
+
+fun AuraEventWithDetails.toDomain(components: List<TaskComponent> = emptyList()): AuraEvent {
+    return AuraEvent(
+        id = event.id,
+        title = event.title,
+        description = event.description,
+        startAt = event.startAt,
+        endAt = event.endAt,
+        subActions = subActions.map { it.toDomain() },
+        components = components,
+        status = event.status,
+        createdAt = event.createdAt,
+        updatedAt = event.updatedAt
+    )
+}
+
+fun AuraEventEntity.toDomain(): AuraEvent {
+    return AuraEvent(
+        id = id,
+        title = title,
+        description = description,
+        startAt = startAt,
+        endAt = endAt,
+        status = status,
+        createdAt = createdAt,
+        updatedAt = updatedAt
+    )
+}
+
+fun AuraEvent.toEntity(): AuraEventEntity {
+    return AuraEventEntity(
+        id = id,
+        title = title,
+        description = description,
+        startAt = startAt,
+        endAt = endAt,
+        status = status,
+        createdAt = createdAt,
+        updatedAt = updatedAt
+    )
+}
+
+fun EventSubActionEntity.toDomain(): EventSubAction {
+    return EventSubAction(
+        id = id,
+        eventId = eventId,
+        type = type,
+        title = title,
+        cronExpression = cronExpression,
+        intervalMs = intervalMs,
+        prompt = prompt,
+        config = runCatching {
+            auraJson.decodeFromString<Map<String, String>>(config)
+        }.getOrDefault(emptyMap()),
+        enabled = enabled
+    )
+}
+
+fun EventSubAction.toEntity(): EventSubActionEntity {
+    return EventSubActionEntity(
+        id = id,
+        eventId = eventId,
+        type = type,
+        title = title,
+        cronExpression = cronExpression,
+        intervalMs = intervalMs,
+        prompt = prompt,
+        config = auraJson.encodeToString(config),
+        enabled = enabled
     )
 }

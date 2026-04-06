@@ -25,6 +25,10 @@ object ProtocolSerializer {
             subclass(AuthRequest::class)
             subclass(AuthResult::class)
             subclass(DeviceEvent::class)
+            // v3: Multi-Creation-Type sync
+            subclass(SyncItemPayload::class)
+            subclass(AutomationExecRequest::class)
+            subclass(AutomationExecResult::class)
         }
     }
 

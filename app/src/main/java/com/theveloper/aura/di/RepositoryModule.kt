@@ -14,7 +14,13 @@ import com.theveloper.aura.domain.repository.FetcherConfigRepository
 import com.theveloper.aura.domain.repository.MemoryRepository
 import com.theveloper.aura.data.repository.SuggestionRepositoryImpl
 import com.theveloper.aura.domain.repository.SuggestionRepository
+import com.theveloper.aura.data.repository.AuraEventRepositoryImpl
+import com.theveloper.aura.data.repository.AuraReminderRepositoryImpl
+import com.theveloper.aura.data.repository.AutomationRepositoryImpl
 import com.theveloper.aura.data.repository.ComponentRuleRepositoryImpl
+import com.theveloper.aura.domain.repository.AuraEventRepository
+import com.theveloper.aura.domain.repository.AuraReminderRepository
+import com.theveloper.aura.domain.repository.AutomationRepository
 import com.theveloper.aura.domain.repository.ComponentRuleRepository
 import dagger.Binds
 import dagger.Module
@@ -71,4 +77,24 @@ abstract class RepositoryModule {
     abstract fun bindComponentRuleRepository(
         componentRuleRepositoryImpl: ComponentRuleRepositoryImpl
     ): ComponentRuleRepository
+
+    // v5: Multi-Creation-Type repositories
+
+    @Binds
+    @Singleton
+    abstract fun bindAuraReminderRepository(
+        impl: AuraReminderRepositoryImpl
+    ): AuraReminderRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindAutomationRepository(
+        impl: AutomationRepositoryImpl
+    ): AutomationRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindAuraEventRepository(
+        impl: AuraEventRepositoryImpl
+    ): AuraEventRepository
 }

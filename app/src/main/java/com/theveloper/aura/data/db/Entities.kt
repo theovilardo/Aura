@@ -4,9 +4,15 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.theveloper.aura.domain.model.AutomationOutputType
+import com.theveloper.aura.domain.model.AutomationStatus
 import com.theveloper.aura.domain.model.ComponentType
+import com.theveloper.aura.domain.model.EventStatus
+import com.theveloper.aura.domain.model.EventSubActionType
 import com.theveloper.aura.domain.model.FetcherType
 import com.theveloper.aura.domain.model.MemoryCategory
+import com.theveloper.aura.domain.model.ReminderStatus
+import com.theveloper.aura.domain.model.ReminderType
 import com.theveloper.aura.domain.model.SignalType
 import com.theveloper.aura.domain.model.SuggestionType
 import com.theveloper.aura.domain.model.TaskStatus
@@ -152,4 +158,126 @@ data class PairedDeviceEntity(
     @ColumnInfo(name = "shared_secret") val sharedSecret: String = "",
     @ColumnInfo(name = "last_seen_at") val lastSeenAt: Long,
     @ColumnInfo(name = "paired_at") val pairedAt: Long
+)
+
+// ── Multi-Creation-Type Entities ────────────────────────────────────────────
+
+@Entity(
+    tableName = "aura_reminders",
+    indices = [Index(value = ["linked_task_id"])]
+)
+data class AuraReminderEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val body: String = "",
+    @ColumnInfo(name = "reminder_type") val reminderType: ReminderType,
+    @ColumnInfo(name = "scheduled_at") val scheduledAt: Long,
+    @ColumnInfo(name = "repeat_count") val repeatCount: Int = 0,
+    @ColumnInfo(name = "interval_ms") val intervalMs: Long = 0L,
+    @ColumnInfo(name = "cron_expression") val cronExpression: String = "",
+    @ColumnInfo(name = "linked_task_id") val linkedTaskId: String? = null,
+    val links: String = "[]", // JSON array of URLs
+    val status: ReminderStatus = ReminderStatus.PENDING,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long
+)
+
+@Entity(tableName = "aura_automations")
+data class AuraAutomationEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val prompt: String,
+    @ColumnInfo(name = "cron_expression") val cronExpression: String,
+    @ColumnInfo(name = "execution_plan") val executionPlan: String, // JSON AutomationExecutionPlan
+    @ColumnInfo(name = "output_type") val outputType: AutomationOutputType =
+        AutomationOutputType.NOTIFICATION,
+    @ColumnInfo(name = "last_execution_at") val lastExecutionAt: Long? = null,
+    @ColumnInfo(name = "last_result_json") val lastResultJson: String? = null,
+    val status: AutomationStatus = AutomationStatus.ACTIVE,
+    @ColumnInfo(name = "failure_count") val failureCount: Int = 0,
+    @ColumnInfo(name = "max_retries") val maxRetries: Int = 3,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long
+)
+
+@Entity(tableName = "aura_events")
+data class AuraEventEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val description: String = "",
+    @ColumnInfo(name = "start_at") val startAt: Long,
+    @ColumnInfo(name = "end_at") val endAt: Long,
+    val status: EventStatus = EventStatus.UPCOMING,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long
+)
+
+@Entity(
+    tableName = "event_sub_actions",
+    indices = [Index(value = ["event_id"])],
+    foreignKeys = [
+        androidx.room.ForeignKey(
+            entity = AuraEventEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["event_id"],
+            onDelete = androidx.room.ForeignKey.CASCADE
+        )
+    ]
+)
+data class EventSubActionEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "event_id") val eventId: String,
+    val type: EventSubActionType,
+    val title: String = "",
+    @ColumnInfo(name = "cron_expression") val cronExpression: String = "",
+    @ColumnInfo(name = "interval_ms") val intervalMs: Long = 0L,
+    val prompt: String = "",
+    val config: String = "{}", // JSON map
+    val enabled: Boolean = true
+)
+
+/**
+ * Links [TaskComponentEntity] to an [AuraEventEntity].
+ * Events reuse the task component system for visual tracking.
+ */
+@Entity(
+    tableName = "event_components",
+    indices = [Index(value = ["event_id"])],
+    foreignKeys = [
+        androidx.room.ForeignKey(
+            entity = AuraEventEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["event_id"],
+            onDelete = androidx.room.ForeignKey.CASCADE
+        )
+    ]
+)
+data class EventComponentEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "event_id") val eventId: String,
+    @ColumnInfo(name = "component_id") val componentId: String
+)
+
+/**
+ * Links [ChecklistItemEntity] to an [AuraReminderEntity].
+ * Reminders can carry embedded checklists.
+ */
+@Entity(
+    tableName = "reminder_checklist_items",
+    indices = [Index(value = ["reminder_id"])],
+    foreignKeys = [
+        androidx.room.ForeignKey(
+            entity = AuraReminderEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["reminder_id"],
+            onDelete = androidx.room.ForeignKey.CASCADE
+        )
+    ]
+)
+data class ReminderChecklistItemEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "reminder_id") val reminderId: String,
+    val text: String,
+    @ColumnInfo(name = "is_completed") val isCompleted: Boolean = false,
+    @ColumnInfo(name = "sort_order") val sortOrder: Int
 )
