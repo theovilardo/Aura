@@ -20,7 +20,15 @@ object ProtocolSerializer {
             subclass(DeviceCapabilityReport::class)
             subclass(PairingRequest::class)
             subclass(PairingAck::class)
+            subclass(PairingConfirm::class)
+            subclass(PairingResultPayload::class)
+            subclass(AuthRequest::class)
+            subclass(AuthResult::class)
             subclass(DeviceEvent::class)
+            // v3: Multi-Creation-Type sync
+            subclass(SyncItemPayload::class)
+            subclass(AutomationExecRequest::class)
+            subclass(AutomationExecResult::class)
         }
     }
 
