@@ -9,6 +9,7 @@ import com.theveloper.aura.core.json.auraJson
 import com.theveloper.aura.engine.classifier.LLMClassificationContext
 import com.theveloper.aura.engine.classifier.MissingField
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
+import com.theveloper.aura.engine.skill.UiSkillRegistry
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.text.SimpleDateFormat
@@ -47,7 +48,7 @@ abstract class LiteRtLocalLLMService constructor(
         val prompt = buildClassifierPrompt(input, context)
         val rawResponse = generateText(
             userPrompt = prompt,
-            systemPrompt = localClassifierSystemPrompt(),
+            systemPrompt = localClassifierSystemPrompt(context),
             maxOutputTokens = CLASSIFY_MAX_OUTPUT_TOKENS,
             requestLabel = "classify",
             responseInstruction = jsonOnlyInstruction(CLASSIFY_MAX_OUTPUT_TOKENS),
@@ -357,7 +358,7 @@ abstract class LiteRtLocalLLMService constructor(
 
     private fun buildRepairPrompt(rawResponse: String): String {
         return """
-            Convert the following output into a single valid JSON object matching the TaskDSLOutput schema.
+            Convert the following output into a single valid JSON object matching AURA's task planner schema.
             No extra text, no markdown, no explanations.
             Original output:
             $rawResponse
@@ -367,6 +368,9 @@ abstract class LiteRtLocalLLMService constructor(
     private fun buildClassifierPrompt(input: String, context: LLMClassificationContext): String {
         return buildString {
             appendLine("User input: $input")
+            context.detectedTaskType?.let {
+                appendLine("Detected task type hint: ${it.name}")
+            }
             context.extractedDates.takeIf { it.isNotEmpty() }?.let {
                 appendLine("Extracted dates (epoch ms): $it")
             }
@@ -383,32 +387,11 @@ abstract class LiteRtLocalLLMService constructor(
         }
     }
 
-    protected open fun localClassifierSystemPrompt(): String {
-        return """
-            Task UI builder. Return ONLY valid JSON. No markdown fences, no extra text.
-            LANGUAGE: All text fields must match the user's input language.
-
-            JSON schema:
-            {"semantic":{"action":"verb phrase","items":["1-3 word nouns"],"subject":"context","goal":"measurable or empty","frequency":"DAILY or WEEKLY or empty"},"title":"short title from input","type":"GENERAL|TRAVEL|HABIT|HEALTH|PROJECT|FINANCE|EVENT|GOAL","priority":0,"targetDateMs":0,"components":[...],"reminders":[],"fetchers":[]}
-
-            Each component: {"type":"...","sortOrder":N,"config":{...},"populatedFromInput":false,"needsClarification":false}
-            config_type MUST equal the component type.
-
-            CHECKLIST: {"config_type":"CHECKLIST","label":"...","allowAddItems":true,"items":[{"label":"...","isSuggested":false}]}
-            Items = real things from prompt (products, exercises, steps). Inferred items: isSuggested=true. Unknown: items=[], needsClarification=true.
-            NOTES: {"config_type":"NOTES","text":"markdown","isMarkdown":true}
-            Text = real useful content with ## headers, **bold**, - lists. Never empty placeholders.
-            METRIC_TRACKER: {"config_type":"METRIC_TRACKER","unit":"kg|km|reps|...","label":"...","history":[],"goal":number_or_null}
-            COUNTDOWN: {"config_type":"COUNTDOWN","targetDate":epoch_ms_or_0,"label":"..."}
-            HABIT_RING: {"config_type":"HABIT_RING","frequency":"DAILY","label":"...","targetCount":1}
-            PROGRESS_BAR: {"config_type":"PROGRESS_BAR","source":"MANUAL","label":"...","manualProgress":0.0}
-
-            When to use: items→CHECKLIST, recurring→HABIT_RING, measurable goal→METRIC_TRACKER, date→COUNTDOWN, useful info→NOTES. Minimum components only.
-            Type: HEALTH(physical fitness/medical/body metrics ONLY), EVENT(future date), TRAVEL(trip), FINANCE(money), HABIT(recurring), GOAL(learning/skill development/personal growth/milestones/roadmap), PROJECT(deliverable), else GENERAL. IMPORTANT: learning, studying, recommendations, self-improvement → GOAL, never HEALTH.
-
-            Example — input: "gym routine, recommend exercises for legs"
-            {"semantic":{"action":"workout","items":["squats","lunges","leg press","calf raises"],"subject":"gym","goal":"","frequency":""},"title":"Gym routine","type":"HEALTH","priority":0,"targetDateMs":0,"components":[{"type":"CHECKLIST","sortOrder":0,"config":{"config_type":"CHECKLIST","label":"Exercises","allowAddItems":true,"items":[{"label":"squats","isSuggested":true},{"label":"lunges","isSuggested":true},{"label":"leg press","isSuggested":true},{"label":"calf raises","isSuggested":true}]},"populatedFromInput":true,"needsClarification":false},{"type":"NOTES","sortOrder":1,"config":{"config_type":"NOTES","text":"## Workout tips\n- **Sets:** 3-4 per exercise\n- **Reps:** 8-12\n- **Rest:** 60-90s between sets\n- Warm up 5 min before starting","isMarkdown":true},"populatedFromInput":true,"needsClarification":false}],"reminders":[],"fetchers":[]}
-        """.trimIndent()
+    protected open fun localClassifierSystemPrompt(context: LLMClassificationContext): String {
+        return UiSkillRegistry.buildSystemPrompt(
+            context = this.context,
+            taskTypeHint = context.detectedTaskType
+        )
     }
 
     // ── Reflection helpers ────────────────────────────────────────────────────

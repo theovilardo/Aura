@@ -8,6 +8,7 @@ import com.theveloper.aura.domain.model.TaskType
 import com.theveloper.aura.engine.dsl.SemanticFrame
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
 import com.theveloper.aura.engine.dsl.TaskDSLValidator
+import com.theveloper.aura.engine.skill.UiSkillRegistry
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -35,10 +36,14 @@ internal fun String.stripCodeFences(): String {
 
 internal fun String.extractLikelyJsonBlock(): String {
     val normalized = stripCodeFences()
-    return normalized.extractBalancedBlock('{', '}')
-        ?: normalized.extractBalancedBlock('[', ']')
+    val containsObject = normalized.indexOf('{') != -1
+    val candidate = normalized.extractBalancedBlock('{', '}')
         ?: normalized.tryCompleteTruncatedJson()
-        ?: normalized
+        ?: (!containsObject).let { onlyArrayMode ->
+            if (onlyArrayMode) normalized.extractBalancedBlock('[', ']') else null
+        }
+
+    return candidate ?: normalized
 }
 
 internal fun String.normalizeTaskDslJson(): String {
@@ -169,25 +174,33 @@ private fun String.tryCompleteTruncatedJson(): String? {
 }
 
 private fun normalizeTaskDslObject(root: JsonObject): JsonObject {
-    val type = root["type"].enumValueOrDefault(TaskType.GENERAL)
-    val targetDateMs = root["targetDateMs"].epochMillisOrNull()
+    val taskRoot = (root["task"] as? JsonObject) ?: root
+    val type = taskRoot["type"].enumValueOrDefault(TaskType.GENERAL)
+    val targetDateMs = taskRoot["targetDateMs"].epochMillisOrNull()
     val components = normalizeComponents(
-        components = root["components"] as? JsonArray,
+        components = taskRoot["components"] as? JsonArray,
+        rootTargetDateMs = targetDateMs
+    )
+    val skillComponents = normalizeSkillComponents(
+        skills = (taskRoot["skills"] as? JsonArray) ?: (root["skills"] as? JsonArray),
         rootTargetDateMs = targetDateMs
     )
 
-    val semanticFrame = extractSemanticFrame(root)
-    val enrichedComponents = applySemanticToComponents(components, semanticFrame)
+    val semanticFrame = extractSemanticFrame(root, taskRoot)
+    val enrichedComponents = applySemanticToComponents(
+        components = if (skillComponents.isNotEmpty()) skillComponents else components,
+        frame = semanticFrame
+    )
 
     return JsonObject(
         mapOf(
-            "title" to JsonPrimitive(root["title"].stringValue().ifBlank { TaskDSLValidator.PLACEHOLDER_TITLE }),
+            "title" to JsonPrimitive(taskRoot["title"].stringValue().ifBlank { TaskDSLValidator.PLACEHOLDER_TITLE }),
             "type" to JsonPrimitive(type.name),
-            "priority" to JsonPrimitive(root["priority"].intValue(default = 0).coerceIn(0, 3)),
+            "priority" to JsonPrimitive(taskRoot["priority"].intValue(default = 0).coerceIn(0, 3)),
             "targetDateMs" to (targetDateMs?.let(::JsonPrimitive) ?: JsonNull),
             "components" to enrichedComponents,
-            "reminders" to normalizeReminders(root["reminders"] as? JsonArray),
-            "fetchers" to normalizeFetchers(root["fetchers"] as? JsonArray)
+            "reminders" to normalizeReminders(taskRoot["reminders"] as? JsonArray),
+            "fetchers" to normalizeFetchers(taskRoot["fetchers"] as? JsonArray)
         )
     )
 }
@@ -201,6 +214,8 @@ private fun normalizeComponents(
         .orEmpty()
         .distinctBy { component ->
             buildString {
+                append(component["skillId"])
+                append('|')
                 append(component["type"])
                 append('|')
                 append(component["config"])
@@ -217,20 +232,74 @@ private fun normalizeComponents(
     return JsonArray(normalized)
 }
 
-private fun normalizeComponent(
-    component: JsonObject?,
+private fun normalizeSkillComponents(
+    skills: JsonArray?,
+    rootTargetDateMs: Long?
+): JsonArray {
+    if (skills == null) return JsonArray(emptyList())
+
+    val normalized = skills
+        .mapNotNull { normalizeSkillComponent(it as? JsonObject, rootTargetDateMs) }
+        .distinctBy { component ->
+            buildString {
+                append(component["skillId"])
+                append('|')
+                append(component["type"])
+                append('|')
+                append(component["config"])
+                append('|')
+                append(component["populatedFromInput"])
+                append('|')
+                append(component["needsClarification"])
+            }
+        }
+        .mapIndexed { index, component ->
+            JsonObject(component + ("sortOrder" to JsonPrimitive(index)))
+        }
+
+    return JsonArray(normalized)
+}
+
+private fun normalizeSkillComponent(
+    skill: JsonObject?,
     rootTargetDateMs: Long?
 ): JsonObject? {
+    skill ?: return null
+    val requestedSkillId = skill["skill"].stringValue()
+        .ifBlank { skill["name"].stringValue() }
+        .ifBlank { skill["skillId"].stringValue() }
+    val normalizedSkillId = UiSkillRegistry.resolve(requestedSkillId)?.id ?: requestedSkillId.ifBlank { null }
+    val forcedType = normalizedSkillId?.let(UiSkillRegistry::resolve)?.componentType
+    return normalizeComponent(
+        component = skill,
+        rootTargetDateMs = rootTargetDateMs,
+        forcedType = forcedType,
+        skillId = normalizedSkillId
+    )
+}
+
+private fun normalizeComponent(
+    component: JsonObject?,
+    rootTargetDateMs: Long?,
+    forcedType: ComponentType? = null,
+    skillId: String? = null
+): JsonObject? {
     component ?: return null
-    val type = component.resolveComponentType() ?: return null
+    val type = forcedType ?: component.resolveComponentType() ?: return null
     val config = normalizeComponentConfig(
         type = type,
         component = component,
         rootTargetDateMs = rootTargetDateMs
     )
+    val effectiveSkillId = skillId
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?: component["skillId"].stringValue().takeIf { it.isNotBlank() }
+        ?: component["skill"].stringValue().takeIf { it.isNotBlank() }
 
     return JsonObject(
         mapOf(
+            "skillId" to (effectiveSkillId?.let(::JsonPrimitive) ?: JsonNull),
             "type" to JsonPrimitive(type.name),
             "sortOrder" to JsonPrimitive(0),
             "config" to config,
@@ -509,8 +578,14 @@ private inline fun <reified T : Enum<T>> JsonElement?.enumValueOrNull(): T? {
 
 // ── Semantic Decomposition Layer ──────────────────────────────────────────────
 
-internal fun extractSemanticFrame(root: JsonObject): SemanticFrame {
-    val semantic = root["semantic"] as? JsonObject ?: return SemanticFrame.EMPTY
+internal fun extractSemanticFrame(
+    root: JsonObject,
+    taskRoot: JsonObject? = null
+): SemanticFrame {
+    val semantic = root["semantic"] as? JsonObject
+        ?: (taskRoot?.get("semantic") as? JsonObject)
+        ?: ((root["analysis"] as? JsonObject)?.get("semantic") as? JsonObject)
+        ?: return SemanticFrame.EMPTY
 
     val action = semantic["action"].stringValue()
     val subject = semantic["subject"].stringValue()
@@ -543,10 +618,8 @@ internal fun applySemanticToComponents(
         val type = component["type"].stringValue()
 
         when {
-            type == ComponentType.CHECKLIST.name && frame.hasItems ->
+            type == ComponentType.CHECKLIST.name && frame.hasItems && semanticItemsAreSpecific(frame) ->
                 applySemanticToChecklist(component, frame)
-            type == ComponentType.NOTES.name && frame.hasItems ->
-                applySemanticToNotes(component, frame)
             type == ComponentType.HABIT_RING.name && frame.hasFrequency ->
                 applySemanticToHabitRing(component, frame)
             else -> component
@@ -602,24 +675,6 @@ private fun applySemanticToChecklist(
     )
 }
 
-private fun applySemanticToNotes(
-    component: JsonObject,
-    frame: SemanticFrame
-): JsonObject {
-    val config = component["config"] as? JsonObject ?: return component
-    val existingText = config["text"].stringValue()
-    if (existingText.isNotBlank()) return component  // preserve non-empty notes
-
-    val markdownList = frame.items.joinToString("\n") { "- $it" }
-    val updatedConfig = JsonObject(config + ("text" to JsonPrimitive(markdownList)))
-    return JsonObject(
-        component + mapOf(
-            "config" to updatedConfig,
-            "populatedFromInput" to JsonPrimitive(true)
-        )
-    )
-}
-
 private fun applySemanticToHabitRing(
     component: JsonObject,
     frame: SemanticFrame
@@ -668,7 +723,49 @@ private fun existingItemsLookNoisy(
     return false
 }
 
+private fun semanticItemsAreSpecific(frame: SemanticFrame): Boolean {
+    if (!frame.hasItems) return false
+
+    val subjectLower = frame.subject.lowercase()
+    val goalLower = frame.goal.lowercase()
+
+    val genericOrAbstractCount = frame.items.count { item ->
+        val normalized = item.lowercase().trim()
+        normalized in GENERIC_SEMANTIC_ITEMS ||
+            (subjectLower.isNotBlank() && subjectLower.contains(normalized)) ||
+            (goalLower.isNotBlank() && goalLower.contains(normalized))
+    }
+
+    return genericOrAbstractCount < frame.items.size
+}
+
 private const val MAX_SEMANTIC_ITEM_LENGTH = 80
+private val GENERIC_SEMANTIC_ITEMS = setOf(
+    "roadmap",
+    "guide",
+    "guides",
+    "reference",
+    "references",
+    "resource",
+    "resources",
+    "documentation",
+    "docs",
+    "recommendation",
+    "recommendations",
+    "plan",
+    "overview",
+    "learning",
+    "study",
+    "topic",
+    "tema",
+    "guia",
+    "guía",
+    "referencias",
+    "documentacion",
+    "documentación",
+    "recomendaciones",
+    "plan de estudio"
+)
 
 // ── End Semantic Decomposition Layer ─────────────────────────────────────────
 

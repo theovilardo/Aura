@@ -1,6 +1,7 @@
 package com.theveloper.aura.engine.llm
 
 import android.content.Context
+import com.theveloper.aura.engine.classifier.LLMClassificationContext
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -14,10 +15,7 @@ class Gemma3nE2BLLMService @Inject constructor(
     tier = LLMTier.GEMMA_3N_E2B,
     defaultMaxOutputTokens = 1024
 ) {
-    /**
-     * E2B has enough capacity for the full system prompt with detailed reference docs.
-     */
-    override fun localClassifierSystemPrompt(): String {
-        return appContext.assets.open("system_prompt.txt").bufferedReader().use { it.readText() }
+    override fun localClassifierSystemPrompt(context: LLMClassificationContext): String {
+        return super.localClassifierSystemPrompt(context)
     }
 }

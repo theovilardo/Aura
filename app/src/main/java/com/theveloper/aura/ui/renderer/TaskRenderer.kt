@@ -97,8 +97,8 @@ fun TaskRenderer(
         }
         task.components.isEmpty() -> {
             EmptyStateView(
-                title = "Sin componentes",
-                body = "La tarea existe, pero todavía no tiene widgets para renderizar.",
+                title = "Sin UI-Skills",
+                body = "La tarea existe, pero todavía no tiene UI-Skills para renderizar.",
                 modifier = modifier
             )
         }
@@ -246,7 +246,7 @@ private fun EditTaskHeader(task: Task) {
                 }
                 AssistChip(
                     onClick = {},
-                    label = { Text("${task.components.size} blocks") }
+                    label = { Text("${task.components.size} UI skills") }
                 )
             }
         }
@@ -316,7 +316,7 @@ private fun InterpretedTaskHeader(task: Task) {
                 task.targetDate?.let { targetDate ->
                     ComponentPill(formatDate(targetDate))
                 }
-                ComponentPill("${task.components.size} blocks")
+                ComponentPill("${task.components.size} UI skills")
             }
         }
     }

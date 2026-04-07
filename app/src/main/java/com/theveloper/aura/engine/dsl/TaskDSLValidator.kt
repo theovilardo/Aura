@@ -2,6 +2,7 @@ package com.theveloper.aura.engine.dsl
 
 import com.theveloper.aura.core.json.auraJson
 import com.theveloper.aura.domain.model.ComponentConfig
+import com.theveloper.aura.engine.skill.UiSkillRegistry
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.JsonObject
@@ -31,6 +32,18 @@ object TaskDSLValidator {
         }
 
         dsl.components.forEach { component ->
+            component.skillId?.takeIf { it.isNotBlank() }?.let { skillId ->
+                val validation = UiSkillRegistry.validate(skillId, component.config)
+                if (!validation.isValid) {
+                    return ValidationResult.Invalid(validation.reason ?: "Invalid UI skill selection")
+                }
+                if (validation.definition?.componentType != component.type) {
+                    return ValidationResult.Invalid(
+                        "UI skill $skillId does not match component ${component.type}"
+                    )
+                }
+            }
+
             val configType = component.config["config_type"]?.jsonPrimitive?.contentOrNull
             if (configType != component.type.name) {
                 return ValidationResult.Invalid("Config type ${configType ?: "null"} does not match component ${component.type}")

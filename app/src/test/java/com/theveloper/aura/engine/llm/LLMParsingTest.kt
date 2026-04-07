@@ -13,6 +13,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonObject
@@ -49,6 +50,38 @@ class LLMParsingTest {
             """{"title":"Demo","type":"GENERAL","components":[]}""",
             raw.extractLikelyJsonBlock()
         )
+    }
+
+    @Test
+    fun `extractLikelyJsonBlock prefers repaired root object over inner array`() {
+        val raw = """
+            {
+              "analysis": {
+                "intent": "create roadmap",
+                "constraints": ["need sources"],
+                "skills_needed": ["notes"]
+              },
+              "task": {
+                "title": "Kotlin roadmap",
+                "type": "GOAL",
+                "skills": [
+                  {
+                    "skill": "notes",
+                    "config": {
+                      "config_type": "NOTES",
+                      "text": "hello"
+                    }
+                  }
+                ]
+        """.trimIndent()
+
+        val extracted = raw.extractLikelyJsonBlock()
+
+        assertEquals('{', extracted.first())
+        val normalized = extracted.normalizeTaskDslJson()
+        val dsl = auraJson.decodeFromString<TaskDSLOutput>(normalized)
+        assertEquals(TaskType.GOAL, dsl.type)
+        assertEquals(listOf(ComponentType.NOTES), dsl.components.map { it.type })
     }
 
     @Test
@@ -212,6 +245,112 @@ class LLMParsingTest {
         val items = ChecklistDslItems.parse(dsl.components.first().config).map { it.label }
         assertEquals(listOf("item1", "item2"), items)
         assertFalse(dsl.components.first().populatedFromInput)
+    }
+
+    @Test
+    fun `normalizeTaskDslJson bridges ui skills schema into legacy components`() {
+        val raw = """
+            {
+              "analysis": {
+                "intent": "plan a trip",
+                "constraints": ["budget"],
+                "skills_needed": ["countdown", "checklist", "notes"]
+              },
+              "semantic": {
+                "action": "travel",
+                "items": ["passport", "tickets"],
+                "subject": "Madrid",
+                "goal": "",
+                "frequency": ""
+              },
+              "task": {
+                "title": "Trip to Madrid",
+                "type": "TRAVEL",
+                "priority": 1,
+                "targetDateMs": 1760000000000,
+                "skills": [
+                  {
+                    "skill": "countdown",
+                    "sortOrder": 0,
+                    "config": {
+                      "label": "Trip date",
+                      "targetDate": 1760000000000
+                    }
+                  },
+                  {
+                    "skill": "checklist",
+                    "sortOrder": 1,
+                    "config": {
+                      "label": "Packing",
+                      "allowAddItems": true,
+                      "items": []
+                    }
+                  },
+                  {
+                    "skill": "notes",
+                    "sortOrder": 2,
+                    "config": {
+                      "text": "## Travel notes\n- Book hotel",
+                      "isMarkdown": true
+                    },
+                    "populatedFromInput": true
+                  }
+                ],
+                "reminders": [],
+                "fetchers": []
+              }
+            }
+        """.trimIndent()
+
+        val normalized = raw.normalizeTaskDslJson()
+        val dsl = auraJson.decodeFromString<TaskDSLOutput>(normalized)
+
+        assertEquals(TaskDSLValidator.ValidationResult.Valid, TaskDSLValidator.validate(dsl))
+        assertEquals(listOf(ComponentType.COUNTDOWN, ComponentType.CHECKLIST, ComponentType.NOTES), dsl.components.map { it.type })
+        assertEquals("countdown", dsl.components[0].skillId)
+        assertEquals("checklist", dsl.components[1].skillId)
+        assertEquals("notes", dsl.components[2].skillId)
+        val checklistItems = ChecklistDslItems.parse(dsl.components[1].config).map { it.label }
+        assertEquals(listOf("passport", "tickets"), checklistItems)
+        assertEquals(true, dsl.components[1].populatedFromInput)
+    }
+
+    @Test
+    fun `normalizeTaskDslJson does not turn abstract roadmap semantics into visible checklist items`() {
+        val raw = """
+            {
+              "semantic": {
+                "action": "learn programming",
+                "items": ["Kotlin programming", "roadmap", "guide", "references"],
+                "subject": "Kotlin programming",
+                "goal": "roadmap and guide",
+                "frequency": ""
+              },
+              "task": {
+                "title": "Roadmap and Guide for Kotlin Programming",
+                "type": "GOAL",
+                "skills": [
+                  {
+                    "skill": "notes",
+                    "config": {}
+                  },
+                  {
+                    "skill": "checklist",
+                    "config": {}
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+
+        val normalized = raw.normalizeTaskDslJson()
+        val dsl = auraJson.decodeFromString<TaskDSLOutput>(normalized)
+
+        val notes = dsl.components.first { it.type == ComponentType.NOTES }
+        val checklist = dsl.components.first { it.type == ComponentType.CHECKLIST }
+
+        assertEquals("", notes.config["text"]?.jsonPrimitive?.contentOrNull.orEmpty())
+        assertTrue(ChecklistDslItems.parse(checklist.config).isEmpty())
     }
 
     @Test

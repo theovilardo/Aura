@@ -116,6 +116,8 @@ import com.theveloper.aura.domain.model.TaskComponent
 import com.theveloper.aura.domain.model.TaskStatus
 import com.theveloper.aura.ui.components.ComponentPill
 import com.theveloper.aura.ui.components.FullscreenRenderedNotesContent
+import com.theveloper.aura.ui.skill.uiSkillDisplayName
+import com.theveloper.aura.ui.skill.uiSkillIcon
 import com.theveloper.aura.ui.renderer.EditableTaskRenderer
 import com.theveloper.aura.ui.renderer.TaskRenderMode
 import com.theveloper.aura.ui.renderer.TaskRenderer
@@ -1544,7 +1546,7 @@ private fun TaskComponent.displayName(): String = type.displayName()
 private fun TaskComponent.reorderSubtitle(): String {
     val details = config.reorderDetails()
     return if (details.isBlank()) {
-        "Block ${sortOrder + 1}"
+        "UI-Skill ${sortOrder + 1}"
     } else {
         details
     }
@@ -1565,22 +1567,6 @@ private fun ComponentConfig.reorderDetails(): String = when (this) {
     else -> ""
 }
 
-private fun TaskComponent.icon(): ImageVector = when (type) {
-    ComponentType.CHECKLIST -> Icons.Rounded.DoneAll
-    ComponentType.PROGRESS_BAR -> Icons.Rounded.DonutLarge
-    ComponentType.COUNTDOWN -> Icons.Rounded.Timer
-    ComponentType.HABIT_RING -> Icons.Rounded.Autorenew
-    ComponentType.NOTES -> Icons.AutoMirrored.Rounded.Notes
-    ComponentType.METRIC_TRACKER -> Icons.AutoMirrored.Rounded.ShowChart
-    ComponentType.DATA_FEED -> Icons.Rounded.Sync
-}
+private fun TaskComponent.icon(): ImageVector = type.uiSkillIcon()
 
-private fun ComponentType.displayName(): String = when (this) {
-    ComponentType.CHECKLIST -> "Checklist"
-    ComponentType.PROGRESS_BAR -> "Progress"
-    ComponentType.COUNTDOWN -> "Countdown"
-    ComponentType.HABIT_RING -> "Habit ring"
-    ComponentType.NOTES -> "Notes"
-    ComponentType.METRIC_TRACKER -> "Metric tracker"
-    ComponentType.DATA_FEED -> "Data feed"
-}
+private fun ComponentType.displayName(): String = uiSkillDisplayName()

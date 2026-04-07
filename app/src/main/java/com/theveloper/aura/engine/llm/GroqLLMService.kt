@@ -6,6 +6,7 @@ import com.theveloper.aura.core.json.auraJson
 import com.theveloper.aura.data.repository.AppSettingsRepository
 import com.theveloper.aura.engine.classifier.LLMClassificationContext
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
+import com.theveloper.aura.engine.skill.UiSkillRegistry
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -36,7 +37,13 @@ class GroqLLMService @Inject constructor(
 
         val response = callGroq(
             messages = listOf(
-                GroqMessage(role = "system", content = loadAsset("system_prompt.txt")),
+                GroqMessage(
+                    role = "system",
+                    content = UiSkillRegistry.buildSystemPrompt(
+                        context = this.context,
+                        taskTypeHint = context.detectedTaskType
+                    )
+                ),
                 GroqMessage(role = "user", content = buildClassifierPrompt(input, context))
             )
         )
@@ -112,6 +119,9 @@ class GroqLLMService @Inject constructor(
     private fun buildClassifierPrompt(input: String, context: LLMClassificationContext): String {
         return buildString {
             appendLine("User input: $input")
+            context.detectedTaskType?.let {
+                appendLine("Detected task type hint: ${it.name}")
+            }
             context.extractedDates.takeIf { it.isNotEmpty() }?.let {
                 appendLine("Extracted dates (epoch ms): $it")
             }
