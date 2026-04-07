@@ -2,7 +2,7 @@
 
 Asistente personal local-first para Android que combina tareas, hábitos, recordatorios inteligentes y automatizaciones contextuales en una sola app.
 
-La idea central de AURA es que la IA no renderiza interfaces ni actúa sola: interpreta la intención del usuario, genera una estructura de tarea (`Task DSL`) y la app la convierte en componentes Compose adaptados a cada caso de uso. El sistema sugiere, explica y aprende, pero no modifica datos sin aprobación explícita.
+La idea central de AURA es que la IA no renderiza interfaces ni actúa sola: interpreta la intención del usuario, selecciona `UI-Skills` reutilizables y genera un `Task DSL` estructurado que la app convierte en UI nativa. El sistema sugiere, explica y aprende, pero no modifica datos sin aprobación explícita.
 
 ## Qué problema intenta resolver
 
@@ -31,10 +31,13 @@ El flujo conceptual del MVP es este:
 1. El usuario crea una tarea a partir de texto o voz.
 2. Un pipeline clasifica la intención y extrae entidades.
 3. El sistema genera un `Task DSL` estructurado.
-4. La app renderiza esa definición como componentes Compose reutilizables.
-5. Los eventos del usuario alimentan un motor de hábitos y sugerencias.
+4. Un `UI-Skill Registry` valida las skills elegidas y normaliza su configuración.
+5. La app renderiza esa definición como UI nativa mediante un `SkillRendererRegistry`.
+6. Los eventos del usuario alimentan un motor de hábitos y sugerencias.
 
-Ejemplos de componentes soportados en la visión del producto:
+El modelo conceptual de `UI-Skills` sigue el espíritu de Google AI Edge Gallery: cada skill tiene nombre, descripción e instrucciones declarativas (`SKILL.md`) para que distintos LLMs puedan descubrirla y configurarla sin depender de un prompt monolítico.
+
+Ejemplos de UI-Skills soportadas en la visión actual del producto:
 
 - `CHECKLIST`
 - `COUNTDOWN`
@@ -91,7 +94,7 @@ app/src/main/java/com/theveloper/aura/
 
 Capas principales:
 
-- `ui`: pantallas, navegación y renderizado de componentes
+- `ui`: pantallas, navegación y renderizado de UI-Skills
 - `domain`: modelos y contratos del negocio
 - `data`: base local, DAOs, entidades y repositorios
 - `engine`: clasificación, DSL y lógica de composición
@@ -119,10 +122,10 @@ Si preferís línea de comandos:
 ## Próximos hitos naturales
 
 - completar el flujo de creación de tareas desde lenguaje natural
-- consolidar el `Task DSL` como contrato estable
+- consolidar el `Task DSL` y las `UI-Skills` como contrato estable entre modelos y renderer
 - conectar señales de uso con sugerencias y replanificación
 - implementar recordatorios adaptativos y aprendizaje real de hábitos
-- ampliar los componentes visuales y su renderizado
+- ampliar el catálogo de UI-Skills y su renderizado
 
 ## Documentación relacionada
 

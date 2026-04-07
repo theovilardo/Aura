@@ -44,6 +44,31 @@ class TaskDSLValidatorTest {
         assertFalse(TaskDSLValidator.PLACEHOLDER_TITLE == "")
     }
 
+    @Test
+    fun `validate rejects unknown ui skill ids`() {
+        val dsl = TaskDSLOutput(
+            title = "Buy groceries",
+            type = TaskType.GENERAL,
+            components = listOf(
+                ComponentDSL(
+                    skillId = "mystery-skill",
+                    type = ComponentType.NOTES,
+                    sortOrder = 0,
+                    config = JsonObject(
+                        mapOf(
+                            "config_type" to JsonPrimitive("NOTES"),
+                            "text" to JsonPrimitive("hello"),
+                            "isMarkdown" to JsonPrimitive(true)
+                        )
+                    )
+                )
+            )
+        )
+
+        val result = TaskDSLValidator.validate(dsl)
+        assertTrue(result is TaskDSLValidator.ValidationResult.Invalid)
+    }
+
     private fun minimalDsl(title: String): TaskDSLOutput {
         return TaskDSLOutput(
             title = title,

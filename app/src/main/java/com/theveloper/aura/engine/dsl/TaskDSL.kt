@@ -19,6 +19,7 @@ data class TaskDSLOutput(
 
 @Serializable
 data class ComponentDSL(
+    val skillId: String? = null,
     val type: ComponentType,
     val sortOrder: Int,
     val config: JsonObject,

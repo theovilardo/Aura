@@ -20,19 +20,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.Notes
-import androidx.compose.material.icons.automirrored.rounded.ShowChart
 import androidx.compose.material.icons.rounded.Alarm
-import androidx.compose.material.icons.rounded.Autorenew
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Computer
-import androidx.compose.material.icons.rounded.DoneAll
-import androidx.compose.material.icons.rounded.DonutLarge
-import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.PhoneAndroid
-import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -56,6 +49,9 @@ import com.theveloper.aura.engine.classifier.TaskGenerationSource
 import com.theveloper.aura.engine.dsl.ChecklistDslItems
 import com.theveloper.aura.engine.dsl.ComponentDSL
 import com.theveloper.aura.ui.components.ComponentPill
+import com.theveloper.aura.ui.skill.uiSkillDisplayName
+import com.theveloper.aura.ui.skill.uiSkillIcon
+import com.theveloper.aura.ui.skill.uiSkillShortLabel
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -387,7 +383,7 @@ private fun PreviewComponentRow(component: ComponentDSL) {
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
-                    text = component.type.displayName(),
+                    text = component.type.uiSkillDisplayName(),
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -442,19 +438,11 @@ private fun componentBadgeLabel(component: ComponentDSL): String {
 
     return when {
         component.populatedFromInput -> "Filled"
-        else -> component.type.shortLabel()
+        else -> component.type.uiSkillShortLabel()
     }
 }
 
-private fun previewComponentIcon(type: ComponentType): ImageVector = when (type) {
-    ComponentType.CHECKLIST -> Icons.Rounded.DoneAll
-    ComponentType.PROGRESS_BAR -> Icons.Rounded.DonutLarge
-    ComponentType.COUNTDOWN -> Icons.Rounded.Timer
-    ComponentType.HABIT_RING -> Icons.Rounded.Autorenew
-    ComponentType.NOTES -> Icons.AutoMirrored.Rounded.Notes
-    ComponentType.METRIC_TRACKER -> Icons.AutoMirrored.Rounded.ShowChart
-    ComponentType.DATA_FEED -> Icons.Rounded.Sync
-}
+private fun previewComponentIcon(type: ComponentType): ImageVector = type.uiSkillIcon()
 
 @Composable
 private fun SourcePill(source: TaskGenerationSource) {
@@ -507,27 +495,7 @@ private fun TaskGenerationResult.summaryLine(): String {
         TaskGenerationSource.LOCAL_AI -> "Built with the local AI composer"
         TaskGenerationSource.GROQ_API -> "Refined with connected AI"
     }
-    return "$sourceSummary. ${taskShape.displayName} with ${taskDsl.components.size} component${if (taskDsl.components.size == 1) "" else "s"}."
-}
-
-private fun ComponentType.displayName(): String = when (this) {
-    ComponentType.CHECKLIST -> "Checklist"
-    ComponentType.PROGRESS_BAR -> "Progress"
-    ComponentType.COUNTDOWN -> "Countdown"
-    ComponentType.HABIT_RING -> "Habit ring"
-    ComponentType.NOTES -> "Notes"
-    ComponentType.METRIC_TRACKER -> "Metric tracker"
-    ComponentType.DATA_FEED -> "Data feed"
-}
-
-private fun ComponentType.shortLabel(): String = when (this) {
-    ComponentType.CHECKLIST -> "List"
-    ComponentType.PROGRESS_BAR -> "Track"
-    ComponentType.COUNTDOWN -> "Time"
-    ComponentType.HABIT_RING -> "Habit"
-    ComponentType.NOTES -> "Text"
-    ComponentType.METRIC_TRACKER -> "Metric"
-    ComponentType.DATA_FEED -> "Live"
+    return "$sourceSummary. ${taskShape.displayName} with ${taskDsl.components.size} UI skill${if (taskDsl.components.size == 1) "" else "s"}."
 }
 
 private fun formatDate(timestamp: Long): String {
