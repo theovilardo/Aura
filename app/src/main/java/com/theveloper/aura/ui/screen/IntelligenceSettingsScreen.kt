@@ -995,9 +995,16 @@ private fun ModelLibraryCard(
                 if (uiState.spec.requiresAuthentication) {
                     SettingsStatusChip("Gated")
                 }
+                if (!uiState.isRuntimeCompatible) {
+                    SettingsStatusChip("Runtime update required")
+                }
             }
 
-            if (uiState.isSelected) {
+            if (!uiState.isRuntimeCompatible) {
+                OutlinedButton(onClick = {}, enabled = false) {
+                    Text("Runtime update required")
+                }
+            } else if (uiState.isSelected) {
                 SettingsStatusChip(if (slot == LocalModelSlot.PRIMARY) "Aura prefers this for the primary slot" else "Aura prefers this for the advanced slot")
             } else {
                 OutlinedButton(onClick = onSelect) {
@@ -1025,6 +1032,14 @@ private fun ModelLibraryCard(
                     )
 
                     when {
+                        !uiState.isRuntimeCompatible -> {
+                            Text(
+                                text = uiState.spec.runtimeCompatibilityNote,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+
                         slot == LocalModelSlot.ADVANCED && !supportsAdvancedTier -> {
                             Text(
                                 text = "This device is not currently flagged for the advanced local tier, so Aura may stay on the primary path.",
@@ -1246,6 +1261,8 @@ private fun apiStatusLabel(uiState: IntelligenceSettingsUiState): String {
 private fun LLMTier.displayName(): String {
     return when (this) {
         LLMTier.GEMINI_NANO -> "Gemini Nano"
+        LLMTier.GEMMA_4_E4B -> "Gemma 4 E4B"
+        LLMTier.GEMMA_4_E2B -> "Gemma 4 E2B"
         LLMTier.GEMMA_3N_E2B -> "Gemma 3n E2B"
         LLMTier.GEMMA_3_1B -> "Gemma 3 1B"
         LLMTier.QWEN_2_5_1_5B -> "Qwen 2.5 1.5B"

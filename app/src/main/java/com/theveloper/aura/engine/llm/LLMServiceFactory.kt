@@ -29,6 +29,8 @@ class LLMServiceFactory @Inject constructor(
     private val modelDownloadManager: ModelDownloadManager,
     private val rulesOnlyLLMService: RulesOnlyLLMService,
     private val groqLLMService: GroqLLMService,
+    private val gemma4E4BLLMService: Gemma4E4BLLMService,
+    private val gemma4E2BLLMService: Gemma4E2BLLMService,
     private val gemma1BLLMService: Gemma1BLLMService,
     private val gemma3nE2BLLMService: Gemma3nE2BLLMService,
     private val qwen25InstructLLMService: Qwen25InstructLLMService,
@@ -116,6 +118,8 @@ class LLMServiceFactory @Inject constructor(
                 reason = "Groq would be the recommended tier, but it is not configured."
             )
 
+            LLMTier.GEMMA_4_E4B,
+            LLMTier.GEMMA_4_E2B,
             LLMTier.GEMMA_3_1B,
             LLMTier.GEMINI_NANO,
             LLMTier.GEMMA_3N_E2B,
@@ -145,7 +149,7 @@ class LLMServiceFactory @Inject constructor(
         val preferred = ModelCatalog.primaryById(preferredPrimaryModelId)
         return resolvePreferredRoute(
             preferred = preferred,
-            candidates = ModelCatalog.primaryModels,
+            candidates = ModelCatalog.selectablePrimaryModels,
             activeReason = { spec -> "${spec.displayName} is active for local generation." }
         )
     }
@@ -159,7 +163,7 @@ class LLMServiceFactory @Inject constructor(
         val preferred = ModelCatalog.advancedById(preferredAdvancedModelId)
         return resolvePreferredRoute(
             preferred = preferred,
-            candidates = ModelCatalog.advancedModels,
+            candidates = ModelCatalog.selectableAdvancedModels,
             activeReason = { spec -> "${spec.displayName} is active for richer local tasks." }
         )
     }
@@ -225,6 +229,8 @@ class LLMServiceFactory @Inject constructor(
 
     private fun serviceFor(spec: ModelSpec): LLMService {
         return when (spec.id) {
+            ModelCatalog.gemma4E4B.id -> gemma4E4BLLMService
+            ModelCatalog.gemma4E2B.id -> gemma4E2BLLMService
             ModelCatalog.gemma3_1B.id -> gemma1BLLMService
             ModelCatalog.gemma3nE2B.id -> gemma3nE2BLLMService
             ModelCatalog.qwen2_5_1_5B.id -> qwen25InstructLLMService

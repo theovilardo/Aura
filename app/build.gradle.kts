@@ -133,7 +133,9 @@ dependencies {
     implementation(libs.mlkit.entity.extraction)
 
     // LiteRT-LM
-    runtimeOnly(libs.litertlm.android)
+    runtimeOnly(libs.litertlm.android) {
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
+    }
     runtimeOnly(libs.litert.core)
 
     testImplementation(libs.junit)

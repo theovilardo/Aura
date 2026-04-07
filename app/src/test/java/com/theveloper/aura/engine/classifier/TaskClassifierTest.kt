@@ -1,5 +1,7 @@
 package com.theveloper.aura.engine.classifier
 
+import com.theveloper.aura.data.repository.AppSettingsRepository
+import com.theveloper.aura.data.repository.AppSettingsSnapshot
 import com.theveloper.aura.domain.model.ComponentType
 import com.theveloper.aura.domain.model.TaskType
 import com.theveloper.aura.domain.repository.MemoryRepository
@@ -10,6 +12,7 @@ import com.theveloper.aura.engine.llm.LLMServiceFactory
 import com.theveloper.aura.engine.llm.LLMTier
 import com.theveloper.aura.engine.llm.ResolvedLLMRoute
 import com.theveloper.aura.engine.memory.MemoryContextBuilder
+import com.theveloper.aura.engine.router.ExecutionRouter
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -33,7 +36,10 @@ class TaskClassifierTest {
     private val aiExecutionModeStore = mockk<AiExecutionModeStore>()
     private val memoryRepository = mockk<MemoryRepository>()
     private val completenessValidator = CompletenessValidator()
+    private val qualityGate = TaskDSLQualityGate()
     private val memoryContextBuilder = MemoryContextBuilder()
+    private val executionRouter = mockk<ExecutionRouter>()
+    private val appSettingsRepository = mockk<AppSettingsRepository>()
 
     private val subject = TaskClassifier(
         entityExtractorService = entityExtractorService,
@@ -42,9 +48,20 @@ class TaskClassifierTest {
         llmServiceFactory = llmServiceFactory,
         aiExecutionModeStore = aiExecutionModeStore,
         completenessValidator = completenessValidator,
+        qualityGate = qualityGate,
         memoryRepository = memoryRepository,
-        memoryContextBuilder = memoryContextBuilder
+        memoryContextBuilder = memoryContextBuilder,
+        executionRouter = executionRouter,
+        appSettingsRepository = appSettingsRepository
     )
+
+    init {
+        coEvery { appSettingsRepository.getSnapshot() } returns AppSettingsSnapshot(ecosystemEnabled = false)
+        coEvery { llmServiceFactory.resolveAdvancedService(any()) } returns route(
+            source = TaskGenerationSource.RULES,
+            tier = LLMTier.RULES_ONLY
+        )
+    }
 
     @Test
     fun `resolved local route is used as primary backend`() = runTest {
@@ -83,7 +100,7 @@ class TaskClassifierTest {
 
         val result = subject.classify("pagar alquiler el viernes")
 
-        assertEquals(TaskGenerationSource.LOCAL_AI, result.source)
+        assertEquals(TaskGenerationSource.RULES, result.source)
         assertEquals(TaskType.FINANCE, result.dsl.type)
         assertTrue(result.warnings.any { it.contains("Groq did not respond correctly") })
         coVerify(exactly = 1) { onDeviceTaskDslService.compose(any()) }

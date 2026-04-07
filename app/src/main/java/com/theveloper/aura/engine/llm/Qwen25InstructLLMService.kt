@@ -12,6 +12,5 @@ class Qwen25InstructLLMService @Inject constructor(
     context = context,
     spec = ModelCatalog.qwen2_5_1_5B,
     tier = LLMTier.QWEN_2_5_1_5B,
-    backendName = "CPU",
     defaultMaxOutputTokens = 1024
 )

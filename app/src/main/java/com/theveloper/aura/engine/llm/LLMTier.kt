@@ -2,6 +2,8 @@ package com.theveloper.aura.engine.llm
 
 enum class LLMTier {
     GEMINI_NANO,
+    GEMMA_4_E4B,
+    GEMMA_4_E2B,
     GEMMA_3N_E2B,
     GEMMA_3_1B,
     QWEN_2_5_1_5B,

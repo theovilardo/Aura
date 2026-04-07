@@ -22,7 +22,9 @@ data class ModelSpec(
     val isRequired: Boolean,
     val requiresAuthentication: Boolean = false,
     val accessPageUrl: String = "",
-    val legacyFileNames: List<String> = emptyList()
+    val legacyFileNames: List<String> = emptyList(),
+    val isRuntimeCompatible: Boolean = true,
+    val runtimeCompatibilityNote: String = ""
 ) {
     fun file(context: Context): File = File(context.filesDir, "models/$fileName")
 
@@ -54,6 +56,22 @@ object ModelCatalog {
         requiresAuthentication = true,
         accessPageUrl = "https://huggingface.co/litert-community/Gemma3-1B-IT",
         legacyFileNames = listOf("gemma3-1b-it-int4.litertlm")
+    )
+
+    val gemma4E2B = ModelSpec(
+        id = "gemma4-e2b",
+        displayName = "Gemma 4 E2B",
+        summary = "New Gemma 4 option with much stronger local headroom than the lightweight models.",
+        bestFor = "Richer drafting, planning, and longer local prompts on phones that can comfortably run advanced-tier models.",
+        caution = "A major step up in download size and memory pressure from the primary-slot models, so it is best on stronger phones.",
+        fileName = "gemma-4-E2B-it.litertlm",
+        downloadUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm",
+        sizeBytes = 2_583_000_000L,
+        tier = LLMTier.GEMMA_4_E2B,
+        slot = LocalModelSlot.ADVANCED,
+        isRequired = false,
+        requiresAuthentication = false,
+        accessPageUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm"
     )
 
     val qwen3_0_6B = ModelSpec(
@@ -88,6 +106,22 @@ object ModelCatalog {
         accessPageUrl = "https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct"
     )
 
+    val gemma4E4B = ModelSpec(
+        id = "gemma4-e4b",
+        displayName = "Gemma 4 E4B",
+        summary = "Largest Gemma 4 download in the library, built for the richest on-device responses.",
+        bestFor = "Deep local planning, richer reasoning, and the most capable Gemma 4 experience on high-end phones.",
+        caution = "Very large download and working set; this is one of the easiest local models to push weaker phones into thermal or memory trouble.",
+        fileName = "gemma-4-E4B-it.litertlm",
+        downloadUrl = "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm",
+        sizeBytes = 3_650_000_000L,
+        tier = LLMTier.GEMMA_4_E4B,
+        slot = LocalModelSlot.ADVANCED,
+        isRequired = false,
+        requiresAuthentication = false,
+        accessPageUrl = "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm"
+    )
+
     val gemma3nE2B = ModelSpec(
         id = "gemma3n-e2b",
         displayName = "Gemma 3n E2B",
@@ -105,7 +139,9 @@ object ModelCatalog {
     )
 
     val primaryModels = listOf(gemma3_1B, qwen3_0_6B)
-    val advancedModels = listOf(qwen2_5_1_5B, gemma3nE2B)
+    val advancedModels = listOf(qwen2_5_1_5B, gemma4E2B, gemma4E4B, gemma3nE2B)
+    val selectablePrimaryModels = primaryModels.filter { it.isRuntimeCompatible }
+    val selectableAdvancedModels = advancedModels.filter { it.isRuntimeCompatible }
 
     val defaultPrimary = gemma3_1B
     val defaultAdvanced = qwen2_5_1_5B
@@ -114,7 +150,7 @@ object ModelCatalog {
 
     fun findById(id: String?): ModelSpec? = all.firstOrNull { it.id == id }
 
-    fun primaryById(id: String?): ModelSpec = primaryModels.firstOrNull { it.id == id } ?: defaultPrimary
+    fun primaryById(id: String?): ModelSpec = selectablePrimaryModels.firstOrNull { it.id == id } ?: defaultPrimary
 
-    fun advancedById(id: String?): ModelSpec = advancedModels.firstOrNull { it.id == id } ?: defaultAdvanced
+    fun advancedById(id: String?): ModelSpec = selectableAdvancedModels.firstOrNull { it.id == id } ?: defaultAdvanced
 }
