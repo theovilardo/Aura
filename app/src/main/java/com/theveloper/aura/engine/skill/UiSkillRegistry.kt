@@ -2,7 +2,10 @@ package com.theveloper.aura.engine.skill
 
 import android.content.Context
 import com.theveloper.aura.domain.model.ComponentType
+import com.theveloper.aura.domain.model.FunctionSkillRuntime
+import com.theveloper.aura.domain.model.SkillSource
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.domain.model.UiSkillRuntime
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -14,10 +17,25 @@ data class UiSkillDefinition(
     val displayName: String,
     val shortLabel: String,
     val promptHint: String,
-    val supportedTaskTypes: Set<TaskType>
+    val supportedTaskTypes: Set<TaskType>,
+    val runtime: UiSkillRuntime = UiSkillRuntime.NATIVE,
+    val source: SkillSource = SkillSource.BUILTIN,
+    val entryAssetPath: String? = null,
+    val entrypoint: String? = null
 )
 
-data class UiSkillDocument(
+data class FunctionSkillDefinition(
+    val id: String,
+    val assetPath: String? = null,
+    val displayName: String,
+    val shortLabel: String,
+    val promptHint: String,
+    val supportedTaskTypes: Set<TaskType>,
+    val runtime: FunctionSkillRuntime = FunctionSkillRuntime.PROMPT_AUGMENTATION,
+    val source: SkillSource = SkillSource.BUILTIN
+)
+
+data class SkillDocument(
     val name: String,
     val description: String,
     val body: String
@@ -29,11 +47,17 @@ data class UiSkillValidation(
     val reason: String? = null
 )
 
-object UiSkillRegistry {
+data class FunctionSkillValidation(
+    val definition: FunctionSkillDefinition?,
+    val isValid: Boolean,
+    val reason: String? = null
+)
+
+object SkillRegistry {
 
     private val allTaskTypes = TaskType.entries.toSet()
 
-    val all: List<UiSkillDefinition> = listOf(
+    val uiSkills: List<UiSkillDefinition> = listOf(
         UiSkillDefinition(
             id = "checklist",
             assetPath = "ui-skills/checklist/SKILL.md",
@@ -122,24 +146,60 @@ object UiSkillRegistry {
         )
     )
 
-    fun availableFor(taskTypeHint: TaskType?): List<UiSkillDefinition> {
-        taskTypeHint ?: return all
-        val matched = all.filter { taskTypeHint in it.supportedTaskTypes }
-        return if (matched.isNotEmpty()) matched else all
+    val functionSkills: List<FunctionSkillDefinition> = listOf(
+        FunctionSkillDefinition(
+            id = "learning-guide",
+            displayName = "Learning guide",
+            shortLabel = "Learn",
+            promptHint = "Improve learning roadmaps with sequencing, practice suggestions, and study guidance.",
+            supportedTaskTypes = setOf(TaskType.GENERAL, TaskType.GOAL, TaskType.PROJECT)
+        ),
+        FunctionSkillDefinition(
+            id = "resource-curator",
+            displayName = "Resource curator",
+            shortLabel = "Sources",
+            promptHint = "Add useful references, canonical docs, and source suggestions when the task asks for them.",
+            supportedTaskTypes = allTaskTypes
+        ),
+        FunctionSkillDefinition(
+            id = "structured-brief",
+            displayName = "Structured brief",
+            shortLabel = "Brief",
+            promptHint = "Turn vague requests into a clearer plan, brief, or explanation before configuring UI.",
+            supportedTaskTypes = allTaskTypes
+        )
+    )
+
+    fun availableUiSkills(taskTypeHint: TaskType?): List<UiSkillDefinition> {
+        taskTypeHint ?: return uiSkills
+        val matched = uiSkills.filter { taskTypeHint in it.supportedTaskTypes }
+        return if (matched.isNotEmpty()) matched else uiSkills
     }
 
-    fun resolve(skillId: String): UiSkillDefinition? {
-        return all.firstOrNull { definition ->
+    fun availableFunctionSkills(taskTypeHint: TaskType?): List<FunctionSkillDefinition> {
+        taskTypeHint ?: return functionSkills
+        val matched = functionSkills.filter { taskTypeHint in it.supportedTaskTypes }
+        return if (matched.isNotEmpty()) matched else functionSkills
+    }
+
+    fun resolveUi(skillId: String): UiSkillDefinition? {
+        return uiSkills.firstOrNull { definition ->
             definition.id.equals(skillId.trim(), ignoreCase = true)
         }
     }
 
-    fun resolve(componentType: ComponentType): UiSkillDefinition? {
-        return all.firstOrNull { it.componentType == componentType }
+    fun resolveUi(componentType: ComponentType): UiSkillDefinition? {
+        return uiSkills.firstOrNull { it.componentType == componentType }
     }
 
-    fun validate(skillId: String, config: JsonObject): UiSkillValidation {
-        val definition = resolve(skillId)
+    fun resolveFunction(skillId: String): FunctionSkillDefinition? {
+        return functionSkills.firstOrNull { definition ->
+            definition.id.equals(skillId.trim(), ignoreCase = true)
+        }
+    }
+
+    fun validateUiSkill(skillId: String, config: JsonObject): UiSkillValidation {
+        val definition = resolveUi(skillId)
             ?: return UiSkillValidation(
                 definition = null,
                 isValid = false,
@@ -158,37 +218,86 @@ object UiSkillRegistry {
         return UiSkillValidation(definition = definition, isValid = true)
     }
 
-    fun buildSystemPrompt(
+    fun validateFunctionSkill(skillId: String, config: JsonObject): FunctionSkillValidation {
+        val definition = resolveFunction(skillId)
+            ?: return FunctionSkillValidation(
+                definition = null,
+                isValid = false,
+                reason = "Unknown function skill: $skillId"
+            )
+
+        return FunctionSkillValidation(
+            definition = definition,
+            isValid = config.isNotEmpty() || definition.runtime == FunctionSkillRuntime.PROMPT_AUGMENTATION
+        )
+    }
+
+    fun buildPlannerPrompt(
         context: Context,
         taskTypeHint: TaskType?
     ): String {
         val basePrompt = context.assets.open("system_prompt.txt").bufferedReader().use { it.readText() }.trim()
-        val availableSkills = availableFor(taskTypeHint)
+        val availableUiSkills = availableUiSkills(taskTypeHint)
+        val availableFunctionSkills = availableFunctionSkills(taskTypeHint)
         return buildString {
             appendLine(basePrompt)
             appendLine()
             appendLine("--- AVAILABLE UI SKILLS ---")
-            appendLine("Use ONLY these skill ids in analysis.skills_needed and task.skills[].skill.")
-            appendLine("Name and description are the canonical discovery surface for the planner.")
+            appendLine("Use ONLY these ids in analysis.ui_skills_needed and task.skills[].skill.")
+            appendLine("UI-Skills are the renderable building blocks of the task UI.")
             appendLine()
-            availableSkills.forEach { definition ->
+            availableUiSkills.forEach { definition ->
                 appendLine(
-                    "- ${definition.id} -> ${definition.componentType.name}: ${definition.promptHint}"
+                    "- ${definition.id} -> ${definition.componentType.name} [${definition.runtime.name}]: ${definition.promptHint}"
+                )
+            }
+            appendLine()
+            appendLine("--- AVAILABLE FUNCTION SKILLS ---")
+            appendLine("Use ONLY these ids in analysis.function_skills_needed and task.functionSkills[].skill.")
+            appendLine("Function-Skills improve reasoning and content, but they do not create UI on their own.")
+            appendLine()
+            availableFunctionSkills.forEach { definition ->
+                appendLine(
+                    "- ${definition.id} -> ${definition.runtime.name}: ${definition.promptHint}"
                 )
             }
         }.trim()
     }
 
-    fun loadDocument(context: Context, definition: UiSkillDefinition): UiSkillDocument {
-        val raw = context.assets.open(definition.assetPath).bufferedReader().use { it.readText() }
-        return parseUiSkillMarkdown(raw)
+    fun loadDocument(context: Context, assetPath: String): SkillDocument {
+        val raw = context.assets.open(assetPath).bufferedReader().use { it.readText() }
+        return parseSkillMarkdown(raw)
     }
 }
 
-internal fun parseUiSkillMarkdown(raw: String): UiSkillDocument {
+object UiSkillRegistry {
+    val all: List<UiSkillDefinition> get() = SkillRegistry.uiSkills
+
+    fun availableFor(taskTypeHint: TaskType?): List<UiSkillDefinition> {
+        return SkillRegistry.availableUiSkills(taskTypeHint)
+    }
+
+    fun resolve(skillId: String): UiSkillDefinition? = SkillRegistry.resolveUi(skillId)
+
+    fun resolve(componentType: ComponentType): UiSkillDefinition? = SkillRegistry.resolveUi(componentType)
+
+    fun validate(skillId: String, config: JsonObject): UiSkillValidation {
+        return SkillRegistry.validateUiSkill(skillId, config)
+    }
+
+    fun buildSystemPrompt(context: Context, taskTypeHint: TaskType?): String {
+        return SkillRegistry.buildPlannerPrompt(context, taskTypeHint)
+    }
+
+    fun loadDocument(context: Context, definition: UiSkillDefinition): SkillDocument {
+        return SkillRegistry.loadDocument(context, definition.assetPath)
+    }
+}
+
+internal fun parseSkillMarkdown(raw: String): SkillDocument {
     val normalized = raw.trim()
     if (!normalized.startsWith("---")) {
-        return UiSkillDocument(name = "", description = "", body = normalized)
+        return SkillDocument(name = "", description = "", body = normalized)
     }
 
     val lines = normalized.lines()
@@ -206,7 +315,7 @@ internal fun parseUiSkillMarkdown(raw: String): UiSkillDocument {
     }
 
     val body = lines.drop(index + 1).joinToString("\n").trim()
-    return UiSkillDocument(
+    return SkillDocument(
         name = metadata["name"].orEmpty(),
         description = metadata["description"].orEmpty(),
         body = body

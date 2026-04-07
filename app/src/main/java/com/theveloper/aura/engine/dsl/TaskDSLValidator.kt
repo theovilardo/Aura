@@ -2,6 +2,7 @@ package com.theveloper.aura.engine.dsl
 
 import com.theveloper.aura.core.json.auraJson
 import com.theveloper.aura.domain.model.ComponentConfig
+import com.theveloper.aura.engine.skill.SkillRegistry
 import com.theveloper.aura.engine.skill.UiSkillRegistry
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -42,6 +43,13 @@ object TaskDSLValidator {
                         "UI skill $skillId does not match component ${component.type}"
                     )
                 }
+                component.skillRuntime?.let { runtime ->
+                    if (validation.definition?.runtime != runtime) {
+                        return ValidationResult.Invalid(
+                            "UI skill $skillId does not match runtime ${runtime.name}"
+                        )
+                    }
+                }
             }
 
             val configType = component.config["config_type"]?.jsonPrimitive?.contentOrNull
@@ -51,6 +59,20 @@ object TaskDSLValidator {
 
             decodeComponentConfig(component.config).onFailure {
                 return ValidationResult.Invalid("Invalid config for ${component.type}: ${it.message}")
+            }
+        }
+
+        dsl.functionSkills.forEach { functionSkill ->
+            val validation = SkillRegistry.validateFunctionSkill(functionSkill.skillId, functionSkill.config)
+            if (!validation.isValid) {
+                return ValidationResult.Invalid(validation.reason ?: "Invalid function skill selection")
+            }
+            functionSkill.runtime?.let { runtime ->
+                if (validation.definition?.runtime != runtime) {
+                    return ValidationResult.Invalid(
+                        "Function skill ${functionSkill.skillId} does not match runtime ${runtime.name}"
+                    )
+                }
             }
         }
 

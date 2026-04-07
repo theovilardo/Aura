@@ -331,4 +331,5 @@ private fun ComponentType.displayLabel(): String = when (this) {
     ComponentType.NOTES -> "Notes"
     ComponentType.METRIC_TRACKER -> "Metrics"
     ComponentType.DATA_FEED -> "Data feed"
+    ComponentType.HOSTED_UI -> "Hosted UI"
 }

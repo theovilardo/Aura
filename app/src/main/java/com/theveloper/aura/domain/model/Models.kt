@@ -3,6 +3,7 @@ package com.theveloper.aura.domain.model
 import androidx.compose.runtime.Immutable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 @Immutable
 @Serializable
@@ -77,6 +78,20 @@ data class DataFeedConfig(
 
 @Immutable
 @Serializable
+@SerialName("HOSTED_UI")
+data class HostedUiConfig(
+    val skillId: String = "",
+    val runtime: UiSkillRuntime = UiSkillRuntime.HTML_JS,
+    val displayLabel: String = "",
+    val composeHostId: String? = null,
+    val htmlDocument: String? = null,
+    val sourceAssetPath: String? = null,
+    val entrypoint: String = "ai_edge_gallery_get_result",
+    val props: JsonObject = JsonObject(emptyMap())
+) : ComponentConfig()
+
+@Immutable
+@Serializable
 @SerialName("UNKNOWN")
 class UnknownConfig : ComponentConfig()
 
@@ -89,6 +104,7 @@ data class Task(
     val priority: Int = 0,
     val targetDate: Long? = null,
     val components: List<TaskComponent> = emptyList(),
+    val functionSkills: List<TaskFunctionSkill> = emptyList(),
     val reminders: List<Reminder> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
@@ -101,8 +117,19 @@ data class TaskComponent(
     val type: ComponentType,
     val sortOrder: Int,
     val config: ComponentConfig,
+    val skillId: String? = null,
+    val skillRuntime: UiSkillRuntime? = null,
     val needsClarification: Boolean = false,
     val checklistItems: List<ChecklistItem> = emptyList()
+)
+
+@Immutable
+@Serializable
+data class TaskFunctionSkill(
+    val skillId: String,
+    val runtime: FunctionSkillRuntime = FunctionSkillRuntime.PROMPT_AUGMENTATION,
+    val enabled: Boolean = true,
+    val configJson: String = "{}"
 )
 
 @Immutable

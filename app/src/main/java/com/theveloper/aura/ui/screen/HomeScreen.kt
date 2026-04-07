@@ -939,6 +939,7 @@ internal fun Task.primaryComponentIcon(): ImageVector {
             TaskType.TRAVEL -> Icons.Rounded.FlightTakeoff
             else -> Icons.Rounded.AutoAwesome
         }
+        ComponentType.HOSTED_UI -> Icons.Rounded.AutoAwesome
         null -> taskTypeIcon(type)
     }
 }

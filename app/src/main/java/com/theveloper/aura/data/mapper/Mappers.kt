@@ -26,6 +26,9 @@ fun TaskEntity.toDomain(components: List<TaskComponent> = emptyList()): Task {
         status = status,
         priority = priority,
         targetDate = targetDate,
+        functionSkills = runCatching {
+            auraJson.decodeFromString<List<TaskFunctionSkill>>(functionSkillsJson)
+        }.getOrDefault(emptyList()),
         reminders = emptyList(),
         createdAt = createdAt,
         updatedAt = updatedAt,
@@ -41,6 +44,7 @@ fun Task.toEntity(): TaskEntity {
         status = status,
         priority = priority,
         targetDate = targetDate,
+        functionSkillsJson = auraJson.encodeToString(functionSkills),
         createdAt = createdAt,
         updatedAt = updatedAt
     )
@@ -53,6 +57,8 @@ fun TaskComponentEntity.toDomain(): TaskComponent {
         type = type,
         sortOrder = sortOrder,
         config = runCatching { auraJson.decodeFromString<ComponentConfig>(config) }.getOrDefault(UnknownConfig()),
+        skillId = skillId,
+        skillRuntime = skillRuntime,
         needsClarification = needsClarification
     )
 }
@@ -64,6 +70,8 @@ fun TaskComponent.toEntity(): TaskComponentEntity {
         type = type,
         sortOrder = sortOrder,
         config = auraJson.encodeToString(config),
+        skillId = skillId,
+        skillRuntime = skillRuntime,
         needsClarification = needsClarification
     )
 }

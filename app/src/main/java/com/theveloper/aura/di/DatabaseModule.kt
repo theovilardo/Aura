@@ -24,7 +24,7 @@ object DatabaseModule {
             AuraDatabase::class.java,
             "aura_database"
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .build()
     }
 
@@ -309,6 +309,20 @@ object DatabaseModule {
             )
             database.execSQL(
                 "CREATE INDEX IF NOT EXISTS index_event_components_event_id ON event_components(event_id)"
+            )
+        }
+    }
+
+    private val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                "ALTER TABLE tasks ADD COLUMN function_skills_json TEXT NOT NULL DEFAULT '[]'"
+            )
+            database.execSQL(
+                "ALTER TABLE task_components ADD COLUMN skill_id TEXT"
+            )
+            database.execSQL(
+                "ALTER TABLE task_components ADD COLUMN skill_runtime TEXT"
             )
         }
     }

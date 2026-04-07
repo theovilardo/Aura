@@ -1,8 +1,11 @@
 package com.theveloper.aura.engine.classifier
 
 import com.theveloper.aura.domain.model.ComponentType
+import com.theveloper.aura.domain.model.FunctionSkillRuntime
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.domain.model.UiSkillRuntime
 import com.theveloper.aura.engine.dsl.ComponentDSL
+import com.theveloper.aura.engine.dsl.FunctionSkillDSL
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
 import com.theveloper.aura.engine.dsl.TaskDSLValidator
 import kotlinx.serialization.json.JsonObject
@@ -61,6 +64,77 @@ class TaskDSLValidatorTest {
                             "isMarkdown" to JsonPrimitive(true)
                         )
                     )
+                )
+            )
+        )
+
+        val result = TaskDSLValidator.validate(dsl)
+        assertTrue(result is TaskDSLValidator.ValidationResult.Invalid)
+    }
+
+    @Test
+    fun `validate accepts known function skills`() {
+        val dsl = TaskDSLOutput(
+            title = "Learn Kotlin",
+            type = TaskType.GOAL,
+            components = listOf(
+                ComponentDSL(
+                    skillId = "notes",
+                    skillRuntime = UiSkillRuntime.NATIVE,
+                    type = ComponentType.NOTES,
+                    sortOrder = 0,
+                    config = JsonObject(
+                        mapOf(
+                            "config_type" to JsonPrimitive("NOTES"),
+                            "text" to JsonPrimitive("Plan"),
+                            "isMarkdown" to JsonPrimitive(true)
+                        )
+                    )
+                )
+            ),
+            functionSkills = listOf(
+                FunctionSkillDSL(
+                    skillId = "learning-guide",
+                    runtime = FunctionSkillRuntime.PROMPT_AUGMENTATION,
+                    config = JsonObject(mapOf("mode" to JsonPrimitive("roadmap")))
+                ),
+                FunctionSkillDSL(
+                    skillId = "resource-curator",
+                    runtime = FunctionSkillRuntime.PROMPT_AUGMENTATION,
+                    config = JsonObject(mapOf("preferOfficial" to JsonPrimitive(true)))
+                )
+            )
+        )
+
+        val result = TaskDSLValidator.validate(dsl)
+        assertTrue(result is TaskDSLValidator.ValidationResult.Valid)
+    }
+
+    @Test
+    fun `validate rejects function skill runtime mismatch`() {
+        val dsl = TaskDSLOutput(
+            title = "Learn Kotlin",
+            type = TaskType.GOAL,
+            components = listOf(
+                ComponentDSL(
+                    skillId = "notes",
+                    skillRuntime = UiSkillRuntime.NATIVE,
+                    type = ComponentType.NOTES,
+                    sortOrder = 0,
+                    config = JsonObject(
+                        mapOf(
+                            "config_type" to JsonPrimitive("NOTES"),
+                            "text" to JsonPrimitive("Plan"),
+                            "isMarkdown" to JsonPrimitive(true)
+                        )
+                    )
+                )
+            ),
+            functionSkills = listOf(
+                FunctionSkillDSL(
+                    skillId = "learning-guide",
+                    runtime = FunctionSkillRuntime.LOCAL_EXECUTOR,
+                    config = JsonObject(mapOf("mode" to JsonPrimitive("roadmap")))
                 )
             )
         )

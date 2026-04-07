@@ -20,7 +20,35 @@ enum class ComponentType {
     HABIT_RING,
     NOTES,
     METRIC_TRACKER,
-    DATA_FEED
+    DATA_FEED,
+    HOSTED_UI
+}
+
+@Serializable
+enum class SkillKind {
+    UI,
+    FUNCTION
+}
+
+@Serializable
+enum class SkillSource {
+    BUILTIN,
+    BUNDLED,
+    IMPORTED
+}
+
+@Serializable
+enum class UiSkillRuntime {
+    NATIVE,
+    COMPOSE_HOSTED,
+    HTML_JS
+}
+
+@Serializable
+enum class FunctionSkillRuntime {
+    PROMPT_AUGMENTATION,
+    LOCAL_EXECUTOR,
+    REMOTE_EXECUTOR
 }
 
 @Serializable

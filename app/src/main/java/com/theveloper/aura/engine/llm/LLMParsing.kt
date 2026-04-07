@@ -4,10 +4,13 @@ import com.theveloper.aura.core.json.auraJson
 import com.theveloper.aura.domain.model.ComponentType
 import com.theveloper.aura.domain.model.DataFeedStatus
 import com.theveloper.aura.domain.model.FetcherType
+import com.theveloper.aura.domain.model.FunctionSkillRuntime
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.domain.model.UiSkillRuntime
 import com.theveloper.aura.engine.dsl.SemanticFrame
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
 import com.theveloper.aura.engine.dsl.TaskDSLValidator
+import com.theveloper.aura.engine.skill.SkillRegistry
 import com.theveloper.aura.engine.skill.UiSkillRegistry
 import java.time.Instant
 import java.time.LocalDate
@@ -185,6 +188,9 @@ private fun normalizeTaskDslObject(root: JsonObject): JsonObject {
         skills = (taskRoot["skills"] as? JsonArray) ?: (root["skills"] as? JsonArray),
         rootTargetDateMs = targetDateMs
     )
+    val functionSkills = normalizeFunctionSkills(
+        skills = (taskRoot["functionSkills"] as? JsonArray) ?: (root["functionSkills"] as? JsonArray)
+    )
 
     val semanticFrame = extractSemanticFrame(root, taskRoot)
     val enrichedComponents = applySemanticToComponents(
@@ -199,6 +205,7 @@ private fun normalizeTaskDslObject(root: JsonObject): JsonObject {
             "priority" to JsonPrimitive(taskRoot["priority"].intValue(default = 0).coerceIn(0, 3)),
             "targetDateMs" to (targetDateMs?.let(::JsonPrimitive) ?: JsonNull),
             "components" to enrichedComponents,
+            "functionSkills" to functionSkills,
             "reminders" to normalizeReminders(taskRoot["reminders"] as? JsonArray),
             "fetchers" to normalizeFetchers(taskRoot["fetchers"] as? JsonArray)
         )
@@ -269,12 +276,14 @@ private fun normalizeSkillComponent(
         .ifBlank { skill["name"].stringValue() }
         .ifBlank { skill["skillId"].stringValue() }
     val normalizedSkillId = UiSkillRegistry.resolve(requestedSkillId)?.id ?: requestedSkillId.ifBlank { null }
-    val forcedType = normalizedSkillId?.let(UiSkillRegistry::resolve)?.componentType
+    val definition = normalizedSkillId?.let(UiSkillRegistry::resolve)
+    val forcedType = definition?.componentType
     return normalizeComponent(
         component = skill,
         rootTargetDateMs = rootTargetDateMs,
         forcedType = forcedType,
-        skillId = normalizedSkillId
+        skillId = normalizedSkillId,
+        skillRuntime = definition?.runtime
     )
 }
 
@@ -282,7 +291,8 @@ private fun normalizeComponent(
     component: JsonObject?,
     rootTargetDateMs: Long?,
     forcedType: ComponentType? = null,
-    skillId: String? = null
+    skillId: String? = null,
+    skillRuntime: UiSkillRuntime? = null
 ): JsonObject? {
     component ?: return null
     val type = forcedType ?: component.resolveComponentType() ?: return null
@@ -296,15 +306,71 @@ private fun normalizeComponent(
         ?.takeIf { it.isNotBlank() }
         ?: component["skillId"].stringValue().takeIf { it.isNotBlank() }
         ?: component["skill"].stringValue().takeIf { it.isNotBlank() }
+    val effectiveRuntime = skillRuntime
+        ?: component["skillRuntime"].enumValueOrNull<UiSkillRuntime>()
+        ?: effectiveSkillId?.let { SkillRegistry.resolveUi(it)?.runtime }
 
     return JsonObject(
         mapOf(
             "skillId" to (effectiveSkillId?.let(::JsonPrimitive) ?: JsonNull),
+            "skillRuntime" to (effectiveRuntime?.let { JsonPrimitive(it.name) } ?: JsonNull),
             "type" to JsonPrimitive(type.name),
             "sortOrder" to JsonPrimitive(0),
             "config" to config,
             "populatedFromInput" to JsonPrimitive(component["populatedFromInput"].booleanValue(default = false)),
             "needsClarification" to JsonPrimitive(component["needsClarification"].booleanValue(default = false))
+        )
+    )
+}
+
+private fun normalizeFunctionSkills(
+    skills: JsonArray?
+): JsonArray {
+    if (skills == null) return JsonArray(emptyList())
+
+    val normalized = skills
+        .mapNotNull { normalizeFunctionSkill(it as? JsonObject) }
+        .distinctBy { skill ->
+            buildString {
+                append(skill["skillId"])
+                append('|')
+                append(skill["runtime"])
+                append('|')
+                append(skill["config"])
+                append('|')
+                append(skill["enabled"])
+                append('|')
+                append(skill["needsClarification"])
+            }
+        }
+
+    return JsonArray(normalized)
+}
+
+private fun normalizeFunctionSkill(
+    skill: JsonObject?
+): JsonObject? {
+    skill ?: return null
+
+    val requestedSkillId = skill["skill"].stringValue()
+        .ifBlank { skill["name"].stringValue() }
+        .ifBlank { skill["skillId"].stringValue() }
+    val normalizedSkillId = SkillRegistry.resolveFunction(requestedSkillId)?.id
+        ?: requestedSkillId.ifBlank { null }
+        ?: return null
+    val runtime = skill["runtime"].enumValueOrNull<FunctionSkillRuntime>()
+        ?: SkillRegistry.resolveFunction(normalizedSkillId)?.runtime
+        ?: FunctionSkillRuntime.PROMPT_AUGMENTATION
+    val config = (skill["config"] as? JsonObject) ?: JsonObject(emptyMap())
+
+    return JsonObject(
+        mapOf(
+            "skillId" to JsonPrimitive(normalizedSkillId),
+            "runtime" to JsonPrimitive(runtime.name),
+            "enabled" to JsonPrimitive(skill["enabled"].booleanValue(default = true)),
+            "config" to config,
+            "populatedFromInput" to JsonPrimitive(skill["populatedFromInput"].booleanValue(default = false)),
+            "needsClarification" to JsonPrimitive(skill["needsClarification"].booleanValue(default = false))
         )
     )
 }
@@ -371,6 +437,20 @@ private fun normalizeComponentConfig(
             merged["lastValue"] = merged["lastValue"]?.let(::normalizeOptionalString) ?: JsonNull
             merged["lastUpdatedAt"] = merged["lastUpdatedAt"].epochMillisOrNull()?.let(::JsonPrimitive) ?: JsonNull
             merged["errorMessage"] = merged["errorMessage"]?.let(::normalizeOptionalString) ?: JsonNull
+        }
+
+        ComponentType.HOSTED_UI -> {
+            val runtime = merged["runtime"].enumValueOrDefault(UiSkillRuntime.HTML_JS)
+            merged["skillId"] = JsonPrimitive(merged["skillId"].stringValue())
+            merged["runtime"] = JsonPrimitive(runtime.name)
+            merged["displayLabel"] = JsonPrimitive(merged["displayLabel"].stringValue())
+            merged["composeHostId"] = merged["composeHostId"]?.let(::normalizeOptionalString) ?: JsonNull
+            merged["htmlDocument"] = merged["htmlDocument"]?.let(::normalizeOptionalString) ?: JsonNull
+            merged["sourceAssetPath"] = merged["sourceAssetPath"]?.let(::normalizeOptionalString) ?: JsonNull
+            merged["entrypoint"] = JsonPrimitive(
+                merged["entrypoint"].stringValue().ifBlank { "ai_edge_gallery_get_result" }
+            )
+            merged["props"] = (merged["props"] as? JsonObject) ?: JsonObject(emptyMap())
         }
     }
 
@@ -470,8 +550,17 @@ private fun JsonObject.resolveComponentType(): ComponentType? {
     this["type"].enumValueOrNull<ComponentType>()?.let { return it }
     this["config_type"].enumValueOrNull<ComponentType>()?.let { return it }
     (this["config"] as? JsonObject)?.get("config_type").enumValueOrNull<ComponentType>()?.let { return it }
+    this["skill"].stringValue()
+        .takeIf { it.isNotBlank() }
+        ?.let { SkillRegistry.resolveUi(it)?.componentType }
+        ?.let { return it }
+    this["skillId"].stringValue()
+        .takeIf { it.isNotBlank() }
+        ?.let { SkillRegistry.resolveUi(it)?.componentType }
+        ?.let { return it }
 
     return when {
+        hasAnyKey("htmlDocument", "sourceAssetPath", "composeHostId", "props") -> ComponentType.HOSTED_UI
         hasAnyKey("targetDate") -> ComponentType.COUNTDOWN
         hasAnyKey("frequency", "targetCount", "completedToday", "streakCount") -> ComponentType.HABIT_RING
         hasAnyKey("unit", "goal", "history") -> ComponentType.METRIC_TRACKER
@@ -772,6 +861,9 @@ private val GENERIC_SEMANTIC_ITEMS = setOf(
 private val COMPONENT_METADATA_KEYS = setOf(
     "type",
     "sortOrder",
+    "skillId",
+    "skill",
+    "skillRuntime",
     "config",
     "populatedFromInput",
     "needsClarification"

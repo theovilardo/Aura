@@ -12,17 +12,20 @@ import com.theveloper.aura.domain.model.ComponentType
 import com.theveloper.aura.domain.model.CountdownConfig
 import com.theveloper.aura.domain.model.DataFeedConfig
 import com.theveloper.aura.domain.model.HabitRingConfig
+import com.theveloper.aura.domain.model.HostedUiConfig
 import com.theveloper.aura.domain.model.MetricTrackerConfig
 import com.theveloper.aura.domain.model.NotesConfig
 import com.theveloper.aura.domain.model.ProgressBarConfig
 import com.theveloper.aura.domain.model.SignalType
 import com.theveloper.aura.domain.model.Task
 import com.theveloper.aura.domain.model.TaskComponent
+import com.theveloper.aura.engine.skill.SkillRegistry
 import com.theveloper.aura.engine.skill.UiSkillRegistry
 import com.theveloper.aura.ui.components.ChecklistComponent
 import com.theveloper.aura.ui.components.CountdownComponent
 import com.theveloper.aura.ui.components.DataFeedComponent
 import com.theveloper.aura.ui.components.HabitRingComponent
+import com.theveloper.aura.ui.components.HostedUiSkillComponent
 import com.theveloper.aura.ui.components.InterpretedNotesComponent
 import com.theveloper.aura.ui.components.MetricTrackerComponent
 import com.theveloper.aura.ui.components.NotesComponent
@@ -84,6 +87,9 @@ object UiSkillRendererRegistry {
             resolvedType == ComponentType.DATA_FEED && config is DataFeedConfig -> {
                 DataFeedComponent(config = config)
             }
+            resolvedType == ComponentType.HOSTED_UI && config is HostedUiConfig -> {
+                HostedUiSkillComponent(config = config, modifier = modifier)
+            }
             else -> UnsupportedUiSkillFallback(
                 type = component.type,
                 modifier = modifier
@@ -141,6 +147,9 @@ object UiSkillRendererRegistry {
             }
             resolvedType == ComponentType.DATA_FEED && config is DataFeedConfig -> {
                 DataFeedComponent(config = config)
+            }
+            resolvedType == ComponentType.HOSTED_UI && config is HostedUiConfig -> {
+                HostedUiSkillComponent(config = config, modifier = modifier)
             }
             else -> UnsupportedUiSkillFallback(
                 type = component.type,
@@ -216,6 +225,9 @@ object UiSkillRendererRegistry {
             resolvedType == ComponentType.DATA_FEED && config is DataFeedConfig -> {
                 DataFeedComponent(config = config)
             }
+            resolvedType == ComponentType.HOSTED_UI && config is HostedUiConfig -> {
+                HostedUiSkillComponent(config = config, modifier = modifier)
+            }
             else -> UnsupportedUiSkillFallback(
                 type = component.type,
                 modifier = modifier
@@ -224,7 +236,10 @@ object UiSkillRendererRegistry {
     }
 
     private fun resolveType(component: TaskComponent): ComponentType? {
-        return UiSkillRegistry.resolve(component.type)?.componentType ?: component.type
+        return component.skillId
+            ?.let { SkillRegistry.resolveUi(it)?.componentType }
+            ?: UiSkillRegistry.resolve(component.type)?.componentType
+            ?: component.type
     }
 }
 

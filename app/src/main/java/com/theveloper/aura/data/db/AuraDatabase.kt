@@ -27,7 +27,7 @@ import com.theveloper.aura.data.db.Converters
         EventSubActionEntity::class,
         EventComponentEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
