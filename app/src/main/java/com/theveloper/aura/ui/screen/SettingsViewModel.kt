@@ -77,6 +77,8 @@ class SettingsViewModel @Inject constructor(
     private fun LLMTier.settingsLabel(): String {
         return when (this) {
             LLMTier.GEMINI_NANO -> "Gemini Nano"
+            LLMTier.GEMMA_4_E4B -> "Gemma 4 E4B"
+            LLMTier.GEMMA_4_E2B -> "Gemma 4 E2B"
             LLMTier.GEMMA_3N_E2B -> "Gemma 3n"
             LLMTier.GEMMA_3_1B -> "Gemma 1B"
             LLMTier.QWEN_2_5_1_5B -> "Qwen 1.5B"

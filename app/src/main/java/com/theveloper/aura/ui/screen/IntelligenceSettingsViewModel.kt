@@ -28,6 +28,7 @@ data class IntelligenceModelUiState(
     val downloadState: DownloadState = DownloadState.Idle,
     val isActive: Boolean = false,
     val isSupported: Boolean = true,
+    val isRuntimeCompatible: Boolean = true,
     val hasCredentials: Boolean = true,
     val isSelected: Boolean = false
 )
@@ -236,6 +237,7 @@ class IntelligenceSettingsViewModel @Inject constructor(
             sizeOnDisk = modelDownloadManager.getModelSizeOnDisk(spec),
             downloadState = currentDownloadState,
             isActive = runtime.activePrimaryTier == spec.tier || runtime.activeAdvancedTier == spec.tier,
+            isRuntimeCompatible = spec.isRuntimeCompatible,
             hasCredentials = !spec.requiresAuthentication || huggingFaceTokenConfigured,
             isSelected = isSelected,
             isSupported = when (spec.slot) {

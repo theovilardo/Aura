@@ -1,9 +1,10 @@
 package com.theveloper.aura.engine.provider
 
 import com.theveloper.aura.engine.llm.Gemma1BLLMService
+import com.theveloper.aura.engine.llm.Gemma4E2BLLMService
+import com.theveloper.aura.engine.llm.Gemma4E4BLLMService
 import com.theveloper.aura.engine.llm.Gemma3nE2BLLMService
 import com.theveloper.aura.engine.llm.GroqLLMService
-import com.theveloper.aura.engine.llm.LLMTier
 import com.theveloper.aura.engine.llm.ModelCatalog
 import com.theveloper.aura.engine.llm.Qwen25InstructLLMService
 import com.theveloper.aura.engine.llm.Qwen3SmallLLMService
@@ -25,6 +26,8 @@ import javax.inject.Singleton
 @Singleton
 class ProviderRegistry @Inject constructor(
     groqLLMService: GroqLLMService,
+    gemma4E4BLLMService: Gemma4E4BLLMService,
+    gemma4E2BLLMService: Gemma4E2BLLMService,
     gemma1BLLMService: Gemma1BLLMService,
     gemma3nE2BLLMService: Gemma3nE2BLLMService,
     qwen25InstructLLMService: Qwen25InstructLLMService,
@@ -37,44 +40,76 @@ class ProviderRegistry @Inject constructor(
     val providers: StateFlow<Map<String, ProviderAdapter>> = _providers.asStateFlow()
 
     init {
-        val builtins = listOf(
-            LLMServiceAdapter(
-                service = groqLLMService,
-                providerId = "groq-api",
-                displayName = "Groq Cloud",
-                location = ProviderLocation.CLOUD
-            ),
-            LLMServiceAdapter(
-                service = gemma1BLLMService,
-                providerId = ModelCatalog.gemma3_1B.id,
-                displayName = ModelCatalog.gemma3_1B.displayName,
-                location = ProviderLocation.LOCAL_PHONE
-            ),
-            LLMServiceAdapter(
-                service = gemma3nE2BLLMService,
-                providerId = ModelCatalog.gemma3nE2B.id,
-                displayName = ModelCatalog.gemma3nE2B.displayName,
-                location = ProviderLocation.LOCAL_PHONE
-            ),
-            LLMServiceAdapter(
-                service = qwen25InstructLLMService,
-                providerId = ModelCatalog.qwen2_5_1_5B.id,
-                displayName = ModelCatalog.qwen2_5_1_5B.displayName,
-                location = ProviderLocation.LOCAL_PHONE
-            ),
-            LLMServiceAdapter(
-                service = qwen3SmallLLMService,
-                providerId = ModelCatalog.qwen3_0_6B.id,
-                displayName = ModelCatalog.qwen3_0_6B.displayName,
-                location = ProviderLocation.LOCAL_PHONE
-            ),
-            LLMServiceAdapter(
-                service = rulesOnlyLLMService,
-                providerId = "rules-only",
-                displayName = "Heuristic Rules",
-                location = ProviderLocation.LOCAL_PHONE
+        val builtins = buildList {
+            add(
+                LLMServiceAdapter(
+                    service = groqLLMService,
+                    providerId = "groq-api",
+                    displayName = "Groq Cloud",
+                    location = ProviderLocation.CLOUD
+                )
             )
-        )
+            add(
+                LLMServiceAdapter(
+                    service = gemma1BLLMService,
+                    providerId = ModelCatalog.gemma3_1B.id,
+                    displayName = ModelCatalog.gemma3_1B.displayName,
+                    location = ProviderLocation.LOCAL_PHONE
+                )
+            )
+            if (ModelCatalog.gemma4E2B.isRuntimeCompatible) {
+                add(
+                    LLMServiceAdapter(
+                        service = gemma4E2BLLMService,
+                        providerId = ModelCatalog.gemma4E2B.id,
+                        displayName = ModelCatalog.gemma4E2B.displayName,
+                        location = ProviderLocation.LOCAL_PHONE
+                    )
+                )
+            }
+            if (ModelCatalog.gemma4E4B.isRuntimeCompatible) {
+                add(
+                    LLMServiceAdapter(
+                        service = gemma4E4BLLMService,
+                        providerId = ModelCatalog.gemma4E4B.id,
+                        displayName = ModelCatalog.gemma4E4B.displayName,
+                        location = ProviderLocation.LOCAL_PHONE
+                    )
+                )
+            }
+            add(
+                LLMServiceAdapter(
+                    service = gemma3nE2BLLMService,
+                    providerId = ModelCatalog.gemma3nE2B.id,
+                    displayName = ModelCatalog.gemma3nE2B.displayName,
+                    location = ProviderLocation.LOCAL_PHONE
+                )
+            )
+            add(
+                LLMServiceAdapter(
+                    service = qwen25InstructLLMService,
+                    providerId = ModelCatalog.qwen2_5_1_5B.id,
+                    displayName = ModelCatalog.qwen2_5_1_5B.displayName,
+                    location = ProviderLocation.LOCAL_PHONE
+                )
+            )
+            add(
+                LLMServiceAdapter(
+                    service = qwen3SmallLLMService,
+                    providerId = ModelCatalog.qwen3_0_6B.id,
+                    displayName = ModelCatalog.qwen3_0_6B.displayName,
+                    location = ProviderLocation.LOCAL_PHONE
+                )
+            )
+            add(
+                LLMServiceAdapter(
+                    service = rulesOnlyLLMService,
+                    providerId = "rules-only",
+                    displayName = "Heuristic Rules",
+                    location = ProviderLocation.LOCAL_PHONE
+                )
+            )
+        }
         _providers.value = builtins.associateBy { it.providerId }
     }
 

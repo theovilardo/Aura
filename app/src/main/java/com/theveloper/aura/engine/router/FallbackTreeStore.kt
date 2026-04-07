@@ -3,6 +3,7 @@ package com.theveloper.aura.engine.router
 import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.theveloper.aura.engine.llm.ModelCatalog
 import com.theveloper.aura.engine.sync.dataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
@@ -54,13 +55,19 @@ class FallbackTreeStore @Inject constructor(
     }
 
     companion object {
-        fun defaultTree(): List<FallbackNode> = listOf(
-            FallbackNode(providerId = "qwen3-0.6b", priority = 0, maxComplexity = 4f),
-            FallbackNode(providerId = "gemma3-1b", priority = 1, maxComplexity = 5f),
-            FallbackNode(providerId = "qwen2.5-1.5b", priority = 2, maxComplexity = 7f),
-            FallbackNode(providerId = "gemma3n-e2b", priority = 3),
-            FallbackNode(providerId = "groq-api", priority = 4),
-            FallbackNode(providerId = "rules-only", priority = 5)
-        )
+        fun defaultTree(): List<FallbackNode> = buildList {
+            add(FallbackNode(providerId = "qwen3-0.6b", priority = size, maxComplexity = 4f))
+            add(FallbackNode(providerId = "gemma3-1b", priority = size, maxComplexity = 5f))
+            add(FallbackNode(providerId = "qwen2.5-1.5b", priority = size, maxComplexity = 7f))
+            if (ModelCatalog.gemma4E2B.isRuntimeCompatible) {
+                add(FallbackNode(providerId = "gemma4-e2b", priority = size, maxComplexity = 8f))
+            }
+            if (ModelCatalog.gemma4E4B.isRuntimeCompatible) {
+                add(FallbackNode(providerId = "gemma4-e4b", priority = size))
+            }
+            add(FallbackNode(providerId = "gemma3n-e2b", priority = size))
+            add(FallbackNode(providerId = "groq-api", priority = size))
+            add(FallbackNode(providerId = "rules-only", priority = size))
+        }
     }
 }
