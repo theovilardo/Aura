@@ -2,7 +2,9 @@ package com.theveloper.aura.engine.dsl
 
 import com.theveloper.aura.domain.model.ComponentType
 import com.theveloper.aura.domain.model.FetcherType
+import com.theveloper.aura.domain.model.FunctionSkillRuntime
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.domain.model.UiSkillRuntime
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
@@ -13,6 +15,7 @@ data class TaskDSLOutput(
     val priority: Int = 0,
     val targetDateMs: Long? = null,
     val components: List<ComponentDSL> = emptyList(),
+    val functionSkills: List<FunctionSkillDSL> = emptyList(),
     val reminders: List<ReminderDSL> = emptyList(),
     val fetchers: List<FetcherDSL> = emptyList()
 )
@@ -20,9 +23,20 @@ data class TaskDSLOutput(
 @Serializable
 data class ComponentDSL(
     val skillId: String? = null,
+    val skillRuntime: UiSkillRuntime? = null,
     val type: ComponentType,
     val sortOrder: Int,
     val config: JsonObject,
+    val populatedFromInput: Boolean = false,
+    val needsClarification: Boolean = false
+)
+
+@Serializable
+data class FunctionSkillDSL(
+    val skillId: String,
+    val runtime: FunctionSkillRuntime? = null,
+    val enabled: Boolean = true,
+    val config: JsonObject = JsonObject(emptyMap()),
     val populatedFromInput: Boolean = false,
     val needsClarification: Boolean = false
 )

@@ -37,7 +37,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.theveloper.aura.domain.model.ComponentType
@@ -50,7 +49,7 @@ import com.theveloper.aura.engine.dsl.ChecklistDslItems
 import com.theveloper.aura.engine.dsl.ComponentDSL
 import com.theveloper.aura.ui.components.ComponentPill
 import com.theveloper.aura.ui.skill.uiSkillDisplayName
-import com.theveloper.aura.ui.skill.uiSkillIcon
+import com.theveloper.aura.ui.skill.uiSkillIconResolved
 import com.theveloper.aura.ui.skill.uiSkillShortLabel
 import java.time.Instant
 import java.time.ZoneId
@@ -372,7 +371,7 @@ private fun PreviewComponentRow(component: ComponentDSL) {
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Icon(
-                    imageVector = previewComponentIcon(component.type),
+                    imageVector = component.uiSkillIconResolved(),
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(10.dp)
@@ -383,7 +382,7 @@ private fun PreviewComponentRow(component: ComponentDSL) {
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
-                    text = component.type.uiSkillDisplayName(),
+                    text = component.uiSkillDisplayName(),
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -438,11 +437,9 @@ private fun componentBadgeLabel(component: ComponentDSL): String {
 
     return when {
         component.populatedFromInput -> "Filled"
-        else -> component.type.uiSkillShortLabel()
+        else -> component.uiSkillShortLabel()
     }
 }
-
-private fun previewComponentIcon(type: ComponentType): ImageVector = type.uiSkillIcon()
 
 @Composable
 private fun SourcePill(source: TaskGenerationSource) {

@@ -2,7 +2,9 @@ package com.theveloper.aura.engine.llm
 
 import com.theveloper.aura.core.json.auraJson
 import com.theveloper.aura.domain.model.ComponentType
+import com.theveloper.aura.domain.model.FunctionSkillRuntime
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.domain.model.UiSkillRuntime
 import com.theveloper.aura.engine.dsl.ComponentDSL
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
 import com.theveloper.aura.engine.dsl.TaskDSLValidator
@@ -216,6 +218,94 @@ class LLMParsingTest {
         val jsonObject = auraJson.parseToJsonElement(normalized) as JsonObject
 
         assertNull(jsonObject["semantic"])
+    }
+
+    @Test
+    fun `normalizeTaskDslJson keeps function skills`() {
+        val raw = """
+            {
+              "analysis": {
+                "ui_skills_needed": ["notes"],
+                "function_skills_needed": ["learning-guide", "resource-curator"]
+              },
+              "task": {
+                "title": "Kotlin roadmap",
+                "type": "GOAL",
+                "skills": [
+                  {
+                    "skill": "notes",
+                    "config": {
+                      "config_type": "NOTES",
+                      "text": "Roadmap",
+                      "isMarkdown": true
+                    }
+                  }
+                ],
+                "functionSkills": [
+                  {
+                    "skill": "learning-guide",
+                    "config": {
+                      "mode": "roadmap"
+                    }
+                  },
+                  {
+                    "skill": "resource-curator",
+                    "runtime": "PROMPT_AUGMENTATION",
+                    "enabled": true,
+                    "config": {
+                      "preferOfficial": true
+                    }
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+
+        val normalized = raw.normalizeTaskDslJson()
+        val dsl = auraJson.decodeFromString<TaskDSLOutput>(normalized)
+
+        assertEquals(2, dsl.functionSkills.size)
+        assertEquals("learning-guide", dsl.functionSkills[0].skillId)
+        assertEquals(FunctionSkillRuntime.PROMPT_AUGMENTATION, dsl.functionSkills[0].runtime)
+        assertEquals("resource-curator", dsl.functionSkills[1].skillId)
+    }
+
+    @Test
+    fun `normalizeTaskDslJson normalizes hosted ui skill runtime`() {
+        val raw = """
+            {
+              "task": {
+                "title": "Interactive map",
+                "type": "TRAVEL",
+                "skills": [
+                  {
+                    "skill": "interactive-map",
+                    "skillRuntime": "HTML_JS",
+                    "type": "HOSTED_UI",
+                    "config": {
+                      "config_type": "HOSTED_UI",
+                      "skillId": "interactive-map",
+                      "runtime": "HTML_JS",
+                      "displayLabel": "Mapa",
+                      "htmlDocument": "<html><body>map</body></html>",
+                      "props": {
+                        "location": "Madrid"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+
+        val normalized = raw.normalizeTaskDslJson()
+        val dsl = auraJson.decodeFromString<TaskDSLOutput>(normalized)
+
+        val component = dsl.components.first()
+        assertEquals(ComponentType.HOSTED_UI, component.type)
+        assertEquals("interactive-map", component.skillId)
+        assertEquals(UiSkillRuntime.HTML_JS, component.skillRuntime)
+        assertEquals("HOSTED_UI", component.config["config_type"]?.jsonPrimitive?.contentOrNull)
     }
 
     @Test

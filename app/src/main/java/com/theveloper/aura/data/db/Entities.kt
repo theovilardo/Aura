@@ -10,6 +10,7 @@ import com.theveloper.aura.domain.model.ComponentType
 import com.theveloper.aura.domain.model.EventStatus
 import com.theveloper.aura.domain.model.EventSubActionType
 import com.theveloper.aura.domain.model.FetcherType
+import com.theveloper.aura.domain.model.FunctionSkillRuntime
 import com.theveloper.aura.domain.model.MemoryCategory
 import com.theveloper.aura.domain.model.ReminderStatus
 import com.theveloper.aura.domain.model.ReminderType
@@ -17,6 +18,7 @@ import com.theveloper.aura.domain.model.SignalType
 import com.theveloper.aura.domain.model.SuggestionType
 import com.theveloper.aura.domain.model.TaskStatus
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.domain.model.UiSkillRuntime
 
 @Entity(tableName = "tasks")
 data class TaskEntity(
@@ -26,6 +28,7 @@ data class TaskEntity(
     val status: TaskStatus,
     val priority: Int = 0,
     @ColumnInfo(name = "target_date") val targetDate: Long? = null,
+    @ColumnInfo(name = "function_skills_json", defaultValue = "'[]'") val functionSkillsJson: String = "[]",
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long
 )
@@ -37,6 +40,8 @@ data class TaskComponentEntity(
     val type: ComponentType,
     @ColumnInfo(name = "sort_order") val sortOrder: Int,
     val config: String, // JSON representation of ComponentConfig
+    @ColumnInfo(name = "skill_id") val skillId: String? = null,
+    @ColumnInfo(name = "skill_runtime") val skillRuntime: UiSkillRuntime? = null,
     @ColumnInfo(name = "needs_clarification", defaultValue = "0") val needsClarification: Boolean = false
 )
 

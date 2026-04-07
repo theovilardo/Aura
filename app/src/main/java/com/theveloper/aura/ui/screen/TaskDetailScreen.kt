@@ -117,6 +117,7 @@ import com.theveloper.aura.domain.model.TaskStatus
 import com.theveloper.aura.ui.components.ComponentPill
 import com.theveloper.aura.ui.components.FullscreenRenderedNotesContent
 import com.theveloper.aura.ui.skill.uiSkillDisplayName
+import com.theveloper.aura.ui.skill.uiSkillIconResolved
 import com.theveloper.aura.ui.skill.uiSkillIcon
 import com.theveloper.aura.ui.renderer.EditableTaskRenderer
 import com.theveloper.aura.ui.renderer.TaskRenderMode
@@ -1541,7 +1542,7 @@ internal fun Task.reorderComponents(fromIndex: Int, toIndex: Int): Task {
     )
 }
 
-private fun TaskComponent.displayName(): String = type.displayName()
+private fun TaskComponent.displayName(): String = uiSkillDisplayName()
 
 private fun TaskComponent.reorderSubtitle(): String {
     val details = config.reorderDetails()
@@ -1564,9 +1565,10 @@ private fun ComponentConfig.reorderDetails(): String = when (this) {
         else -> "Metric tracker"
     }
     is DataFeedConfig -> if (displayLabel.isNotBlank()) displayLabel else "Live data block"
+    is com.theveloper.aura.domain.model.HostedUiConfig -> if (displayLabel.isNotBlank()) displayLabel else "Hosted UI skill"
     else -> ""
 }
 
-private fun TaskComponent.icon(): ImageVector = type.uiSkillIcon()
+private fun TaskComponent.icon(): ImageVector = uiSkillIconResolved()
 
 private fun ComponentType.displayName(): String = uiSkillDisplayName()

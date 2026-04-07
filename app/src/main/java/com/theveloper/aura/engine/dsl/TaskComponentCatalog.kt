@@ -12,6 +12,7 @@ import com.theveloper.aura.domain.model.MetricTrackerConfig
 import com.theveloper.aura.domain.model.NotesConfig
 import com.theveloper.aura.domain.model.ProgressBarConfig
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.engine.skill.SkillRegistry
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -719,8 +720,11 @@ object TaskComponentCatalog {
         reminders: List<ReminderDSL> = emptyList()
     ): BuiltTaskComponent {
         val baseConfig = auraJson.encodeToJsonElement(config).let { it as JsonObject }
+        val definition = SkillRegistry.resolveUi(type)
         return BuiltTaskComponent(
             component = ComponentDSL(
+                skillId = definition?.id,
+                skillRuntime = definition?.runtime,
                 type = type,
                 sortOrder = sortOrder,
                 config = JsonObject(baseConfig + extras)

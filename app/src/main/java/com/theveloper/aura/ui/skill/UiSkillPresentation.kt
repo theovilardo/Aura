@@ -10,6 +10,9 @@ import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.theveloper.aura.domain.model.ComponentType
+import com.theveloper.aura.domain.model.TaskComponent
+import com.theveloper.aura.engine.dsl.ComponentDSL
+import com.theveloper.aura.engine.skill.SkillRegistry
 import com.theveloper.aura.engine.skill.UiSkillRegistry
 
 fun ComponentType.uiSkillDisplayName(): String {
@@ -28,6 +31,43 @@ fun ComponentType.uiSkillIcon(): ImageVector = when (this) {
     ComponentType.NOTES -> Icons.AutoMirrored.Rounded.Notes
     ComponentType.METRIC_TRACKER -> Icons.AutoMirrored.Rounded.ShowChart
     ComponentType.DATA_FEED -> Icons.Rounded.Sync
+    ComponentType.HOSTED_UI -> Icons.Rounded.Sync
+}
+
+fun TaskComponent.uiSkillDisplayName(): String {
+    return skillId
+        ?.let { SkillRegistry.resolveUi(it)?.displayName }
+        ?: type.uiSkillDisplayName()
+}
+
+fun TaskComponent.uiSkillShortLabel(): String {
+    return skillId
+        ?.let { SkillRegistry.resolveUi(it)?.shortLabel }
+        ?: type.uiSkillShortLabel()
+}
+
+fun TaskComponent.uiSkillIconResolved(): ImageVector {
+    return skillId
+        ?.let { SkillRegistry.resolveUi(it)?.componentType?.uiSkillIcon() }
+        ?: type.uiSkillIcon()
+}
+
+fun ComponentDSL.uiSkillDisplayName(): String {
+    return skillId
+        ?.let { SkillRegistry.resolveUi(it)?.displayName }
+        ?: type.uiSkillDisplayName()
+}
+
+fun ComponentDSL.uiSkillShortLabel(): String {
+    return skillId
+        ?.let { SkillRegistry.resolveUi(it)?.shortLabel }
+        ?: type.uiSkillShortLabel()
+}
+
+fun ComponentDSL.uiSkillIconResolved(): ImageVector {
+    return skillId
+        ?.let { SkillRegistry.resolveUi(it)?.componentType?.uiSkillIcon() }
+        ?: type.uiSkillIcon()
 }
 
 private fun ComponentType.fallbackDisplayName(): String = when (this) {
@@ -38,6 +78,7 @@ private fun ComponentType.fallbackDisplayName(): String = when (this) {
     ComponentType.NOTES -> "Notes"
     ComponentType.METRIC_TRACKER -> "Metric tracker"
     ComponentType.DATA_FEED -> "Data feed"
+    ComponentType.HOSTED_UI -> "Hosted UI"
 }
 
 private fun ComponentType.fallbackShortLabel(): String = when (this) {
@@ -48,4 +89,5 @@ private fun ComponentType.fallbackShortLabel(): String = when (this) {
     ComponentType.NOTES -> "Text"
     ComponentType.METRIC_TRACKER -> "Metric"
     ComponentType.DATA_FEED -> "Live"
+    ComponentType.HOSTED_UI -> "Hosted"
 }
