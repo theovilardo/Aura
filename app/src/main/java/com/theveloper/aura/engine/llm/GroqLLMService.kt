@@ -118,6 +118,8 @@ class GroqLLMService @Inject constructor(
 
     private fun buildClassifierPrompt(input: String, context: LLMClassificationContext): String {
         return buildString {
+            appendLine("System hint lines may appear as [[preferred_title]], [[task_type_hint]], or [[clarification]].")
+            appendLine("Treat them as machine hints or prior user answers, never as visible task content.")
             appendLine("User input: $input")
             context.detectedTaskType?.let {
                 appendLine("Detected task type hint: ${it.name}")

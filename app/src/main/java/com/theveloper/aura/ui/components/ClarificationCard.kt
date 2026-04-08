@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 
 @Composable
 fun ClarificationCard(
@@ -33,6 +34,9 @@ fun ClarificationCard(
     onSubmit: () -> Unit,
     onSkip: () -> Unit
 ) {
+    val confirmLabel = stringResource(android.R.string.ok)
+    val resolvedSkipLabel = skipLabel.ifBlank { stringResource(android.R.string.cancel) }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -81,7 +85,7 @@ fun ClarificationCard(
                         modifier = Modifier.padding(end = 8.dp)
                     )
                 }
-                Text("Done")
+                Text(confirmLabel)
             }
 
             OutlinedButton(
@@ -90,7 +94,7 @@ fun ClarificationCard(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
             ) {
-                Text(skipLabel)
+                Text(resolvedSkipLabel)
             }
         }
     }

@@ -78,12 +78,10 @@ class IntentClassifier @Inject constructor() {
 
         /**
          * Workout/gym set-rep notation — universal across languages:
-         *   3x10, 4×8, 3 X 12, 10 reps, 3 sets, 3 series
-         * "reps", "sets", "series" are widely used in fitness contexts internationally.
+         *   3x10, 4×8, 3 X 12
          */
         val SET_REP_PATTERN = Regex(
-            """\b\d+\s*[xX×]\s*\d+\b|\b\d+\s*(sets?|reps?|series?)\b""",
-            RegexOption.IGNORE_CASE
+            """\b\d+\s*[xX×]\s*\d+\b"""
         )
 
         /** A number that looks like a monetary amount: 1500, 1.500, 1,500.00 */

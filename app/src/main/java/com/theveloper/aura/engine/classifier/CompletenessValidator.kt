@@ -29,7 +29,7 @@ data class ClarificationRequest(
     val componentType: ComponentType,
     val fieldName: String,
     val question: String,
-    val skipLabel: String = "Skip for now"
+    val skipLabel: String = ""
 )
 
 data class CompletenessValidationResult(
@@ -49,7 +49,6 @@ class CompletenessValidator @Inject constructor() {
         dsl: TaskDSLOutput,
         memorySlots: List<MemorySlot> = emptyList()
     ): CompletenessValidationResult {
-        val cleanInput = sanitizeInput(input)
         val missingFields = mutableListOf<MissingField>()
         val updatedComponents = dsl.components.map { component ->
             when (component.type) {
@@ -180,44 +179,14 @@ class CompletenessValidator @Inject constructor() {
         return component.copy(needsClarification = false)
     }
 
-    private fun sanitizeInput(input: String): String {
-        return input
-            .lineSequence()
-            .filterNot { line ->
-                line.startsWith("Preferred title:", ignoreCase = true) ||
-                    line.startsWith("Task type hint:", ignoreCase = true) ||
-                    line.startsWith(CLARIFICATION_ANSWER_PREFIX, ignoreCase = true)
-            }
-            .joinToString("\n")
-            .trim()
-    }
-
     /**
      * Extracts items from the input using language-agnostic structural signals:
      *   1. Lines previously submitted as a user clarification answer
      *   2. Bullet-point lines (-, *, •) — work in any language
+     *   3. Inline comma/semicolon-separated atomic items already present in the prompt
      */
     private fun extractExplicitChecklistItems(rawInput: String): List<String> {
-        // 1. Extract from clarification answer prefix (language-neutral protocol)
-        rawInput.lineSequence()
-            .filter { it.startsWith(CLARIFICATION_ANSWER_PREFIX, ignoreCase = true) }
-            .map { it.removePrefix(CLARIFICATION_ANSWER_PREFIX).trim() }
-            .filter { it.isNotBlank() }
-            .flatMap(::splitItems)
-            .toList()
-            .takeIf { it.isNotEmpty() }
-            ?.let { return it }
-
-        // 2. Bullet-point structure (language-agnostic)
-        val bulletItems = rawInput.lineSequence()
-            .map { it.trim() }
-            .filter { it.startsWith("-") || it.startsWith("*") || it.startsWith("•") }
-            .map { it.removePrefix("-").removePrefix("*").removePrefix("•").trim() }
-            .filter { it.isNotBlank() }
-            .toList()
-        if (bulletItems.size >= 2) return bulletItems
-
-        return emptyList()
+        return ChecklistInputExtraction.extract(rawInput)
     }
 
     private fun shouldReplaceGenericItems(items: List<ChecklistItemDSL>): Boolean {
@@ -226,53 +195,7 @@ class CompletenessValidator @Inject constructor() {
         }
     }
 
-    private fun splitItems(raw: String): List<String> {
-        val parts = if (raw.contains(",") || raw.contains(";") || raw.contains("\n")) {
-            raw.split(ITEM_SEPARATOR_REGEX)
-        } else {
-            raw.split(AND_SEPARATOR_REGEX)
-        }
-
-        val normalized = parts
-            .map { it.trim().trim('-', '*', '•', '.', ':').replace(Regex("\\s+"), " ") }
-            .filter { it.isNotBlank() && it.length > 1 }
-            .distinct()
-
-        return expandTrailingCoordinatedItem(normalized)
-    }
-
-    private fun expandTrailingCoordinatedItem(items: List<String>): List<String> {
-        if (items.size < 3) return items
-        val lastItem = items.last()
-        val match = TRAILING_AND_REGEX.matchEntire(lastItem) ?: return items
-        val left = match.groupValues[1].trim()
-        val right = match.groupValues[2].trim()
-        if (!looksLikeAtomicItem(left) || !looksLikeAtomicItem(right)) return items
-        val prev = items.dropLast(1)
-        if (prev.count(::looksLikeAtomicItem) < 2) return items
-        return prev + listOf(left, right)
-    }
-
-    private fun looksLikeAtomicItem(item: String): Boolean {
-        val tokens = item.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-        return tokens.size in 1..3 && !TRAILING_AND_REGEX.containsMatchIn(item)
-    }
-
     private companion object {
-        const val CLARIFICATION_ANSWER_PREFIX = "User clarification: "
-
-        /** Comma, semicolon, or newline — universal separators. */
-        val ITEM_SEPARATOR_REGEX = Regex("[,;\\n]+")
-
-        /** "and" or "&" — widely used in English and international contexts; no language-specific conjunctions. */
-        val AND_SEPARATOR_REGEX = Regex("\\s+(?:and|&)\\s+", RegexOption.IGNORE_CASE)
-
-        /** Trailing "X and Y" pattern for expanding the last item. */
-        val TRAILING_AND_REGEX = Regex(
-            pattern = "(.+?)\\s+(?:and|&)\\s+(.+)",
-            option = RegexOption.IGNORE_CASE
-        )
-
         /**
          * Generic placeholder labels that were formerly injected by the catalog as scaffolding.
          * If a checklist consists entirely of these, it should be replaced.

@@ -1,51 +1,31 @@
 package com.theveloper.aura.engine.classifier
 
 import com.theveloper.aura.domain.model.ComponentType
-import com.theveloper.aura.domain.model.TaskType
 import com.theveloper.aura.engine.dsl.ChecklistDslItems
 import com.theveloper.aura.engine.dsl.ChecklistItemDSL
 import com.theveloper.aura.engine.dsl.ComponentDSL
 import com.theveloper.aura.engine.dsl.TaskComponentCatalog
 import com.theveloper.aura.engine.dsl.TaskComponentContext
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
-import javax.inject.Inject
-import javax.inject.Singleton
+import kotlinx.serialization.json.longOrNull
 
 /**
  * Post-LLM quality enforcement layer.
  *
- * Sits between the raw LLM output (after parsing/normalization) and the final
- * [TaskGenerationResult]. Its job is to guarantee that every DSL that reaches
- * the user is **structurally complete and semantically useful** — regardless
- * of how well the model performed on a given run.
- *
- * This is NOT about schema validation (that's [TaskDSLValidator]). This layer
- * answers: "Is this output *good enough* to show to a user?"
- *
- * Checks (in order):
- *  1. At least one component exists
- *  2. No component has a completely hollow config (e.g., NOTES with blank text
- *     AND no needsClarification flag)
- *  3. CHECKLIST has at least one item or is marked needsClarification
- *  4. Title is not just the raw input copy-pasted verbatim (for long inputs)
- *
- * When a check fails the gate **repairs in-place** using deterministic defaults
- * from [TaskDSLBuilder] / [TaskComponentCatalog] rather than rejecting the
- * whole output. The philosophy is: salvage as much LLM work as possible,
- * patch only what's broken.
+ * This gate is intentionally conservative: it repairs structural issues using
+ * information already present in the prompt or in the draft, but it avoids
+ * domain-specific content generation. Rich content should come from the model
+ * itself (or a rescue pass), not from hardcoded app logic.
  */
 @Singleton
 class TaskDSLQualityGate @Inject constructor() {
 
-    /**
-     * Returns a [GateResult] that is either [GateResult.Passed] (possibly with
-     * repairs) or [GateResult.Rejected] when the output is beyond salvaging.
-     */
     fun enforce(
         dsl: TaskDSLOutput,
         input: String,
@@ -54,43 +34,56 @@ class TaskDSLQualityGate @Inject constructor() {
         var patched = dsl
         val repairs = mutableListOf<String>()
 
-        // ── 1. Guarantee at least one component ─────────────────────────
         if (patched.components.isEmpty()) {
             patched = injectDefaultComponents(patched, input, entities)
-            repairs += "Injected default components (LLM returned none)"
+            repairs += "Injected default components (draft had none)"
         }
 
-        // ── 2. Patch hollow components ──────────────────────────────────
-        val (patchedComponents, hollowRepairs) = patchHollowComponents(
+        val explicitItems = ChecklistInputExtraction.extract(input)
+
+        val (coveredDsl, coverageRepairs) = ensureChecklistCoverage(
             dsl = patched,
-            input = input
+            explicitItems = explicitItems
+        )
+        if (coverageRepairs.isNotEmpty()) {
+            patched = coveredDsl
+            repairs += coverageRepairs
+        }
+
+        val (patchedComponents, hollowRepairs) = patchHollowComponents(
+            components = patched.components,
+            explicitItems = explicitItems
         )
         if (hollowRepairs.isNotEmpty()) {
             patched = patched.copy(components = patchedComponents)
             repairs += hollowRepairs
         }
 
-        // ── 3. Normalize sort orders ────────────────────────────────────
-        val reindexed = patched.components.mapIndexed { i, c -> c.copy(sortOrder = i) }
+        val (curatedComponents, curationRepairs) = pruneLowValueComponents(patched.components)
+        if (curationRepairs.isNotEmpty()) {
+            patched = patched.copy(components = curatedComponents)
+            repairs += curationRepairs
+        }
+
+        val reindexed = patched.components.mapIndexed { index, component ->
+            component.copy(sortOrder = index)
+        }
         if (reindexed != patched.components) {
             patched = patched.copy(components = reindexed)
         }
 
-        // ── 4. Title sanity ─────────────────────────────────────────────
         if (patched.title.isBlank()) {
             patched = patched.copy(title = TaskDSLBuilder.buildTitle(input, patched.type))
             repairs += "Title was blank; generated from input"
         }
 
-        // ── 5. Final safety: if still no components, reject ─────────────
-        if (patched.components.isEmpty()) {
-            return GateResult.Rejected("Output has no usable components after repair")
+        if (patched.components.isEmpty() || patched.components.none(::isUsableComponent)) {
+            patched = synthesizeClarificationScaffold(patched, input)
+            repairs += "Inserted checklist clarification scaffold because the draft was hollow"
         }
 
         return GateResult.Passed(dsl = patched, repairs = repairs)
     }
-
-    // ─────────────────────────────────────────────────────────────────────
 
     private fun injectDefaultComponents(
         dsl: TaskDSLOutput,
@@ -111,290 +104,185 @@ class TaskDSLQualityGate @Inject constructor() {
             now = System.currentTimeMillis(),
             context = context
         )
+
         return dsl.copy(
             components = components,
             reminders = if (dsl.reminders.isEmpty()) reminders else dsl.reminders
         )
     }
 
-    private fun patchHollowComponents(
+    private fun ensureChecklistCoverage(
         dsl: TaskDSLOutput,
-        input: String
+        explicitItems: List<String>
+    ): Pair<TaskDSLOutput, List<String>> {
+        if (explicitItems.isEmpty() || dsl.components.any { it.type == ComponentType.CHECKLIST }) {
+            return dsl to emptyList()
+        }
+
+        val label = dsl.title.ifBlank { explicitItems.first().take(24) }
+        val checklist = ComponentDSL(
+            skillId = "checklist",
+            type = ComponentType.CHECKLIST,
+            sortOrder = dsl.components.size,
+            config = ChecklistDslItems.withItems(
+                config = JsonObject(
+                    mapOf(
+                        "config_type" to JsonPrimitive(ComponentType.CHECKLIST.name),
+                        "label" to JsonPrimitive(label),
+                        "allowAddItems" to JsonPrimitive(true)
+                    )
+                ),
+                items = explicitItems.map(::ChecklistItemDSL)
+            ),
+            populatedFromInput = true
+        )
+
+        return dsl.copy(components = dsl.components + checklist) to
+            listOf("Added checklist from explicit items already present in input")
+    }
+
+    private fun patchHollowComponents(
+        components: List<ComponentDSL>,
+        explicitItems: List<String>
     ): Pair<List<ComponentDSL>, List<String>> {
         val repairs = mutableListOf<String>()
-        val patched = dsl.components.map { component ->
-            if (component.needsClarification) return@map component
-            when {
-                component.type == ComponentType.CHECKLIST &&
-                    (isChecklistEmpty(component) || shouldUpgradeLearningChecklist(component, dsl.type, input)) -> {
-                    synthesizeChecklistContent(
-                        component = component,
-                        taskType = dsl.type,
-                        input = input
-                    )?.also {
-                        repairs += if (isChecklistEmpty(component)) {
-                            "Generated structured checklist for hollow CHECKLIST"
-                        } else {
-                            "Upgraded generic CHECKLIST into roadmap milestones"
-                        }
-                    } ?: run {
-                        repairs += "Marked empty CHECKLIST for clarification"
-                        component.copy(needsClarification = true)
+
+        val patched = components.map { component ->
+            when (component.type) {
+                ComponentType.CHECKLIST -> patchChecklist(component, explicitItems)?.also {
+                    repairs += when {
+                        explicitItems.isNotEmpty() -> "Filled CHECKLIST from explicit items already present in input"
+                        else -> "Marked empty CHECKLIST for clarification"
                     }
-                }
-                component.type == ComponentType.NOTES &&
-                    (isNotesEmpty(component) || shouldUpgradeLearningNotes(component, dsl.type, input)) -> {
-                    synthesizeNotesContent(
-                        component = component,
-                        taskType = dsl.type,
-                        input = input
-                    )?.also {
-                        repairs += if (isNotesEmpty(component)) {
-                            "Generated roadmap content for hollow NOTES"
-                        } else {
-                            "Upgraded thin NOTES into structured roadmap content"
-                        }
-                    } ?: run {
-                        repairs += "Marked empty NOTES for clarification"
-                        component.copy(needsClarification = true)
-                    }
-                }
+                } ?: component
+
                 else -> component
             }
         }
-        return patched to repairs
+
+        return patched to repairs.distinct()
     }
 
-    private fun isChecklistEmpty(component: ComponentDSL): Boolean {
-        val items = component.config["items"]
-        if (items == null) return true
-        return runCatching {
-            items.jsonArray.isEmpty()
-        }.getOrDefault(true)
+    private fun patchChecklist(
+        component: ComponentDSL,
+        explicitItems: List<String>
+    ): ComponentDSL? {
+        val currentItems = ChecklistDslItems.parse(component.config)
+        if (currentItems.isNotEmpty() && currentItems.any { it.label.trim().lowercase() !in GENERIC_PLACEHOLDER_LABELS }) {
+            return null
+        }
+
+        return if (explicitItems.isNotEmpty()) {
+            component.copy(
+                config = ChecklistDslItems.withItems(
+                    config = component.config,
+                    items = explicitItems.map(::ChecklistItemDSL)
+                ),
+                populatedFromInput = true,
+                needsClarification = false
+            )
+        } else {
+            component.copy(needsClarification = true)
+        }
+    }
+
+    private fun pruneLowValueComponents(
+        components: List<ComponentDSL>
+    ): Pair<List<ComponentDSL>, List<String>> {
+        val hasConcreteNonNotes = components.any { component ->
+            component.type != ComponentType.NOTES && isStrongNonNotesComponent(component)
+        }
+        val hasHighValueNotes = components.any { component ->
+            component.type == ComponentType.NOTES && !isNotesLowValue(component)
+        }
+        if (!hasConcreteNonNotes && !hasHighValueNotes) return components to emptyList()
+
+        val repairs = mutableListOf<String>()
+        val filtered = components.filterNot { component ->
+            when {
+                component.type == ComponentType.NOTES && hasConcreteNonNotes && isNotesLowValue(component) -> {
+                    repairs += "Removed low-value NOTES because stronger UI content was available"
+                    true
+                }
+
+                component.type == ComponentType.CHECKLIST && hasHighValueNotes && isChecklistLowValue(component) -> {
+                    repairs += "Removed low-value CHECKLIST because stronger notes content was available"
+                    true
+                }
+
+                else -> false
+            }
+        }
+
+        return if (repairs.isEmpty()) {
+            components to emptyList()
+        } else {
+            filtered to repairs.distinct()
+        }
+    }
+
+    private fun isUsableComponent(component: ComponentDSL): Boolean {
+        return when (component.type) {
+            ComponentType.CHECKLIST -> {
+                ChecklistDslItems.parse(component.config).isNotEmpty() || component.needsClarification
+            }
+
+            ComponentType.NOTES -> !isNotesLowValue(component)
+
+            ComponentType.COUNTDOWN -> {
+                val targetDate = component.config["targetDate"]?.jsonPrimitive?.longOrNull ?: 0L
+                targetDate > 0L || component.needsClarification
+            }
+
+            else -> true
+        }
     }
 
     private fun isNotesEmpty(component: ComponentDSL): Boolean {
         val text = component.config["text"]?.jsonPrimitive?.contentOrNull
-        return text.isNullOrBlank()
+        return DraftContentQuality.sanitizeGeneratedText(text.orEmpty()).isBlank()
     }
 
-    private fun shouldUpgradeLearningNotes(
-        component: ComponentDSL,
-        taskType: TaskType,
-        input: String
-    ): Boolean {
-        if (!looksLikeLearningRoadmapRequest(input, taskType)) return false
-        val text = component.config["text"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
-        if (text.isBlank()) return false
-        return looksLikeThinKeywordDump(text)
+    private fun isNotesLowValue(component: ComponentDSL): Boolean {
+        val text = component.config["text"]?.jsonPrimitive?.contentOrNull
+        return text.isNullOrBlank() || DraftContentQuality.isThinNotes(text)
     }
 
-    private fun shouldUpgradeLearningChecklist(
-        component: ComponentDSL,
-        taskType: TaskType,
-        input: String
-    ): Boolean {
-        if (!looksLikeLearningRoadmapRequest(input, taskType)) return false
-        val labels = ChecklistDslItems.parse(component.config).map { it.label.lowercase() }
-        if (labels.isEmpty()) return false
-        val genericCount = labels.count { label ->
-            GENERIC_ROADMAP_TERMS.any { term -> label.contains(term) } ||
-                COMMON_TECH_TOPICS.any { topic -> label.contains(topic) }
+    private fun isChecklistLowValue(component: ComponentDSL): Boolean {
+        val items = ChecklistDslItems.parse(component.config)
+        return items.isEmpty() || items.all { item ->
+            item.label.trim().lowercase() in GENERIC_PLACEHOLDER_LABELS
         }
-        return genericCount == labels.size
     }
 
-    private fun synthesizeNotesContent(
-        component: ComponentDSL,
-        taskType: TaskType,
-        input: String
-    ): ComponentDSL? {
-        if (!looksLikeLearningRoadmapRequest(input, taskType)) return null
-        val spanish = isLikelySpanish(input)
-        val topic = inferLearningTopic(input)
-        val text = buildLearningRoadmapNotes(topic, spanish)
-        val updatedConfig = JsonObject(
-            component.config + mapOf(
-                "text" to JsonPrimitive(text),
-                "isMarkdown" to JsonPrimitive(true)
-            )
-        )
-        return component.copy(
-            config = updatedConfig,
-            populatedFromInput = true,
-            needsClarification = false
-        )
+    private fun isStrongNonNotesComponent(component: ComponentDSL): Boolean {
+        return when (component.type) {
+            ComponentType.CHECKLIST -> !isChecklistLowValue(component)
+            ComponentType.NOTES -> false
+            else -> isUsableComponent(component)
+        }
     }
 
-    private fun synthesizeChecklistContent(
-        component: ComponentDSL,
-        taskType: TaskType,
+    private fun synthesizeClarificationScaffold(
+        dsl: TaskDSLOutput,
         input: String
-    ): ComponentDSL? {
-        if (!looksLikeLearningRoadmapRequest(input, taskType)) return null
-        val spanish = isLikelySpanish(input)
-        val items = buildLearningRoadmapChecklist(spanish)
-        val label = if (spanish) "Hitos del roadmap" else "Roadmap milestones"
-        val updatedConfig = ChecklistDslItems.withItems(
+    ): TaskDSLOutput {
+        val title = dsl.title.ifBlank { TaskDSLBuilder.buildTitle(input, dsl.type) }
+        val scaffold = ComponentDSL(
+            skillId = "checklist",
+            type = ComponentType.CHECKLIST,
+            sortOrder = 0,
             config = JsonObject(
-                component.config + mapOf(
-                    "label" to JsonPrimitive(label),
+                mapOf(
+                    "config_type" to JsonPrimitive(ComponentType.CHECKLIST.name),
+                    "label" to JsonPrimitive(title),
                     "allowAddItems" to JsonPrimitive(true)
                 )
             ),
-            items = items
+            needsClarification = true
         )
-        return component.copy(
-            config = updatedConfig,
-            populatedFromInput = true,
-            needsClarification = false
-        )
+        return dsl.copy(components = listOf(scaffold))
     }
-
-    private fun buildLearningRoadmapChecklist(spanish: Boolean): List<ChecklistItemDSL> {
-        return if (spanish) {
-            listOf(
-                ChecklistItemDSL("Fundamentos de programación"),
-                ChecklistItemDSL("Sintaxis básica de Kotlin"),
-                ChecklistItemDSL("Nullability y colecciones"),
-                ChecklistItemDSL("POO, data classes y sealed classes"),
-                ChecklistItemDSL("Lambdas, extensiones y funciones de orden superior"),
-                ChecklistItemDSL("Coroutines y Flow"),
-                ChecklistItemDSL("Proyecto de consola"),
-                ChecklistItemDSL("Proyecto con API o Android")
-            )
-        } else {
-            listOf(
-                ChecklistItemDSL("Programming fundamentals"),
-                ChecklistItemDSL("Basic Kotlin syntax"),
-                ChecklistItemDSL("Nullability and collections"),
-                ChecklistItemDSL("OOP, data classes, and sealed classes"),
-                ChecklistItemDSL("Lambdas, extensions, and higher-order functions"),
-                ChecklistItemDSL("Coroutines and Flow"),
-                ChecklistItemDSL("Console project"),
-                ChecklistItemDSL("API or Android project")
-            )
-        }
-    }
-
-    private fun buildLearningRoadmapNotes(topic: String, spanish: Boolean): String {
-        return if (spanish) {
-            """
-            ## Objetivo
-            Aprender $topic con una base sólida y avanzar hasta construir proyectos reales.
-
-            ## Roadmap sugerido
-            ### Fase 1: Fundamentos
-            - Variables, tipos, operadores y control de flujo.
-            - Funciones, parámetros y organización básica del código.
-            - Nullability, colecciones y manejo de errores simples.
-
-            ### Fase 2: Kotlin idiomático
-            - `data class`, `object`, `sealed class` y extensiones.
-            - Lambdas, funciones de orden superior y colecciones funcionales.
-            - Estructura de paquetes, módulos y buenas prácticas de legibilidad.
-
-            ### Fase 3: Programación práctica
-            - Testing básico, debugging y lectura de stack traces.
-            - Consumo de APIs, serialización y manejo de estado.
-            - Coroutines y Flow para tareas asíncronas.
-
-            ### Fase 4: Proyectos
-            - Mini proyecto de consola para afianzar sintaxis.
-            - Proyecto que consuma una API.
-            - Proyecto Android con Kotlin y Compose si querés ir a mobile.
-
-            ## Cómo estudiar
-            - Alterná bloques cortos de teoría con práctica diaria.
-            - Cerrá cada fase con un mini proyecto.
-            - Tomá notas de conceptos, errores comunes y decisiones importantes.
-
-            ## Referencias útiles
-            - Documentación oficial de Kotlin: https://kotlinlang.org/docs/home.html
-            - Kotlin Koans: https://play.kotlinlang.org/koans/overview
-            - Android + Kotlin: https://developer.android.com/kotlin
-            - Coroutines overview: https://kotlinlang.org/docs/coroutines-overview.html
-
-            ## Siguiente paso
-            Empezá por sintaxis básica, funciones y nullability, y cerrá esa etapa con un proyecto pequeño que puedas terminar.
-            """.trimIndent()
-        } else {
-            """
-            ## Goal
-            Learn $topic with a solid foundation and progress toward building real projects.
-
-            ## Suggested roadmap
-            ### Phase 1: Fundamentals
-            - Variables, types, operators, and control flow.
-            - Functions, parameters, and basic code organization.
-            - Nullability, collections, and simple error handling.
-
-            ### Phase 2: Idiomatic Kotlin
-            - `data class`, `object`, `sealed class`, and extensions.
-            - Lambdas, higher-order functions, and functional collection APIs.
-            - Packages, modules, and readable code structure.
-
-            ### Phase 3: Practical programming
-            - Basic testing, debugging, and reading stack traces.
-            - API consumption, serialization, and state handling.
-            - Coroutines and Flow for asynchronous work.
-
-            ### Phase 4: Projects
-            - A small console project to reinforce syntax.
-            - A project that consumes an API.
-            - An Android project with Kotlin and Compose if you want the mobile path.
-
-            ## Study approach
-            - Alternate short theory blocks with daily practice.
-            - Finish each phase with a small project.
-            - Keep notes about concepts, common mistakes, and important decisions.
-
-            ## Useful references
-            - Official Kotlin docs: https://kotlinlang.org/docs/home.html
-            - Kotlin Koans: https://play.kotlinlang.org/koans/overview
-            - Android + Kotlin: https://developer.android.com/kotlin
-            - Coroutines overview: https://kotlinlang.org/docs/coroutines-overview.html
-
-            ## Next step
-            Start with syntax, functions, and nullability, then close that phase with a small project you can finish quickly.
-            """.trimIndent()
-        }
-    }
-
-    private fun looksLikeLearningRoadmapRequest(input: String, taskType: TaskType): Boolean {
-        if (taskType !in setOf(TaskType.GOAL, TaskType.GENERAL, TaskType.PROJECT)) return false
-        val normalized = input.lowercase()
-        val hasLearningSignal = LEARNING_SIGNAL.containsMatchIn(normalized)
-        val hasRoadmapSignal = ROADMAP_SIGNAL.containsMatchIn(normalized)
-        val hasReferenceSignal = REFERENCE_SIGNAL.containsMatchIn(normalized)
-        return hasRoadmapSignal || (hasLearningSignal && hasReferenceSignal)
-    }
-
-    private fun looksLikeThinKeywordDump(text: String): Boolean {
-        val lines = text.lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .toList()
-        if (lines.isEmpty() || lines.size > 8) return false
-        if (lines.any { it.startsWith("##") }) return false
-        return lines.all { line ->
-            val cleaned = line.removePrefix("-").trim()
-            cleaned.split(Regex("\\s+")).size <= 4
-        }
-    }
-
-    private fun inferLearningTopic(input: String): String {
-        return COMMON_TECH_TOPICS.firstOrNull { topic ->
-            input.contains(topic, ignoreCase = true)
-        }?.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-            ?: "este tema"
-    }
-
-    private fun isLikelySpanish(input: String): Boolean {
-        return input.any { it in "áéíóúñ¿¡" } || SPANISH_SIGNAL.containsMatchIn(input.lowercase())
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
 
     sealed class GateResult {
         data class Passed(
@@ -406,53 +294,10 @@ class TaskDSLQualityGate @Inject constructor() {
     }
 
     private companion object {
-        val LEARNING_SIGNAL = Regex(
-            """\b(learn|learning|study|studying|aprender|aprendizaje|estudiar|programar|programación|coding|code)\b""",
-            RegexOption.IGNORE_CASE
-        )
-        val ROADMAP_SIGNAL = Regex(
-            """\b(roadmap|guide|guides|guia|guía|plan de estudio|ruta)\b""",
-            RegexOption.IGNORE_CASE
-        )
-        val REFERENCE_SIGNAL = Regex(
-            """\b(reference|references|resource|resources|documentation|docs|links?|sources?|referencias?|recursos|documentación|documentacion)\b""",
-            RegexOption.IGNORE_CASE
-        )
-        val SPANISH_SIGNAL = Regex(
-            """\b(quiero|necesito|aprender|guia|guía|tambien|también|referencias|programar|programación)\b""",
-            RegexOption.IGNORE_CASE
-        )
-        val COMMON_TECH_TOPICS = listOf(
-            "kotlin",
-            "python",
-            "javascript",
-            "typescript",
-            "java",
-            "swift",
-            "rust",
-            "go",
-            "c#",
-            "c++"
-        )
-        val GENERIC_ROADMAP_TERMS = setOf(
-            "roadmap",
-            "guide",
-            "guides",
-            "reference",
-            "references",
-            "resource",
-            "resources",
-            "documentation",
-            "docs",
-            "link",
-            "links",
-            "source",
-            "sources",
-            "guia",
-            "guía",
-            "referencias",
-            "documentación",
-            "documentacion"
+        val GENERIC_PLACEHOLDER_LABELS = setOf(
+            "define next step",
+            "execute",
+            "review result"
         )
     }
 }

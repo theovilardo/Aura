@@ -57,44 +57,17 @@ class AutomationClassifier @Inject constructor(
     }
 
     /**
-     * Detect simple cron patterns from natural language.
-     * Supports: "every monday", "daily", "weekly", "every morning", etc.
+     * Detect simple schedule structure without relying on any specific language.
      */
     private fun detectCronExpression(input: String): String {
-        val lower = input.lowercase()
+        CRON_PATTERN.find(input)?.value?.let { return it }
 
-        // Day-of-week patterns
-        val dayMap = mapOf(
-            "monday" to 1, "lunes" to 1,
-            "tuesday" to 2, "martes" to 2,
-            "wednesday" to 3, "miercoles" to 3, "miércoles" to 3,
-            "thursday" to 4, "jueves" to 4,
-            "friday" to 5, "viernes" to 5,
-            "saturday" to 6, "sabado" to 6, "sábado" to 6,
-            "sunday" to 0, "domingo" to 0
-        )
-        for ((name, dow) in dayMap) {
-            if (lower.contains(name)) return "0 9 * * $dow"
+        TIME_PATTERN.find(input)?.let { match ->
+            val hour = match.groupValues[1].toIntOrNull()?.coerceIn(0, 23) ?: 9
+            val minute = match.groupValues[2].toIntOrNull()?.coerceIn(0, 59) ?: 0
+            return "$minute $hour * * *"
         }
 
-        // Frequency patterns
-        if (lower.contains("daily") || lower.contains("diario") || lower.contains("todos los dias")
-            || lower.contains("cada dia") || lower.contains("every day")
-        ) return "0 9 * * *"
-
-        if (lower.contains("weekly") || lower.contains("semanal") || lower.contains("cada semana")
-            || lower.contains("every week")
-        ) return "0 9 * * 1" // Monday 9am
-
-        if (lower.contains("monthly") || lower.contains("mensual") || lower.contains("cada mes")
-            || lower.contains("every month")
-        ) return "0 9 1 * *" // 1st of month
-
-        // Time patterns: "every morning", "cada mañana"
-        if (lower.contains("morning") || lower.contains("mañana")) return "0 8 * * *"
-        if (lower.contains("evening") || lower.contains("noche") || lower.contains("tarde")) return "0 18 * * *"
-
-        // Default: daily at 9am if no schedule detected
         return "0 9 * * *"
     }
 
@@ -223,6 +196,10 @@ class AutomationClassifier @Inject constructor(
 
     companion object {
         private const val TAG = "AutomationClassifier"
+        private val CRON_PATTERN = Regex(
+            """\b(?:\*|\d{1,2})\s+(?:\*|\d{1,2})\s+(?:\*|\d{1,2})\s+(?:\*|\d{1,2})\s+(?:\*|\d)\b"""
+        )
+        private val TIME_PATTERN = Regex("""\b(\d{1,2}):(\d{2})\b""")
     }
 }
 

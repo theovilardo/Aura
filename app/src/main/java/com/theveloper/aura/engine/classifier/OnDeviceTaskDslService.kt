@@ -90,7 +90,7 @@ class HeuristicOnDeviceTaskDslService @Inject constructor() : OnDeviceTaskDslSer
         if (signals.hasCurrencySymbol || signals.hasCurrencyCode) bump(TaskType.FINANCE, 0.42f)
         if (signals.hasLargeAmount && (signals.hasCurrencySymbol || signals.hasCurrencyCode)) bump(TaskType.FINANCE, 0.10f)
 
-        // Health: set×rep and unit notation are internationally recognized in fitness contexts
+        // Health: set×rep notation and unit annotations are language-neutral fitness signals
         if (signals.hasSetRepNotation) bump(TaskType.HEALTH, 0.42f)
         if (signals.hasUnitAnnotation && !signals.hasCurrencyCode) bump(TaskType.HEALTH, 0.20f)
 
@@ -171,8 +171,8 @@ class HeuristicOnDeviceTaskDslService @Inject constructor() : OnDeviceTaskDslSer
     }
 
     private companion object {
-        /** ASAP is universally used in professional contexts; !! is a structural urgency marker. */
-        val URGENT_PATTERN = Regex("""\basap\b|!!""", RegexOption.IGNORE_CASE)
+        /** `!!` is a structural urgency marker that does not depend on language. */
+        val URGENT_PATTERN = Regex("""!!""")
     }
 }
 
@@ -181,7 +181,7 @@ class HeuristicOnDeviceTaskDslService @Inject constructor() : OnDeviceTaskDslSer
  *
  * Every signal here is detectable without knowing the user's language:
  *   - Currency symbols and ISO codes are universal
- *   - Set×rep notation (3x10, 4 sets) is internationally used in fitness
+ *   - Set×rep notation (3x10, 4×8) is internationally used in fitness
  *   - Unit annotations (kg, km, ml) are SI/international units
  *   - Date/time/location signals come from the ML-based EntityExtractor
  *   - Structural signals (list markers, multi-line) are character-level
@@ -195,7 +195,7 @@ private data class PromptSignals(
     val hasLargeAmount: Boolean,        // any extracted number > 100
 
     // Health / fitness
-    val hasSetRepNotation: Boolean,     // 3x10, 4×8, 3 sets, 10 reps, 3 series
+    val hasSetRepNotation: Boolean,     // 3x10, 4×8
     val hasUnitAnnotation: Boolean,     // number + kg/km/ml/lb/h/min/steps/reps
 
     // Temporal (from ML entities — language-agnostic)
@@ -255,10 +255,9 @@ private data class PromptSignals(
             RegexOption.IGNORE_CASE
         )
 
-        /** Workout/gym set-rep notation — used internationally across all fitness cultures */
+        /** Workout/gym set-rep notation — structural and language-neutral */
         private val SET_REP = Regex(
-            """\b\d+\s*[xX×]\s*\d+\b|\b\d+\s*(sets?|reps?|series?)\b""",
-            RegexOption.IGNORE_CASE
+            """\b\d+\s*[xX×]\s*\d+\b"""
         )
 
         /** Number followed by SI/international unit abbreviation */

@@ -18,12 +18,12 @@ class CompletenessValidatorTest {
     private val subject = CompletenessValidator()
 
     @Test
-    fun `clarification answer splits trailing english conjunction in comma list`() {
+    fun `clarification answer uses protocol tag and comma list to populate checklist`() {
         val result = subject.enrich(
             input = """
                 shopping list for groceries
 
-                User clarification: tomatoes, milk, bread, Cheese and ham
+                [[clarification]]: tomatoes, milk, bread, ham
             """.trimIndent(),
             dsl = shoppingChecklistDsl()
         )
@@ -31,17 +31,17 @@ class CompletenessValidatorTest {
         val checklist = result.dsl.components.first { it.type == ComponentType.CHECKLIST }
         val items = ChecklistDslItems.parse(checklist.config).map { it.label }
 
-        assertEquals(listOf("tomatoes", "milk", "bread", "Cheese", "ham"), items)
+        assertEquals(listOf("tomatoes", "milk", "bread", "ham"), items)
         assertNull(result.clarification)
     }
 
     @Test
-    fun `clarification answer keeps non trailing compound item intact`() {
+    fun `clarification answer keeps compound items intact without language specific splitting`() {
         val result = subject.enrich(
             input = """
                 empanada flavors
 
-                User clarification: ham and cheese, beef, chicken
+                [[clarification]]: ham and cheese, beef, chicken
             """.trimIndent(),
             dsl = shoppingChecklistDsl()
         )
@@ -50,6 +50,39 @@ class CompletenessValidatorTest {
         val items = ChecklistDslItems.parse(checklist.config).map { it.label }
 
         assertEquals(listOf("ham and cheese", "beef", "chicken"), items)
+    }
+
+    @Test
+    fun `bullet items in any language populate checklist structurally`() {
+        val result = subject.enrich(
+            input = """
+                liste de courses
+                - lait
+                - pain
+                - tomates
+            """.trimIndent(),
+            dsl = shoppingChecklistDsl()
+        )
+
+        val checklist = result.dsl.components.first { it.type == ComponentType.CHECKLIST }
+        val items = ChecklistDslItems.parse(checklist.config).map { it.label }
+
+        assertEquals(listOf("lait", "pain", "tomates"), items)
+        assertNull(result.clarification)
+    }
+
+    @Test
+    fun `inline comma separated items in prompt populate checklist without clarification`() {
+        val result = subject.enrich(
+            input = "liste: milk, bread, eggs",
+            dsl = shoppingChecklistDsl()
+        )
+
+        val checklist = result.dsl.components.first { it.type == ComponentType.CHECKLIST }
+        val items = ChecklistDslItems.parse(checklist.config).map { it.label }
+
+        assertEquals(listOf("milk", "bread", "eggs"), items)
+        assertNull(result.clarification)
     }
 
     @Test

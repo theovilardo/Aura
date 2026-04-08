@@ -4,7 +4,9 @@ import com.theveloper.aura.data.repository.AppSettingsRepository
 import com.theveloper.aura.domain.model.MemorySlot
 import com.theveloper.aura.domain.repository.MemoryRepository
 import com.theveloper.aura.engine.dsl.TaskDSLValidator
+import com.theveloper.aura.engine.llm.LLMService
 import com.theveloper.aura.engine.llm.LLMServiceFactory
+import com.theveloper.aura.engine.llm.LLMTier
 import com.theveloper.aura.engine.llm.ResolvedLLMRoute
 import com.theveloper.aura.engine.memory.MemoryContextBuilder
 import com.theveloper.aura.engine.provider.LLMServiceAdapter
@@ -22,6 +24,8 @@ class TaskClassifier @Inject constructor(
     private val aiExecutionModeStore: AiExecutionModeStore,
     private val completenessValidator: CompletenessValidator,
     private val qualityGate: TaskDSLQualityGate,
+    private val taskAgentOrchestrator: TaskAgentOrchestrator,
+    private val taskDraftRescueService: TaskDraftRescueService,
     private val memoryRepository: MemoryRepository,
     private val memoryContextBuilder: MemoryContextBuilder,
     private val executionRouter: ExecutionRouter,
@@ -123,22 +127,55 @@ class TaskClassifier @Inject constructor(
         memorySlots: List<MemorySlot>,
         allowClarification: Boolean
     ): TaskGenerationResult? {
-        val routedDsl = runCatching {
-            route.service.classify(input, context)
-        }.getOrElse {
-            warnings += when (route.source) {
-                TaskGenerationSource.GROQ_API -> "Groq did not respond correctly. Local route was used."
-                TaskGenerationSource.LOCAL_AI -> "Local model did not respond correctly. Heuristic route was used."
-                TaskGenerationSource.RULES,
-                TaskGenerationSource.MANUAL -> "Configured route failed. Local composition was used."
+        val routedDsl = if (route.source != TaskGenerationSource.RULES) {
+            taskAgentOrchestrator.orchestrate(
+                service = route.service,
+                input = input,
+                llmContext = context
+            )?.also {
+                warnings += "The task was composed through the AI orchestration layer."
+            } ?: runCatching {
+                route.service.classify(input, context)
+            }.getOrElse {
+                warnings += when (route.source) {
+                    TaskGenerationSource.GROQ_API -> "Groq did not respond correctly. Local route was used."
+                    TaskGenerationSource.LOCAL_AI -> "Local model did not respond correctly. Heuristic route was used."
+                    TaskGenerationSource.RULES,
+                    TaskGenerationSource.MANUAL -> "Configured route failed. Local composition was used."
+                }
+                return null
             }
+        } else {
+            runCatching {
+                route.service.classify(input, context)
+            }.getOrElse {
+                warnings += "Configured route failed. Local composition was used."
+                return null
+            }
+        }
+
+        val rescuedDsl = if (route.source != TaskGenerationSource.RULES) {
+            taskDraftRescueService.rescue(
+                service = route.service,
+                input = input,
+                llmContext = context,
+                draft = routedDsl
+            )?.also {
+                warnings += "The initial draft was underfilled. A second intelligence pass improved the task UI."
+            } ?: routedDsl
+        } else {
+            routedDsl
+        }
+
+        if (route.source != TaskGenerationSource.RULES && taskDraftRescueService.needsRescue(rescuedDsl)) {
+            warnings += "The intelligence layer still returned a shallow draft after rescue. A stronger fallback was used."
             return null
         }
 
         // Quality gate: repair incomplete LLM output before structural validation.
         // This prevents empty-component tasks from either passing through or triggering
         // a full fallback when the LLM got the type/title right but missed components.
-        val gatedDsl = when (val gate = qualityGate.enforce(routedDsl, input, extractedEntities)) {
+        val gatedDsl = when (val gate = qualityGate.enforce(rescuedDsl, input, extractedEntities)) {
             is TaskDSLQualityGate.GateResult.Passed -> {
                 warnings += gate.repairs
                 gate.dsl
@@ -162,7 +199,8 @@ class TaskClassifier @Inject constructor(
                     ),
                     input = input,
                     memorySlots = memorySlots,
-                    allowClarification = allowClarification
+                    allowClarification = allowClarification,
+                    clarificationService = route.service.takeIf { route.source != TaskGenerationSource.RULES }
                 )
             }
 
@@ -217,8 +255,8 @@ class TaskClassifier @Inject constructor(
                 gate.dsl
             }
             is TaskDSLQualityGate.GateResult.Rejected -> {
-                // Gate rejected even after repair — force deterministic
-                onDeviceResult.dsl
+                warnings += gate.reason
+                TaskDSLBuilder.buildDeterministic(input, intentResult, extractedEntities)
             }
         }
 
@@ -233,10 +271,58 @@ class TaskClassifier @Inject constructor(
             }
         }
 
+        val fallbackRepairService = resolveClarificationService(executionMode)
+        val fallbackCandidateDsl = if (
+            fallbackRepairService != null &&
+            taskDraftRescueService.needsRescue(fallbackDsl)
+        ) {
+            taskDraftRescueService.rescue(
+                service = fallbackRepairService,
+                input = input,
+                llmContext = context,
+                draft = fallbackDsl
+            )?.let { rescuedFallback ->
+                if (taskDraftRescueService.needsRescue(rescuedFallback)) {
+                    warnings += "The heuristic fallback remained shallow after AI repair."
+                    null
+                } else {
+                    when (val gate = qualityGate.enforce(rescuedFallback, input, extractedEntities)) {
+                        is TaskDSLQualityGate.GateResult.Passed -> {
+                            warnings += "The heuristic fallback was upgraded by an AI repair pass."
+                            warnings += gate.repairs
+                            gate.dsl
+                        }
+
+                        is TaskDSLQualityGate.GateResult.Rejected -> {
+                            warnings += gate.reason
+                            null
+                        }
+                    }
+                }
+            } ?: run {
+                warnings += "AI repair could not improve the hollow fallback draft."
+                fallbackDsl
+            }
+        } else {
+            fallbackDsl
+        }
+
+        val finalizedFallbackDsl = when (val gate = qualityGate.enforce(fallbackCandidateDsl, input, extractedEntities)) {
+            is TaskDSLQualityGate.GateResult.Passed -> {
+                warnings += gate.repairs
+                gate.dsl
+            }
+
+            is TaskDSLQualityGate.GateResult.Rejected -> {
+                warnings += gate.reason
+                fallbackCandidateDsl
+            }
+        }
+
         return postProcess(
             result = TaskGenerationResult(
-                dsl = fallbackDsl,
-                source = if (fallbackDsl == onDeviceResult.dsl) onDeviceResult.source else TaskGenerationSource.RULES,
+                dsl = finalizedFallbackDsl,
+                source = if (finalizedFallbackDsl == onDeviceResult.dsl) onDeviceResult.source else TaskGenerationSource.RULES,
                 executionMode = executionMode,
                 intentConfidence = intentResult.confidence,
                 localConfidence = onDeviceResult.confidence,
@@ -244,24 +330,40 @@ class TaskClassifier @Inject constructor(
             ),
             input = input,
             memorySlots = memorySlots,
-            allowClarification = allowClarification
+            allowClarification = allowClarification,
+            clarificationService = fallbackRepairService
         )
     }
 
-    private fun postProcess(
+    private suspend fun postProcess(
         result: TaskGenerationResult,
         input: String,
         memorySlots: List<MemorySlot>,
-        allowClarification: Boolean
+        allowClarification: Boolean,
+        clarificationService: LLMService?
     ): TaskGenerationResult {
         val completeness = completenessValidator.enrich(
             input = input,
             dsl = result.dsl,
             memorySlots = memorySlots
         )
+        val localizedQuestions = localizeMissingFieldQuestions(
+            input = input,
+            missingFields = completeness.check.missingFields,
+            clarificationService = clarificationService
+        )
         val nonBlockerWarnings = completeness.check.missingFields
             .filterNot { it.isBlocker }
-            .map { it.question }
+            .map { field -> localizedQuestions[field] ?: field.question }
+        val clarifications = completeness.check.missingFields
+            .filter { it.isBlocker }
+            .map { field ->
+                ClarificationRequest(
+                    componentType = field.componentType,
+                    fieldName = field.fieldName,
+                    question = localizedQuestions[field] ?: field.question
+                )
+            }
         val fallbackWarning = if (!allowClarification && completeness.clarifications.isNotEmpty()) {
             listOf("Some fields were left undefined. You can complete them later.")
         } else {
@@ -272,8 +374,37 @@ class TaskClassifier @Inject constructor(
             dsl = completeness.dsl,
             warnings = (result.warnings + nonBlockerWarnings + fallbackWarning).distinct(),
             completenessCheck = completeness.check,
-            clarifications = if (allowClarification) completeness.clarifications else emptyList()
+            clarifications = if (allowClarification) clarifications else emptyList()
         )
+    }
+
+    private suspend fun localizeMissingFieldQuestions(
+        input: String,
+        missingFields: List<MissingField>,
+        clarificationService: LLMService?
+    ): Map<MissingField, String> {
+        if (missingFields.isEmpty()) return emptyMap()
+        if (clarificationService == null) {
+            return missingFields.associateWith { it.question }
+        }
+
+        return missingFields.associateWith { field ->
+            runCatching {
+                clarificationService.generateClarification(input, field).trim()
+            }.getOrNull().takeUnless { it.isNullOrBlank() } ?: field.question
+        }
+    }
+
+    private suspend fun resolveClarificationService(
+        executionMode: AiExecutionMode
+    ): LLMService? {
+        val primary = llmServiceFactory.resolvePrimaryService(executionMode)
+        if (primary.tier != LLMTier.RULES_ONLY) {
+            return primary.service
+        }
+
+        val advanced = llmServiceFactory.resolveAdvancedService(executionMode)
+        return advanced.service.takeIf { advanced.tier != LLMTier.RULES_ONLY }
     }
 
     /**

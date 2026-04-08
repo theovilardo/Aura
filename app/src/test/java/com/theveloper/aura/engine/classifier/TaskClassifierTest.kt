@@ -37,6 +37,8 @@ class TaskClassifierTest {
     private val memoryRepository = mockk<MemoryRepository>()
     private val completenessValidator = CompletenessValidator()
     private val qualityGate = TaskDSLQualityGate()
+    private val taskAgentOrchestrator = mockk<TaskAgentOrchestrator>()
+    private val taskDraftRescueService = mockk<TaskDraftRescueService>()
     private val memoryContextBuilder = MemoryContextBuilder()
     private val executionRouter = mockk<ExecutionRouter>()
     private val appSettingsRepository = mockk<AppSettingsRepository>()
@@ -49,6 +51,8 @@ class TaskClassifierTest {
         aiExecutionModeStore = aiExecutionModeStore,
         completenessValidator = completenessValidator,
         qualityGate = qualityGate,
+        taskAgentOrchestrator = taskAgentOrchestrator,
+        taskDraftRescueService = taskDraftRescueService,
         memoryRepository = memoryRepository,
         memoryContextBuilder = memoryContextBuilder,
         executionRouter = executionRouter,
@@ -61,6 +65,18 @@ class TaskClassifierTest {
             source = TaskGenerationSource.RULES,
             tier = LLMTier.RULES_ONLY
         )
+        coEvery { routedService.generateClarification(any(), any()) } answers {
+            when (secondArg<MissingField>().fieldName) {
+                "items" -> "¿Qué elementos deberían incluirse?"
+                "targetDate" -> "¿Cuándo vence esto?"
+                "goal" -> "¿Tienes un objetivo numérico?"
+                "targetCount" -> "¿Cuántas veces debería repetirse?"
+                else -> secondArg<MissingField>().question
+            }
+        }
+        coEvery { taskAgentOrchestrator.orchestrate(any(), any(), any()) } returns null
+        coEvery { taskDraftRescueService.rescue(any(), any(), any(), any()) } returns null
+        every { taskDraftRescueService.needsRescue(any()) } returns false
     }
 
     @Test
@@ -80,6 +96,39 @@ class TaskClassifierTest {
         assertEquals(TaskType.TRAVEL, result.dsl.type)
         assertTrue(result.dsl.components.any { it.type == ComponentType.COUNTDOWN })
         coVerify(exactly = 0) { onDeviceTaskDslService.compose(any()) }
+    }
+
+    @Test
+    fun `orchestration layer can satisfy task generation before single shot classify`() = runTest {
+        val orchestratedDsl = TaskDSLOutput(
+            title = "Shopping list for pasta puttanesca",
+            type = TaskType.GENERAL,
+            components = listOf(
+                checklistComponent(
+                    sortOrder = 0,
+                    label = "Shopping list",
+                    items = listOf("tomatoes", "toothpaste", "milk", "pasta", "olives", "capers", "garlic")
+                )
+            )
+        )
+
+        coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
+        coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.AUTO
+        coEvery { memoryRepository.getSlots() } returns emptyList()
+        coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.AUTO) } returns route(
+            source = TaskGenerationSource.LOCAL_AI,
+            tier = LLMTier.GEMMA_4_E4B
+        )
+        coEvery { taskAgentOrchestrator.orchestrate(any(), any(), any()) } returns orchestratedDsl
+
+        val result = subject.classify(
+            "i need a shopping list for tomatoes, toothpaste, milk and also the ingredients to make an italian pasta with salsa puttanesca"
+        )
+
+        assertEquals(orchestratedDsl.title, result.dsl.title)
+        assertEquals(listOf(ComponentType.CHECKLIST), result.dsl.components.map { it.type })
+        assertTrue(result.warnings.any { it.contains("orchestration layer") })
+        coVerify(exactly = 0) { routedService.classify(any(), any()) }
     }
 
     @Test
@@ -142,7 +191,7 @@ class TaskClassifierTest {
 
         val result = subject.classify("lista de compras")
 
-        assertEquals("What items should be included?", result.clarification?.question)
+        assertEquals("¿Qué elementos deberían incluirse?", result.clarification?.question)
         assertTrue(result.dsl.components.any { it.needsClarification })
     }
 
@@ -170,6 +219,143 @@ class TaskClassifierTest {
         assertTrue(items.contains("milk"))
         assertTrue(items.contains("bread"))
         assertTrue(items.contains("tomatoes"))
+    }
+
+    @Test
+    fun `underfilled routed draft is improved by rescue pass before quality gate`() = runTest {
+        val rescuedDsl = TaskDSLOutput(
+            title = "Brotrezept",
+            type = TaskType.GENERAL,
+            components = listOf(
+                checklistComponent(
+                    sortOrder = 0,
+                    label = "Zutaten",
+                    items = listOf("Mehl", "Backpulver", "Salz")
+                ),
+                notesComponent(
+                    sortOrder = 1,
+                    text = "## Schritte\n1. Mischen\n2. Backen"
+                )
+            )
+        )
+
+        coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
+        coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.LOCAL_FIRST
+        coEvery { memoryRepository.getSlots() } returns emptyList()
+        coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.LOCAL_FIRST) } returns route(
+            source = TaskGenerationSource.LOCAL_AI,
+            tier = LLMTier.GEMMA_3_1B
+        )
+        coEvery { routedService.classify(any(), any()) } returns localThinDsl()
+        coEvery { taskDraftRescueService.rescue(any(), any(), any(), any()) } returns rescuedDsl
+
+        val result = subject.classify("Ich brauche ein schnelles Brotrezept")
+
+        assertEquals(listOf(ComponentType.CHECKLIST, ComponentType.NOTES), result.dsl.components.map { it.type })
+        assertTrue(result.warnings.any { it.contains("second intelligence pass") })
+    }
+
+    @Test
+    fun `fallback scaffold can be repaired by ai after shallow routed draft`() = runTest {
+        val teaserDraft = TaskDSLOutput(
+            title = "Chocolate pudding recipe",
+            type = TaskType.GENERAL,
+            components = listOf(
+                notesComponent(0, "Here is a chocolate pudding recipe. Please wait for the full recipe content.")
+            )
+        )
+        val repairedFallback = TaskDSLOutput(
+            title = "Chocolate pudding recipe",
+            type = TaskType.GENERAL,
+            components = listOf(
+                checklistComponent(
+                    sortOrder = 0,
+                    label = "Ingredients",
+                    items = listOf("milk", "cocoa powder", "sugar", "cornstarch")
+                ),
+                notesComponent(
+                    sortOrder = 1,
+                    text = "## Steps\n1. Heat the milk.\n2. Whisk in cocoa, sugar, and cornstarch.\n3. Cook until thick, then chill."
+                )
+            )
+        )
+
+        coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
+        coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.LOCAL_FIRST
+        coEvery { memoryRepository.getSlots() } returns emptyList()
+        coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.LOCAL_FIRST) } returns route(
+            source = TaskGenerationSource.LOCAL_AI,
+            tier = LLMTier.GEMMA_4_E4B
+        )
+        coEvery { llmServiceFactory.resolveAdvancedService(AiExecutionMode.LOCAL_FIRST) } returns route(
+            source = TaskGenerationSource.RULES,
+            tier = LLMTier.RULES_ONLY
+        )
+        coEvery { routedService.classify(any(), any()) } returns teaserDraft
+        coEvery { onDeviceTaskDslService.compose(any()) } returns OnDeviceTaskDslResult(
+            dsl = TaskDSLOutput(
+                title = "Chocolate pudding recipe",
+                type = TaskType.GENERAL,
+                components = listOf(notesComponent(0, ""))
+            ),
+            confidence = 0.41f,
+            source = TaskGenerationSource.RULES
+        )
+        coEvery { taskDraftRescueService.rescue(any(), any(), any(), any()) } answers {
+            if (args[3] as TaskDSLOutput == teaserDraft) teaserDraft else repairedFallback
+        }
+        every { taskDraftRescueService.needsRescue(any()) } returns true
+        every { taskDraftRescueService.needsRescue(teaserDraft) } returns true
+        every {
+            taskDraftRescueService.needsRescue(match { draft ->
+                draft.components.size == 1 &&
+                    draft.components.first().type == ComponentType.NOTES &&
+                    draft.components.first().config["text"]?.toString()?.trim('"').orEmpty().isBlank()
+            })
+        } returns true
+        every { taskDraftRescueService.needsRescue(repairedFallback) } returns false
+
+        val result = subject.classify("I need a chocolate pudding recipe")
+
+        assertEquals(listOf(ComponentType.CHECKLIST, ComponentType.NOTES), result.dsl.components.map { it.type })
+        assertTrue(result.warnings.any { it.contains("heuristic fallback was upgraded by an AI repair pass") })
+    }
+
+    @Test
+    fun `failed ai fallback repair still avoids returning hollow notes`() = runTest {
+        coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
+        coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.LOCAL_FIRST
+        coEvery { memoryRepository.getSlots() } returns emptyList()
+        coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.LOCAL_FIRST) } returns route(
+            source = TaskGenerationSource.LOCAL_AI,
+            tier = LLMTier.GEMMA_4_E4B
+        )
+        coEvery { llmServiceFactory.resolveAdvancedService(AiExecutionMode.LOCAL_FIRST) } returns route(
+            source = TaskGenerationSource.RULES,
+            tier = LLMTier.RULES_ONLY
+        )
+        coEvery { routedService.classify(any(), any()) } throws IllegalStateException("boom")
+        coEvery { onDeviceTaskDslService.compose(any()) } returns OnDeviceTaskDslResult(
+            dsl = TaskDSLOutput(
+                title = "Chocolate pudding recipe",
+                type = TaskType.GENERAL,
+                components = listOf(notesComponent(0, ""))
+            ),
+            confidence = 0.41f,
+            source = TaskGenerationSource.RULES
+        )
+        coEvery { taskDraftRescueService.rescue(any(), any(), any(), any()) } returns null
+        every { taskDraftRescueService.needsRescue(any()) } returns true
+
+        val result = subject.classify("I need a chocolate pudding recipe")
+
+        assertTrue(result.dsl.components.any { it.type == ComponentType.CHECKLIST })
+        assertTrue(
+            result.dsl.components.none { component ->
+                component.type == ComponentType.NOTES &&
+                    component.config["text"]?.toString()?.trim('"').orEmpty().isBlank()
+            }
+        )
     }
 
     private fun route(

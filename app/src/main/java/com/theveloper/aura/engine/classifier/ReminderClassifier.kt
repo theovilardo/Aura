@@ -59,17 +59,11 @@ class ReminderClassifier @Inject constructor(
     }
 
     private fun detectReminderType(input: String, entities: ExtractedEntities): ReminderType {
-        val lower = input.lowercase()
-        // Cyclical patterns: "every", "cada", "weekly", "daily", "monthly"
-        val cyclicalSignals = listOf("every ", "cada ", "weekly", "daily", "monthly",
-            "mensual", "semanal", "diario", "todos los", "each ")
-        if (cyclicalSignals.any { lower.contains(it) }) return ReminderType.CYCLICAL
-
-        // Repeating patterns: explicit count like "3 times", "5 veces"
-        val repeatingRegex = Regex("""(\d+)\s*(times|veces|repeticiones)""", RegexOption.IGNORE_CASE)
-        if (repeatingRegex.containsMatchIn(lower)) return ReminderType.REPEATING
-
-        return ReminderType.ONE_TIME
+        return when {
+            CRON_OR_RRULE_PATTERN.containsMatchIn(input) -> ReminderType.CYCLICAL
+            entities.dateTimes.size > 1 -> ReminderType.REPEATING
+            else -> ReminderType.ONE_TIME
+        }
     }
 
     private fun buildLLMPrompt(input: String, context: LLMClassificationContext): String {
@@ -170,6 +164,10 @@ class ReminderClassifier @Inject constructor(
 
     companion object {
         private const val TAG = "ReminderClassifier"
+        private val CRON_OR_RRULE_PATTERN = Regex(
+            """RRULE:|\b(?:\*|\d{1,2})\s+(?:\*|\d{1,2})\s+(?:\*|\d{1,2})\s+(?:\*|\d{1,2})\s+(?:\*|\d)\b""",
+            RegexOption.IGNORE_CASE
+        )
     }
 }
 

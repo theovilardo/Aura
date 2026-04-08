@@ -49,15 +49,15 @@ class IntentClassifierTest {
     }
 
     @Test
-    fun `reps keyword is classified as health`() {
-        val result = subject.classify("Bench press 3 sets 8 reps")
+    fun `x notation is classified as health without relying on language keywords`() {
+        val result = subject.classify("Bench press 3x8")
         assertEquals(TaskType.HEALTH, result.taskType)
         assertTrue(result.confidence >= 0.45f)
     }
 
     @Test
-    fun `series keyword is classified as health`() {
-        val result = subject.classify("Sentadillas 4 series 12 repeticiones")
+    fun `multiplication symbol notation is classified as health`() {
+        val result = subject.classify("Sentadillas 4×12")
         assertEquals(TaskType.HEALTH, result.taskType)
         assertTrue(result.confidence >= 0.45f)
     }

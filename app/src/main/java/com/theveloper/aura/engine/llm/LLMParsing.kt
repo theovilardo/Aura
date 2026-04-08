@@ -1,5 +1,7 @@
 package com.theveloper.aura.engine.llm
 
+import com.theveloper.aura.engine.classifier.ChecklistInputExtraction
+import com.theveloper.aura.engine.classifier.DraftContentQuality
 import com.theveloper.aura.core.json.auraJson
 import com.theveloper.aura.domain.model.ComponentType
 import com.theveloper.aura.domain.model.DataFeedStatus
@@ -58,7 +60,8 @@ internal fun String.normalizeTaskDslJson(): String {
 }
 
 internal fun TaskDSLOutput.stabilizeLocalClassification(input: String): TaskDSLOutput {
-    if (!input.looksLikeShoppingListRequest()) return this
+    val explicitItems = ChecklistInputExtraction.extract(input)
+    if (explicitItems.size < 2) return this
 
     val filteredComponents = components
         .filter { component ->
@@ -200,7 +203,10 @@ private fun normalizeTaskDslObject(root: JsonObject): JsonObject {
 
     return JsonObject(
         mapOf(
-            "title" to JsonPrimitive(taskRoot["title"].stringValue().ifBlank { TaskDSLValidator.PLACEHOLDER_TITLE }),
+            "title" to JsonPrimitive(
+                sanitizeGeneratedText(taskRoot["title"].stringValue())
+                    .ifBlank { TaskDSLValidator.PLACEHOLDER_TITLE }
+            ),
             "type" to JsonPrimitive(type.name),
             "priority" to JsonPrimitive(taskRoot["priority"].intValue(default = 0).coerceIn(0, 3)),
             "targetDateMs" to (targetDateMs?.let(::JsonPrimitive) ?: JsonNull),
@@ -391,7 +397,9 @@ private fun normalizeComponentConfig(
 
     when (type) {
         ComponentType.CHECKLIST -> {
-            merged["label"] = JsonPrimitive(merged["label"].stringValue().ifBlank { "Checklist" })
+            merged["label"] = JsonPrimitive(
+                sanitizeGeneratedText(merged["label"].stringValue()).ifBlank { "Checklist" }
+            )
             merged["allowAddItems"] = JsonPrimitive(merged["allowAddItems"].booleanValue(default = true))
             normalizeChecklistItems(merged["items"])?.let { merged["items"] = it } ?: merged.remove("items")
         }
@@ -399,38 +407,42 @@ private fun normalizeComponentConfig(
         ComponentType.COUNTDOWN -> {
             val targetDate = merged["targetDate"].epochMillisOrNull() ?: rootTargetDateMs ?: 0L
             merged["targetDate"] = JsonPrimitive(targetDate)
-            merged["label"] = JsonPrimitive(merged["label"].stringValue().ifBlank { "Countdown" })
+            merged["label"] = JsonPrimitive(
+                sanitizeGeneratedText(merged["label"].stringValue()).ifBlank { "Countdown" }
+            )
         }
 
         ComponentType.NOTES -> {
-            merged["text"] = JsonPrimitive(merged["text"].stringValue())
+            merged["text"] = JsonPrimitive(sanitizeGeneratedText(merged["text"].stringValue()))
             merged["isMarkdown"] = JsonPrimitive(merged["isMarkdown"].booleanValue(default = true))
         }
 
         ComponentType.PROGRESS_BAR -> {
             merged["source"] = JsonPrimitive(merged["source"].stringValue().ifBlank { "MANUAL" })
-            merged["label"] = JsonPrimitive(merged["label"].stringValue())
+            merged["label"] = JsonPrimitive(sanitizeGeneratedText(merged["label"].stringValue()))
             merged["manualProgress"] = merged["manualProgress"].floatValueOrNull()?.let(::JsonPrimitive) ?: JsonNull
         }
 
         ComponentType.HABIT_RING -> {
             merged["frequency"] = JsonPrimitive(merged["frequency"].stringValue().ifBlank { "DAILY" })
-            merged["label"] = JsonPrimitive(merged["label"].stringValue())
+            merged["label"] = JsonPrimitive(sanitizeGeneratedText(merged["label"].stringValue()))
             merged["targetCount"] = merged["targetCount"].intValueOrNull()?.let(::JsonPrimitive) ?: JsonNull
             merged["completedToday"] = JsonPrimitive(merged["completedToday"].booleanValue(default = false))
             merged["streakCount"] = JsonPrimitive(merged["streakCount"].intValue(default = 0))
         }
 
         ComponentType.METRIC_TRACKER -> {
-            merged["unit"] = JsonPrimitive(merged["unit"].stringValue())
-            merged["label"] = JsonPrimitive(merged["label"].stringValue())
+            merged["unit"] = JsonPrimitive(sanitizeGeneratedText(merged["unit"].stringValue()))
+            merged["label"] = JsonPrimitive(sanitizeGeneratedText(merged["label"].stringValue()))
             merged["goal"] = merged["goal"].floatValueOrNull()?.let(::JsonPrimitive) ?: JsonNull
             merged["history"] = normalizeNumberArray(merged["history"])
         }
 
         ComponentType.DATA_FEED -> {
             merged["fetcherConfigId"] = JsonPrimitive(merged["fetcherConfigId"].stringValue())
-            merged["displayLabel"] = JsonPrimitive(merged["displayLabel"].stringValue())
+            merged["displayLabel"] = JsonPrimitive(
+                sanitizeGeneratedText(merged["displayLabel"].stringValue())
+            )
             val status = merged["status"].enumValueOrDefault(DataFeedStatus.DATA)
             merged["status"] = JsonPrimitive(status.name)
             merged["value"] = merged["value"]?.let(::normalizeOptionalString) ?: JsonNull
@@ -443,7 +455,9 @@ private fun normalizeComponentConfig(
             val runtime = merged["runtime"].enumValueOrDefault(UiSkillRuntime.HTML_JS)
             merged["skillId"] = JsonPrimitive(merged["skillId"].stringValue())
             merged["runtime"] = JsonPrimitive(runtime.name)
-            merged["displayLabel"] = JsonPrimitive(merged["displayLabel"].stringValue())
+            merged["displayLabel"] = JsonPrimitive(
+                sanitizeGeneratedText(merged["displayLabel"].stringValue())
+            )
             merged["composeHostId"] = merged["composeHostId"]?.let(::normalizeOptionalString) ?: JsonNull
             merged["htmlDocument"] = merged["htmlDocument"]?.let(::normalizeOptionalString) ?: JsonNull
             merged["sourceAssetPath"] = merged["sourceAssetPath"]?.let(::normalizeOptionalString) ?: JsonNull
@@ -578,8 +592,12 @@ private fun JsonObject.hasAnyKey(vararg keys: String): Boolean {
 }
 
 private fun normalizeOptionalString(element: JsonElement): JsonElement {
-    val value = element.stringValue().ifBlank { "" }
+    val value = sanitizeGeneratedText(element.stringValue()).ifBlank { "" }
     return if (value.isBlank()) JsonNull else JsonPrimitive(value)
+}
+
+private fun sanitizeGeneratedText(text: String): String {
+    return DraftContentQuality.sanitizeGeneratedText(text)
 }
 
 private fun JsonElement?.stringValue(): String {
@@ -815,46 +833,52 @@ private fun existingItemsLookNoisy(
 private fun semanticItemsAreSpecific(frame: SemanticFrame): Boolean {
     if (!frame.hasItems) return false
 
-    val subjectLower = frame.subject.lowercase()
-    val goalLower = frame.goal.lowercase()
+    val candidateItems = frame.items.filter(::looksLikeAtomicSemanticItem)
+    if (candidateItems.isEmpty()) return false
 
-    val genericOrAbstractCount = frame.items.count { item ->
-        val normalized = item.lowercase().trim()
-        normalized in GENERIC_SEMANTIC_ITEMS ||
-            (subjectLower.isNotBlank() && subjectLower.contains(normalized)) ||
-            (goalLower.isNotBlank() && goalLower.contains(normalized))
+    val referenceTokens = tokenizeSemanticText(
+        listOf(frame.action, frame.subject, frame.goal)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+    )
+
+    val novelItems = candidateItems.count { item ->
+        val itemTokens = tokenizeSemanticText(item)
+        itemTokens.isNotEmpty() && itemTokens.any { token -> token !in referenceTokens }
     }
 
-    return genericOrAbstractCount < frame.items.size
+    return when (candidateItems.size) {
+        1 -> novelItems == 1
+        else -> novelItems * 2 >= candidateItems.size
+    }
 }
 
 private const val MAX_SEMANTIC_ITEM_LENGTH = 80
-private val GENERIC_SEMANTIC_ITEMS = setOf(
-    "roadmap",
-    "guide",
-    "guides",
-    "reference",
-    "references",
-    "resource",
-    "resources",
-    "documentation",
-    "docs",
-    "recommendation",
-    "recommendations",
-    "plan",
-    "overview",
-    "learning",
-    "study",
-    "topic",
-    "tema",
-    "guia",
-    "guía",
-    "referencias",
-    "documentacion",
-    "documentación",
-    "recomendaciones",
-    "plan de estudio"
-)
+
+private fun looksLikeAtomicSemanticItem(item: String): Boolean {
+    if (item.length > MAX_SEMANTIC_ITEM_LENGTH) return false
+    val words = item.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    return words.size in 1..4
+}
+
+private fun tokenizeSemanticText(text: String): Set<String> {
+    return text.lowercase()
+        .split(Regex("""[^\p{L}\p{N}]+"""))
+        .mapNotNull { token ->
+            token.trim()
+                .takeIf { it.length >= 3 }
+                ?.let(::normalizeSemanticToken)
+        }
+        .toSet()
+}
+
+private fun normalizeSemanticToken(token: String): String {
+    return if (token.endsWith("s") && token.length > 4) {
+        token.dropLast(1)
+    } else {
+        token
+    }
+}
 
 // ── End Semantic Decomposition Layer ─────────────────────────────────────────
 
@@ -868,22 +892,3 @@ private val COMPONENT_METADATA_KEYS = setOf(
     "populatedFromInput",
     "needsClarification"
 )
-
-private val SHOPPING_REQUEST_REGEX = Regex(
-    pattern = "\\b(shopping\\s+list|grocer(?:y|ies)|groceries|supermarket|market\\s+list)\\b",
-    option = RegexOption.IGNORE_CASE
-)
-
-private val SPECIALIZED_UI_SIGNAL_REGEX = Regex(
-    pattern = "\\b(progress|habit|metric|track|countdown|deadline|streak)\\b",
-    option = RegexOption.IGNORE_CASE
-)
-
-private fun String.looksLikeShoppingListRequest(): Boolean {
-    val normalized = trim()
-    if (normalized.isBlank()) return false
-    if (SPECIALIZED_UI_SIGNAL_REGEX.containsMatchIn(normalized)) return false
-    val wordCount = normalized.split(Regex("\\s+")).count { it.isNotBlank() }
-    if (wordCount > 8) return false
-    return SHOPPING_REQUEST_REGEX.containsMatchIn(normalized)
-}

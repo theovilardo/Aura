@@ -247,9 +247,14 @@ object SkillRegistry {
             appendLine("UI-Skills are the renderable building blocks of the task UI.")
             appendLine()
             availableUiSkills.forEach { definition ->
+                val document = loadDocument(context, definition.assetPath)
                 appendLine(
                     "- ${definition.id} -> ${definition.componentType.name} [${definition.runtime.name}]: ${definition.promptHint}"
                 )
+                val guidance = buildPromptGuidance(document)
+                guidance.forEach { line ->
+                    appendLine("  $line")
+                }
             }
             appendLine()
             appendLine("--- AVAILABLE FUNCTION SKILLS ---")
@@ -262,6 +267,32 @@ object SkillRegistry {
                 )
             }
         }.trim()
+    }
+
+    fun loadPromptGuidance(
+        context: Context,
+        definition: UiSkillDefinition
+    ): List<String> {
+        return buildPromptGuidance(loadDocument(context, definition.assetPath))
+    }
+
+    private fun buildPromptGuidance(document: SkillDocument): List<String> {
+        val instructionStart = document.body.lines().indexOfFirst { it.trim() == "## Instructions" }
+        if (instructionStart == -1) return emptyList()
+
+        return document.body.lines()
+            .drop(instructionStart + 1)
+            .map { it.trim() }
+            .filter { line ->
+                line.isNotBlank() &&
+                    !line.startsWith("#") &&
+                    line != "Rules:" &&
+                    !line.startsWith("When selected")
+            }
+            .take(6)
+            .map { line ->
+                if (line.startsWith("-")) line else "- $line"
+            }
     }
 
     fun loadDocument(context: Context, assetPath: String): SkillDocument {
@@ -291,6 +322,10 @@ object UiSkillRegistry {
 
     fun loadDocument(context: Context, definition: UiSkillDefinition): SkillDocument {
         return SkillRegistry.loadDocument(context, definition.assetPath)
+    }
+
+    fun loadPromptGuidance(context: Context, definition: UiSkillDefinition): List<String> {
+        return SkillRegistry.loadPromptGuidance(context, definition)
     }
 }
 

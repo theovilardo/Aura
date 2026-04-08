@@ -147,7 +147,7 @@ class LLMParsingTest {
     }
 
     @Test
-    fun `stabilizeLocalClassification prunes noisy shopping ui extras`() {
+    fun `stabilizeLocalClassification prunes noisy ui extras for explicit atomic lists`() {
         val dsl = TaskDSLOutput(
             title = "Shopping List",
             type = TaskType.GENERAL,
@@ -160,7 +160,7 @@ class LLMParsingTest {
             )
         )
 
-        val stabilized = dsl.stabilizeLocalClassification("shopping list for groceries")
+        val stabilized = dsl.stabilizeLocalClassification("milk, bread, eggs")
 
         assertEquals(listOf(ComponentType.CHECKLIST, ComponentType.NOTES), stabilized.components.map { it.type })
         assertEquals(listOf(0, 1), stabilized.components.map { it.sortOrder })
@@ -268,6 +268,33 @@ class LLMParsingTest {
         assertEquals("learning-guide", dsl.functionSkills[0].skillId)
         assertEquals(FunctionSkillRuntime.PROMPT_AUGMENTATION, dsl.functionSkills[0].runtime)
         assertEquals("resource-curator", dsl.functionSkills[1].skillId)
+    }
+
+    @Test
+    fun `normalizeTaskDslJson strips prompt schema placeholders from notes`() {
+        val raw = """
+            {
+              "task": {
+                "title": "Chocolate Pudding Recipe",
+                "type": "GENERAL",
+                "skills": [
+                  {
+                    "skill": "notes",
+                    "config": {
+                      "config_type": "NOTES",
+                      "text": "markdown in the user's language",
+                      "isMarkdown": true
+                    }
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+
+        val normalized = raw.normalizeTaskDslJson()
+        val dsl = auraJson.decodeFromString<TaskDSLOutput>(normalized)
+
+        assertEquals("", dsl.components.first().config["text"]?.jsonPrimitive?.contentOrNull)
     }
 
     @Test
@@ -440,6 +467,41 @@ class LLMParsingTest {
         val checklist = dsl.components.first { it.type == ComponentType.CHECKLIST }
 
         assertEquals("", notes.config["text"]?.jsonPrimitive?.contentOrNull.orEmpty())
+        assertTrue(ChecklistDslItems.parse(checklist.config).isEmpty())
+    }
+
+    @Test
+    fun `normalizeTaskDslJson filters abstract semantic overlap without language specific word lists`() {
+        val raw = """
+            {
+              "semantic": {
+                "action": "programmieren lernen",
+                "items": ["Kotlin Programmierung", "Leitfaden", "Plan", "Quellen"],
+                "subject": "Kotlin Programmierung",
+                "goal": "Leitfaden und Plan",
+                "frequency": ""
+              },
+              "task": {
+                "title": "Leitfaden fuer Kotlin",
+                "type": "GOAL",
+                "skills": [
+                  {
+                    "skill": "notes",
+                    "config": {}
+                  },
+                  {
+                    "skill": "checklist",
+                    "config": {}
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+
+        val normalized = raw.normalizeTaskDslJson()
+        val dsl = auraJson.decodeFromString<TaskDSLOutput>(normalized)
+        val checklist = dsl.components.first { it.type == ComponentType.CHECKLIST }
+
         assertTrue(ChecklistDslItems.parse(checklist.config).isEmpty())
     }
 

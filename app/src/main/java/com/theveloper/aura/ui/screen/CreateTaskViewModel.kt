@@ -8,6 +8,7 @@ import com.theveloper.aura.engine.capability.CapabilityRegistry
 import com.theveloper.aura.engine.capability.CapabilityRequest
 import com.theveloper.aura.engine.capability.CapabilityResponse
 import com.theveloper.aura.engine.classifier.AiExecutionMode
+import com.theveloper.aura.engine.classifier.ClassifierInputProtocol
 import com.theveloper.aura.engine.classifier.ClarificationRequest
 import com.theveloper.aura.engine.classifier.TaskClassifier
 import com.theveloper.aura.engine.classifier.TaskGenerationResult
@@ -273,7 +274,7 @@ class CreateTaskViewModel @Inject constructor(
                 append(pending.classifierInput)
                 for ((_, ans) in updatedAnswers) {
                     appendLine()
-                    append("User clarification: ")
+                    append(ClassifierInputProtocol.CLARIFICATION_TAG)
                     append(ans)
                 }
             }
@@ -429,9 +430,9 @@ class CreateTaskViewModel @Inject constructor(
         val hints = buildList {
             manual.title.trim()
                 .takeIf { it.isNotBlank() }
-                ?.let { add("Preferred title: $it") }
+                ?.let { add("${ClassifierInputProtocol.PREFERRED_TITLE_TAG} $it") }
             manual.taskTypeOverride?.let { taskType ->
-                add("Task type hint: ${taskType.name.lowercase()}")
+                add("${ClassifierInputProtocol.TASK_TYPE_HINT_TAG} ${taskType.name.lowercase()}")
             }
         }
 
