@@ -41,9 +41,19 @@ internal fun String.stripCodeFences(): String {
 
 internal fun String.extractLikelyJsonBlock(): String {
     val normalized = stripCodeFences()
+    val repairedRootCandidate = normalized.tryRepairJsonLikeObject()
+    val prefersRepairedRoot =
+        repairedRootCandidate != null &&
+            !normalized.trimStart().startsWith("{") &&
+            !normalized.trimStart().startsWith("[")
     val containsObject = normalized.indexOf('{') != -1
-    val candidate = normalized.extractBalancedBlock('{', '}')
+    val candidate = if (prefersRepairedRoot) {
+        repairedRootCandidate
+    } else {
+        null
+    } ?: normalized.extractBalancedBlock('{', '}')
         ?: normalized.tryCompleteTruncatedJson()
+        ?: repairedRootCandidate
         ?: (!containsObject).let { onlyArrayMode ->
             if (onlyArrayMode) normalized.extractBalancedBlock('[', ']') else null
         }
@@ -177,6 +187,130 @@ private fun String.tryCompleteTruncatedJson(): String? {
     val repaired = safePart + closing
 
     return if (runCatching { auraJson.parseToJsonElement(repaired) }.isSuccess) repaired else null
+}
+
+/**
+ * Repairs common "almost JSON" outputs from smaller local models:
+ * - missing outer braces
+ * - missing leading quote on a line-start key such as title":
+ * - bare line-start keys such as title:
+ * - missing commas between line-separated properties or entries
+ */
+private fun String.tryRepairJsonLikeObject(): String? {
+    val normalized = trim()
+    if (normalized.isBlank()) return null
+
+    val keyLikeLineCount = normalized.lineSequence().count { line ->
+        val trimmed = line.trimStart()
+        trimmed.startsWith("\"") ||
+            trimmed.matches(Regex("""[A-Za-z_][A-Za-z0-9_-]*"?\s*:.*"""))
+    }
+    if (keyLikeLineCount < 2) return null
+
+    var repaired = normalized.repairJsonLikeKeysByLine()
+    if (!repaired.trimStart().startsWith("{") && !repaired.trimStart().startsWith("[")) {
+        repaired = "{\n$repaired\n}"
+    }
+    repaired = repaired.insertMissingJsonCommas()
+
+    return repaired.takeIf { runCatching { auraJson.parseToJsonElement(it) }.isSuccess }
+}
+
+private fun String.repairJsonLikeKeysByLine(): String {
+    return lineSequence().joinToString(separator = "\n") { line ->
+        line
+            .replaceFirst(
+                Regex("""^(\s*)([A-Za-z_][A-Za-z0-9_-]*)"(\s*:)"""),
+                "$1\"$2\"$3"
+            )
+            .replaceFirst(
+                Regex("""^(\s*)([A-Za-z_][A-Za-z0-9_-]*)(\s*:)"""),
+                "$1\"$2\"$3"
+            )
+    }
+}
+
+private fun String.insertMissingJsonCommas(): String {
+    if (isBlank()) return this
+
+    val out = StringBuilder(length + 16)
+    var inString = false
+    var escaped = false
+
+    fun StringBuilder.lastNonWhitespaceChar(): Char? {
+        for (index in length - 1 downTo 0) {
+            val candidate = this[index]
+            if (!candidate.isWhitespace()) return candidate
+        }
+        return null
+    }
+
+    fun nextNonWhitespaceChar(startIndex: Int): Char? {
+        for (index in startIndex until length) {
+            val candidate = this[index]
+            if (!candidate.isWhitespace()) return candidate
+        }
+        return null
+    }
+
+    fun shouldInsertComma(previous: Char?, next: Char?): Boolean {
+        if (previous == null || next == null) return false
+        if (previous == '{' || previous == '[' || previous == ',' || previous == ':') return false
+        if (next == '}' || next == ']' || next == ',') return false
+
+        val previousEndsValue = previous == '"' ||
+            previous == '}' ||
+            previous == ']' ||
+            previous.isDigit() ||
+            previous == 'e' ||
+            previous == 'E' ||
+            previous == 'l' ||
+            previous == 't' ||
+            previous == 'f'
+        val nextStartsToken = next == '"' ||
+            next == '{' ||
+            next == '[' ||
+            next == '-' ||
+            next.isDigit() ||
+            next == 't' ||
+            next == 'f' ||
+            next == 'n'
+
+        return previousEndsValue && nextStartsToken
+    }
+
+    for (index in indices) {
+        val current = this[index]
+        when {
+            escaped -> {
+                out.append(current)
+                escaped = false
+            }
+
+            current == '\\' && inString -> {
+                out.append(current)
+                escaped = true
+            }
+
+            current == '"' -> {
+                out.append(current)
+                inString = !inString
+            }
+
+            current == '\n' && !inString -> {
+                val previous = out.lastNonWhitespaceChar()
+                val next = nextNonWhitespaceChar(index + 1)
+                if (shouldInsertComma(previous, next) && out.lastOrNull() != ',') {
+                    out.append(',')
+                }
+                out.append(current)
+            }
+
+            else -> out.append(current)
+        }
+    }
+
+    return out.toString()
 }
 
 private fun normalizeTaskDslObject(root: JsonObject): JsonObject {

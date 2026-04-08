@@ -11,6 +11,7 @@ import com.theveloper.aura.engine.llm.LLMService
 import com.theveloper.aura.engine.llm.extractLikelyJsonBlock
 import com.theveloper.aura.engine.llm.stripCodeFences
 import com.theveloper.aura.engine.llm.normalizeTaskDslJson
+import com.theveloper.aura.engine.skill.PromptProfile
 import com.theveloper.aura.engine.skill.UiSkillRegistry
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -40,8 +41,14 @@ class TaskDraftRescueService @Inject constructor(
             llmContext = llmContext,
             draft = draft
         )
-        val baselineDraft = refinedInitialChecklist ?: draft
-        if (!needsRescue(baselineDraft)) return refinedInitialChecklist
+        val rebalancedNarrativeDraft = rebalanceChecklistNarrativeContent(
+            service = service,
+            input = input,
+            llmContext = llmContext,
+            draft = refinedInitialChecklist ?: draft
+        )
+        val baselineDraft = rebalancedNarrativeDraft ?: refinedInitialChecklist ?: draft
+        if (!needsRescue(baselineDraft)) return rebalancedNarrativeDraft ?: refinedInitialChecklist
 
         val firstAttempt = completeRescuePrompt(
             service = service,
@@ -104,7 +111,8 @@ class TaskDraftRescueService @Inject constructor(
     ): String {
         val plannerPrompt = UiSkillRegistry.buildSystemPrompt(
             context = context,
-            taskTypeHint = llmContext.detectedTaskType
+            taskTypeHint = llmContext.detectedTaskType,
+            profile = PromptProfile.LOCAL_COMPACT
         )
 
         return buildString {
@@ -124,18 +132,7 @@ class TaskDraftRescueService @Inject constructor(
             appendLine("Original user input:")
             appendLine(input)
             appendLine()
-            llmContext.detectedTaskType?.let {
-                appendLine("Detected task type hint: ${it.name}")
-            }
-            llmContext.extractedDates.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Extracted dates (epoch ms): $it")
-            }
-            llmContext.extractedNumbers.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Extracted numbers: $it")
-            }
-            llmContext.extractedLocations.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Extracted locations: $it")
-            }
+            appendContextHints(llmContext)
             appendLine()
             appendLine("Current draft JSON:")
             appendLine(auraJson.encodeToString(TaskDSLOutput.serializer(), draft))
@@ -173,18 +170,7 @@ class TaskDraftRescueService @Inject constructor(
             appendLine("Original user input:")
             appendLine(input)
             appendLine()
-            llmContext.detectedTaskType?.let {
-                appendLine("Detected task type hint: ${it.name}")
-            }
-            llmContext.extractedDates.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Extracted dates (epoch ms): $it")
-            }
-            llmContext.extractedNumbers.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Extracted numbers: $it")
-            }
-            llmContext.extractedLocations.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Extracted locations: $it")
-            }
+            appendContextHints(llmContext)
             appendLine()
             appendLine("Current shallow draft JSON:")
             appendLine(auraJson.encodeToString(TaskDSLOutput.serializer(), draft))
@@ -312,6 +298,24 @@ class TaskDraftRescueService @Inject constructor(
         return draft.copy(components = updatedComponents)
     }
 
+    private suspend fun rebalanceChecklistNarrativeContent(
+        service: LLMService,
+        input: String,
+        llmContext: LLMClassificationContext,
+        draft: TaskDSLOutput
+    ): TaskDSLOutput? {
+        val checklistCount = draft.components.count { it.type == ComponentType.CHECKLIST }
+        val hasNotes = draft.components.any { it.type == ComponentType.NOTES }
+        if (checklistCount < 2 || hasNotes) return null
+
+        val rebalanced = completeRescuePrompt(
+            service = service,
+            prompt = buildNarrativeRebalancePrompt(input, llmContext, draft)
+        ) ?: return null
+
+        return rebalanced.takeIf { isNarrativeRebalanceBetter(draft, it) }
+    }
+
     private fun buildChecklistRepairPrompt(
         input: String,
         llmContext: LLMClassificationContext,
@@ -333,18 +337,7 @@ class TaskDraftRescueService @Inject constructor(
             appendLine("Original user input:")
             appendLine(input)
             appendLine()
-            llmContext.detectedTaskType?.let {
-                appendLine("Detected task type hint: ${it.name}")
-            }
-            llmContext.extractedDates.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Extracted dates (epoch ms): $it")
-            }
-            llmContext.extractedNumbers.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Extracted numbers: $it")
-            }
-            llmContext.extractedLocations.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Extracted locations: $it")
-            }
+            appendContextHints(llmContext)
             appendLine()
             appendLine("Current task draft JSON:")
             appendLine(auraJson.encodeToString(TaskDSLOutput.serializer(), draft))
@@ -376,18 +369,7 @@ class TaskDraftRescueService @Inject constructor(
             appendLine("Original user input:")
             appendLine(input)
             appendLine()
-            llmContext.detectedTaskType?.let {
-                appendLine("Detected task type hint: ${it.name}")
-            }
-            llmContext.extractedDates.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Extracted dates (epoch ms): $it")
-            }
-            llmContext.extractedNumbers.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Extracted numbers: $it")
-            }
-            llmContext.extractedLocations.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Extracted locations: $it")
-            }
+            appendContextHints(llmContext)
         }
     }
 
@@ -412,18 +394,31 @@ class TaskDraftRescueService @Inject constructor(
             appendLine("Original user input:")
             appendLine(input)
             appendLine()
-            llmContext.detectedTaskType?.let {
-                appendLine("Detected task type hint: ${it.name}")
-            }
-            llmContext.extractedDates.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Extracted dates (epoch ms): $it")
-            }
-            llmContext.extractedNumbers.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Extracted numbers: $it")
-            }
-            llmContext.extractedLocations.takeIf { it.isNotEmpty() }?.let {
-                appendLine("Extracted locations: $it")
-            }
+            appendContextHints(llmContext)
+            appendLine()
+            appendLine("Current task draft JSON:")
+            appendLine(auraJson.encodeToString(TaskDSLOutput.serializer(), draft))
+        }
+    }
+
+    private fun buildNarrativeRebalancePrompt(
+        input: String,
+        llmContext: LLMClassificationContext,
+        draft: TaskDSLOutput
+    ): String {
+        return buildString {
+            appendLine("You are AURA's UI rebalance agent.")
+            appendLine("Improve the current task into the best ready-to-use final task JSON.")
+            appendLine("All user-facing text must stay in the same language as the user's input.")
+            appendLine("Keep concrete item lists as checklist UI.")
+            appendLine("If any checklist currently contains written instructions, recipe steps, guide content, or other narrative content, move that content into a notes component with useful markdown.")
+            appendLine("Prefer checklist plus notes over multiple checklists when one checklist is carrying prose-like instructional content.")
+            appendLine("Preserve useful existing content. Do not add placeholders. Return only valid JSON for the final task.")
+            appendLine()
+            appendLine("Original user input:")
+            appendLine(input)
+            appendLine()
+            appendContextHints(llmContext)
             appendLine()
             appendLine("Current task draft JSON:")
             appendLine(auraJson.encodeToString(TaskDSLOutput.serializer(), draft))
@@ -620,6 +615,18 @@ class TaskDraftRescueService @Inject constructor(
         return refinedKeys.size > currentKeys.size || expandableRefinedCount < expandableCurrent.size
     }
 
+    private fun isNarrativeRebalanceBetter(
+        original: TaskDSLOutput,
+        candidate: TaskDSLOutput
+    ): Boolean {
+        val originalNotes = original.components.count { it.type == ComponentType.NOTES }
+        val candidateNotes = candidate.components.count { it.type == ComponentType.NOTES }
+        val candidateChecklist = candidate.components.count { it.type == ComponentType.CHECKLIST }
+        if (candidateChecklist == 0) return false
+        if (candidateNotes <= originalNotes) return false
+        return !needsRescue(candidate)
+    }
+
     private fun looksExpandableChecklistItem(
         item: String,
         taskTitle: String
@@ -648,5 +655,26 @@ class TaskDraftRescueService @Inject constructor(
 
     private fun checklistComparisonKey(item: String): String {
         return normalizeChecklistCandidate(item).lowercase()
+    }
+
+    private fun StringBuilder.appendContextHints(
+        llmContext: LLMClassificationContext
+    ) {
+        llmContext.detectedTaskType?.let {
+            appendLine("Detected task type hint: ${it.name}")
+        }
+        llmContext.extractedDates.takeIf { it.isNotEmpty() }?.let {
+            appendLine("Extracted dates (epoch ms): $it")
+        }
+        llmContext.extractedNumbers.takeIf { it.isNotEmpty() }?.let {
+            appendLine("Extracted numbers: $it")
+        }
+        llmContext.extractedLocations.takeIf { it.isNotEmpty() }?.let {
+            appendLine("Extracted locations: $it")
+        }
+        llmContext.memoryContext.takeIf { it.isNotBlank() }?.let {
+            appendLine("Relevant memory:")
+            appendLine(it.trim().take(600))
+        }
     }
 }

@@ -9,6 +9,7 @@ import com.theveloper.aura.core.json.auraJson
 import com.theveloper.aura.engine.classifier.LLMClassificationContext
 import com.theveloper.aura.engine.classifier.MissingField
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
+import com.theveloper.aura.engine.skill.PromptProfile
 import com.theveloper.aura.engine.skill.UiSkillRegistry
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -392,7 +393,8 @@ abstract class LiteRtLocalLLMService constructor(
     protected open fun localClassifierSystemPrompt(context: LLMClassificationContext): String {
         return UiSkillRegistry.buildSystemPrompt(
             context = this.context,
-            taskTypeHint = context.detectedTaskType
+            taskTypeHint = context.detectedTaskType,
+            profile = PromptProfile.LOCAL_COMPACT
         )
     }
 
@@ -490,34 +492,9 @@ abstract class LiteRtLocalLLMService constructor(
         responseInstruction: String?,
         samplerProfile: SamplerProfile
     ): String {
-        val userTurn = buildUserTurn(userPrompt, responseInstruction)
-        if (systemPrompt.isNullOrBlank()) {
-            return generateViaSession(
-                engine = engine,
-                prompt = buildSessionPrompt(
-                    userPrompt = userPrompt,
-                    systemPrompt = null,
-                    responseInstruction = responseInstruction
-                ),
-                samplerProfile = samplerProfile
-            )
-        }
-
-        val conversationResult = runCatching {
-            generateViaConversation(
-                engine = engine,
-                systemPrompt = systemPrompt,
-                userPrompt = userTurn,
-                samplerProfile = samplerProfile
-            )
-        }.getOrElse {
-            debugLog("Conversation path failed for ${spec.id} (${unwrapInvocationError(it).message}); retrying with raw session prompt.")
-            ""
-        }
-        if (conversationResult.isNotBlank()) {
-            return conversationResult
-        }
-
+        // Gemma instruction-tuned local models are more reliable when the high-level
+        // instructions are inlined into the same user turn instead of using a separate
+        // system role. This also keeps local prompting closer to a single-turn setup.
         return generateViaSession(
             engine = engine,
             prompt = buildSessionPrompt(

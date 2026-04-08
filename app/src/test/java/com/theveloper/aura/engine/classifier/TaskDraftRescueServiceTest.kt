@@ -16,6 +16,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -285,6 +286,83 @@ class TaskDraftRescueServiceTest {
         assertTrue(items.contains("Mascarpone cheese"))
         assertTrue(items.contains("Ladyfingers"))
         assertFalse(items.contains("Tiramisu ingredients"))
+    }
+
+    @Test
+    fun `rescue rebalances multiple checklists into checklist plus notes when one carries narrative content`() = kotlinx.coroutines.test.runTest {
+        val service = object : LLMService {
+            override val tier = LLMTier.GEMMA_4_E4B
+            override fun isAvailable() = true
+            override suspend fun classify(input: String, context: LLMClassificationContext): TaskDSLOutput {
+                error("unused")
+            }
+            override suspend fun complete(prompt: String): String {
+                return when {
+                    prompt.contains("UI rebalance agent") -> """
+                        {
+                          "title": "Waffles with Nutella",
+                          "type": "GENERAL",
+                          "priority": 0,
+                          "targetDateMs": 0,
+                          "skills": [
+                            {
+                              "skill": "checklist",
+                              "sortOrder": 0,
+                              "populatedFromInput": true,
+                              "needsClarification": false,
+                              "config": {
+                                "config_type": "CHECKLIST",
+                                "label": "Shopping list",
+                                "allowAddItems": true,
+                                "items": [
+                                  {"label": "Flour", "isSuggested": false},
+                                  {"label": "Milk", "isSuggested": false},
+                                  {"label": "Eggs", "isSuggested": false},
+                                  {"label": "Nutella", "isSuggested": false}
+                                ]
+                              }
+                            },
+                            {
+                              "skill": "notes",
+                              "sortOrder": 1,
+                              "populatedFromInput": false,
+                              "needsClarification": false,
+                              "config": {
+                                "config_type": "NOTES",
+                                "text": "## Recipe\n1. Mix the batter.\n2. Cook in the waffle iron.\n3. Serve with Nutella.",
+                                "isMarkdown": true
+                              }
+                            }
+                          ],
+                          "functionSkills": [],
+                          "reminders": [],
+                          "fetchers": []
+                        }
+                    """.trimIndent()
+                    else -> ""
+                }
+            }
+        }
+
+        val draft = TaskDSLOutput(
+            title = "Waffles with Nutella",
+            type = TaskType.GENERAL,
+            components = listOf(
+                checklistComponent(items = listOf("Flour", "Milk", "Eggs", "Nutella")).copy(sortOrder = 0),
+                checklistComponent(items = listOf("Mix dry ingredients", "Mix wet ingredients", "Cook waffles")).copy(sortOrder = 1)
+            )
+        )
+
+        val rescued = subject.rescue(
+            service = service,
+            input = "I need a shopping list + recipe for waffles with nutella",
+            llmContext = LLMClassificationContext(detectedTaskType = TaskType.GENERAL),
+            draft = draft
+        )
+
+        assertNotNull(rescued)
+        assertEquals(listOf(ComponentType.CHECKLIST, ComponentType.NOTES), rescued!!.components.map { it.type })
+        assertTrue(rescued.components.last().config["text"]?.toString()?.contains("Cook in the waffle iron") == true)
     }
 
     private fun notesComponent(text: String) = ComponentDSL(

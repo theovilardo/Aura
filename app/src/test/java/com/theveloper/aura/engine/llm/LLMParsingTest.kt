@@ -641,6 +641,61 @@ class LLMParsingTest {
     }
 
     @Test
+    fun `normalizeTaskDslJson repairs json-like local output without outer braces or commas`() {
+        val raw = """
+            title": "Waffles with Nutella"
+            "type": "GENERAL"
+            "priority": 0
+            "targetDateMs": 0
+            "skills": [
+              {
+                "skill": "checklist",
+                "sortOrder": 0,
+                "populatedFromInput": false,
+                "needsClarification": false,
+                "config": {
+                  "config_type": "CHECKLIST",
+                  "label": "Shopping list",
+                  "allowAddItems": true,
+                  "items": [
+                    {"label": "Flour", "isSuggested": false},
+                    {"label": "Milk", "isSuggested": false},
+                    {"label": "Eggs", "isSuggested": false},
+                    {"label": "Nutella", "isSuggested": false}
+                  ]
+                }
+              },
+              {
+                "skill": "notes",
+                "sortOrder": 1,
+                "populatedFromInput": false,
+                "needsClarification": false,
+                "config": {
+                  "config_type": "NOTES",
+                  "text": "## Steps\n1. Mix ingredients.\n2. Cook waffles.\n3. Serve with Nutella.",
+                  "isMarkdown": true
+                }
+              }
+            ]
+            "functionSkills": []
+            "reminders": []
+            "fetchers": []
+        """.trimIndent()
+
+        val normalized = raw.normalizeTaskDslJson()
+        val dsl = auraJson.decodeFromString<TaskDSLOutput>(normalized)
+
+        assertEquals("Waffles with Nutella", dsl.title)
+        assertEquals(TaskType.GENERAL, dsl.type)
+        assertEquals(listOf(ComponentType.CHECKLIST, ComponentType.NOTES), dsl.components.map { it.type })
+        assertEquals(
+            listOf("Flour", "Milk", "Eggs", "Nutella"),
+            ChecklistDslItems.parse(dsl.components.first().config).map { it.label }
+        )
+        assertTrue(dsl.components.last().config["text"]?.jsonPrimitive?.contentOrNull?.contains("Cook waffles") == true)
+    }
+
+    @Test
     fun `extractLikelyJsonBlock returns raw when no json present`() {
         val noJson = "This is just plain text with no JSON"
         assertEquals(noJson, noJson.extractLikelyJsonBlock())

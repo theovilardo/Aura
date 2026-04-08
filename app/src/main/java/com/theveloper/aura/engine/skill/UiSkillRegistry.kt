@@ -234,8 +234,13 @@ object SkillRegistry {
 
     fun buildPlannerPrompt(
         context: Context,
-        taskTypeHint: TaskType?
+        taskTypeHint: TaskType?,
+        profile: PromptProfile = PromptProfile.DEFAULT
     ): String {
+        if (profile == PromptProfile.LOCAL_COMPACT) {
+            return SkillPromptCards.buildCompactPlannerPrompt(taskTypeHint)
+        }
+
         val basePrompt = context.assets.open("system_prompt.txt").bufferedReader().use { it.readText() }.trim()
         val availableUiSkills = availableUiSkills(taskTypeHint)
         val availableFunctionSkills = availableFunctionSkills(taskTypeHint)
@@ -316,8 +321,12 @@ object UiSkillRegistry {
         return SkillRegistry.validateUiSkill(skillId, config)
     }
 
-    fun buildSystemPrompt(context: Context, taskTypeHint: TaskType?): String {
-        return SkillRegistry.buildPlannerPrompt(context, taskTypeHint)
+    fun buildSystemPrompt(
+        context: Context,
+        taskTypeHint: TaskType?,
+        profile: PromptProfile = PromptProfile.DEFAULT
+    ): String {
+        return SkillRegistry.buildPlannerPrompt(context, taskTypeHint, profile)
     }
 
     fun loadDocument(context: Context, definition: UiSkillDefinition): SkillDocument {
