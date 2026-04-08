@@ -133,6 +133,55 @@ class TaskDSLQualityGateTest {
     }
 
     @Test
+    fun `enforce sanitizes malformed checklist rows before keeping checklist`() {
+        val result = subject.enforce(
+            dsl = TaskDSLOutput(
+                title = "Argentinian Flan Shopping List and Recipe",
+                type = TaskType.GENERAL,
+                components = listOf(
+                    ComponentDSL(
+                        skillId = "checklist",
+                        type = ComponentType.CHECKLIST,
+                        sortOrder = 0,
+                        config = ChecklistDslItems.withItems(
+                            config = JsonObject(
+                                mapOf(
+                                    "config_type" to JsonPrimitive("CHECKLIST"),
+                                    "label" to JsonPrimitive("Argentinian Flan Shopping List and Recipe"),
+                                    "allowAddItems" to JsonPrimitive(true)
+                                )
+                            ),
+                            items = listOf(
+                                com.theveloper.aura.engine.dsl.ChecklistItemDSL("Flour"),
+                                com.theveloper.aura.engine.dsl.ChecklistItemDSL("Sugar"),
+                                com.theveloper.aura.engine.dsl.ChecklistItemDSL("Eggs"),
+                                com.theveloper.aura.engine.dsl.ChecklistItemDSL("Milk"),
+                                com.theveloper.aura.engine.dsl.ChecklistItemDSL("Vanilla Extract"),
+                                com.theveloper.aura.engine.dsl.ChecklistItemDSL("Fl Flan Mold"),
+                                com.theveloper.aura.engine.dsl.ChecklistItemDSL("Caramel Ingredients"),
+                                com.theveloper.aura.engine.dsl.ChecklistItemDSL("Butter"),
+                                com.theveloper.aura.engine.dsl.ChecklistItemDSL("Fl Mold"),
+                                com.theveloper.aura.engine.dsl.ChecklistItemDSL("Mold")
+                            )
+                        )
+                    )
+                )
+            ),
+            input = "I need a shopping list + recipe for making an Argentinian flan",
+            entities = ExtractedEntities()
+        )
+
+        val passed = result as TaskDSLQualityGate.GateResult.Passed
+        val checklist = passed.dsl.components.first { it.type == ComponentType.CHECKLIST }
+
+        assertEquals(
+            listOf("Flour", "Sugar", "Eggs", "Milk", "Vanilla Extract", "Flan Mold", "Butter"),
+            ChecklistDslItems.parse(checklist.config).map { it.label }
+        )
+        assertTrue(passed.repairs.any { it.contains("Sanitized noisy CHECKLIST items") })
+    }
+
+    @Test
     fun `enforce prunes empty checklist when strong notes already exist`() {
         val result = subject.enforce(
             dsl = TaskDSLOutput(

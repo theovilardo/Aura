@@ -19,6 +19,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeParseException
 import java.util.Locale
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -42,23 +43,20 @@ internal fun String.stripCodeFences(): String {
 internal fun String.extractLikelyJsonBlock(): String {
     val normalized = stripCodeFences()
     val repairedRootCandidate = normalized.tryRepairJsonLikeObject()
-    val prefersRepairedRoot =
-        repairedRootCandidate != null &&
-            !normalized.trimStart().startsWith("{") &&
-            !normalized.trimStart().startsWith("[")
-    val containsObject = normalized.indexOf('{') != -1
-    val candidate = if (prefersRepairedRoot) {
-        repairedRootCandidate
-    } else {
-        null
-    } ?: normalized.extractBalancedBlock('{', '}')
-        ?: normalized.tryCompleteTruncatedJson()
-        ?: repairedRootCandidate
-        ?: (!containsObject).let { onlyArrayMode ->
-            if (onlyArrayMode) normalized.extractBalancedBlock('[', ']') else null
-        }
+    val objectCandidates = buildList {
+        repairedRootCandidate?.let(::add)
+        addAll(normalized.extractBalancedBlocks('{', '}'))
+        addAll(normalized.extractTruncatedObjectCandidates())
+    }.distinct()
 
-    return candidate ?: normalized
+    selectBestJsonCandidate(objectCandidates)?.let { return it }
+
+    val containsObject = normalized.indexOf('{') != -1
+    val arrayCandidate = (!containsObject).let { onlyArrayMode ->
+        if (onlyArrayMode) normalized.extractBalancedBlock('[', ']') else null
+    }
+
+    return arrayCandidate ?: repairedRootCandidate ?: normalized
 }
 
 internal fun String.normalizeTaskDslJson(): String {
@@ -67,6 +65,20 @@ internal fun String.normalizeTaskDslJson(): String {
         ?: return candidate
 
     return normalizeTaskDslObject(root).toString()
+}
+
+internal fun String.decodeTaskDslOrNull(): TaskDSLOutput? {
+    val candidate = extractLikelyJsonBlock()
+    val normalized = candidate.normalizeTaskDslJson()
+    val decoded = runCatching {
+        auraJson.decodeFromString<TaskDSLOutput>(normalized)
+    }.getOrNull() ?: return null
+
+    if (decoded.components.isEmpty() && candidate.looksLikePlannerOnlyTaskPlan()) {
+        return null
+    }
+
+    return decoded
 }
 
 internal fun TaskDSLOutput.stabilizeLocalClassification(input: String): TaskDSLOutput {
@@ -90,9 +102,45 @@ internal fun TaskDSLOutput.stabilizeLocalClassification(input: String): TaskDSLO
     )
 }
 
+private fun String.looksLikePlannerOnlyTaskPlan(): Boolean {
+    val candidate = extractLikelyJsonBlock()
+    val root = runCatching { auraJson.parseToJsonElement(candidate) }.getOrNull() as? JsonObject
+    val taskRoot = (root?.get("task") as? JsonObject) ?: root
+    val hasUiSkills =
+        taskRoot?.containsKey("uiSkills") == true ||
+            root?.containsKey("uiSkills") == true ||
+            Regex("""(?m)(["'])?uiSkills\1?\s*:""").containsMatchIn(candidate)
+    if (!hasUiSkills) return false
+
+    val hasRenderableTaskPayload =
+        (taskRoot?.get("components") as? JsonArray)?.isNotEmpty() == true ||
+            (taskRoot?.get("skills") as? JsonArray)?.isNotEmpty() == true ||
+            (root?.get("components") as? JsonArray)?.isNotEmpty() == true ||
+            (root?.get("skills") as? JsonArray)?.isNotEmpty() == true
+
+    return !hasRenderableTaskPayload
+}
+
 private fun String.extractBalancedBlock(openChar: Char, closeChar: Char): String? {
     val startIndex = indexOf(openChar)
     if (startIndex == -1) return null
+
+    return extractBalancedBlockFrom(startIndex, openChar, closeChar)
+}
+
+private fun String.extractBalancedBlocks(openChar: Char, closeChar: Char): List<String> {
+    return indices.asSequence()
+        .filter { this[it] == openChar }
+        .mapNotNull { startIndex -> extractBalancedBlockFrom(startIndex, openChar, closeChar) }
+        .toList()
+}
+
+private fun String.extractBalancedBlockFrom(
+    startIndex: Int,
+    openChar: Char,
+    closeChar: Char
+): String? {
+    if (startIndex !in indices || this[startIndex] != openChar) return null
 
     var depth = 0
     var inString = false
@@ -125,6 +173,11 @@ private fun String.extractBalancedBlock(openChar: Char, closeChar: Char): String
 private fun String.tryCompleteTruncatedJson(): String? {
     val startIndex = indexOf('{')
     if (startIndex == -1) return null
+    return tryCompleteTruncatedJsonFrom(startIndex)
+}
+
+private fun String.tryCompleteTruncatedJsonFrom(startIndex: Int): String? {
+    if (startIndex !in indices || this[startIndex] != '{') return null
 
     val partial = substring(startIndex)
     val openStack = mutableListOf<Char>()
@@ -187,6 +240,61 @@ private fun String.tryCompleteTruncatedJson(): String? {
     val repaired = safePart + closing
 
     return if (runCatching { auraJson.parseToJsonElement(repaired) }.isSuccess) repaired else null
+}
+
+private fun String.extractTruncatedObjectCandidates(): List<String> {
+    return indices.asSequence()
+        .filter { this[it] == '{' }
+        .filter { startIndex ->
+            substring(startIndex, minOf(length, startIndex + 256)).let { window ->
+                window.contains("\"title\"") ||
+                    window.contains("\"type\"") ||
+                    window.contains("\"skills\"") ||
+                    window.contains("\"uiSkills\"")
+            }
+        }
+        .mapNotNull(::tryCompleteTruncatedJsonFrom)
+        .toList()
+}
+
+private fun selectBestJsonCandidate(candidates: List<String>): String? {
+    return candidates
+        .distinct()
+        .maxWithOrNull(
+            compareBy<String> { scoreJsonCandidate(it) }
+                .thenBy { it.length }
+        )
+}
+
+private fun scoreJsonCandidate(candidate: String): Int {
+    val parsed = runCatching { auraJson.parseToJsonElement(candidate) }.getOrNull() as? JsonObject
+        ?: return scoreTaskJsonByText(candidate)
+    val taskRoot = (parsed["task"] as? JsonObject) ?: parsed
+
+    var score = 0
+    if (parsed["task"] is JsonObject) score += 20
+    if (!taskRoot["title"].stringValue().isBlank()) score += 90
+    if (!taskRoot["type"].stringValue().isBlank()) score += 60
+    if ((taskRoot["components"] as? JsonArray)?.isNotEmpty() == true) score += 220
+    if ((taskRoot["skills"] as? JsonArray)?.isNotEmpty() == true) score += 200
+    if ((taskRoot["uiSkills"] as? JsonArray)?.isNotEmpty() == true) score += 140
+    if ((taskRoot["functionSkills"] as? JsonArray)?.isNotEmpty() == true) score += 40
+    if (taskRoot["priority"] != null) score += 10
+    if (taskRoot["targetDateMs"] != null) score += 10
+    score += (candidate.length / 32).coerceAtMost(120)
+    return score
+}
+
+private fun scoreTaskJsonByText(candidate: String): Int {
+    var score = 0
+    if (candidate.contains("\"title\"")) score += 60
+    if (candidate.contains("\"type\"")) score += 40
+    if (candidate.contains("\"components\"")) score += 120
+    if (candidate.contains("\"skills\"")) score += 100
+    if (candidate.contains("\"uiSkills\"")) score += 70
+    if (candidate.contains("\"functionSkills\"")) score += 20
+    score += (candidate.length / 32).coerceAtMost(80)
+    return score
 }
 
 /**

@@ -322,6 +322,60 @@ class TaskClassifierTest {
     }
 
     @Test
+    fun `hollow heuristic fallback is repaired before clarification scaffold is synthesized`() = runTest {
+        val hollowFallback = TaskDSLOutput(
+            title = "Argentinian Flan Shopping List and Recipe",
+            type = TaskType.GENERAL,
+            components = listOf(
+                checklistComponent(sortOrder = 0, label = "Key steps", items = emptyList()),
+                notesComponent(sortOrder = 1, text = "")
+            )
+        )
+        val repairedFallback = TaskDSLOutput(
+            title = "Argentinian Flan Shopping List and Recipe",
+            type = TaskType.GENERAL,
+            components = listOf(
+                checklistComponent(
+                    sortOrder = 0,
+                    label = "Shopping list",
+                    items = listOf("Eggs", "Milk", "Sugar", "Vanilla extract")
+                ),
+                notesComponent(
+                    sortOrder = 1,
+                    text = "## Recipe\n1. Make the caramel.\n2. Mix eggs, milk, sugar, and vanilla.\n3. Bake in a water bath."
+                )
+            )
+        )
+
+        coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
+        coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.LOCAL_FIRST
+        coEvery { memoryRepository.getSlots() } returns emptyList()
+        coEvery { llmServiceFactory.resolvePrimaryService(AiExecutionMode.LOCAL_FIRST) } returns route(
+            source = TaskGenerationSource.LOCAL_AI,
+            tier = LLMTier.GEMMA_4_E4B
+        )
+        coEvery { llmServiceFactory.resolveAdvancedService(AiExecutionMode.LOCAL_FIRST) } returns route(
+            source = TaskGenerationSource.RULES,
+            tier = LLMTier.RULES_ONLY
+        )
+        coEvery { routedService.classify(any(), any()) } throws IllegalStateException("boom")
+        coEvery { onDeviceTaskDslService.compose(any()) } returns OnDeviceTaskDslResult(
+            dsl = hollowFallback,
+            confidence = 0.41f,
+            source = TaskGenerationSource.RULES
+        )
+        every { taskDraftRescueService.needsRescue(hollowFallback) } returns true
+        every { taskDraftRescueService.needsRescue(repairedFallback) } returns false
+        coEvery { taskDraftRescueService.rescue(any(), any(), any(), hollowFallback) } returns repairedFallback
+
+        val result = subject.classify("I need a shopping list+ recipe for making an Argentinian flan")
+
+        assertEquals(null, result.clarification)
+        assertEquals(listOf(ComponentType.CHECKLIST, ComponentType.NOTES), result.dsl.components.map { it.type })
+        assertTrue(result.warnings.any { it.contains("heuristic fallback was upgraded by an AI repair pass") })
+    }
+
+    @Test
     fun `failed ai fallback repair still avoids returning hollow notes`() = runTest {
         coEvery { entityExtractorService.extract(any()) } returns ExtractedEntities()
         coEvery { aiExecutionModeStore.getMode() } returns AiExecutionMode.LOCAL_FIRST

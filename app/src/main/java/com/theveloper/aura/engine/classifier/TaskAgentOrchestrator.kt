@@ -9,10 +9,10 @@ import com.theveloper.aura.engine.dsl.ComponentDSL
 import com.theveloper.aura.engine.dsl.FunctionSkillDSL
 import com.theveloper.aura.engine.dsl.SemanticFrame
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
+import com.theveloper.aura.engine.llm.decodeTaskDslOrNull
 import com.theveloper.aura.engine.llm.LLMService
 import com.theveloper.aura.engine.llm.LLMTier
 import com.theveloper.aura.engine.llm.extractLikelyJsonBlock
-import com.theveloper.aura.engine.llm.normalizeTaskDslJson
 import com.theveloper.aura.engine.llm.stripCodeFences
 import com.theveloper.aura.engine.skill.PromptProfile
 import com.theveloper.aura.engine.skill.SkillRegistry
@@ -268,55 +268,8 @@ class TaskAgentOrchestrator @Inject constructor() {
         input: String,
         llmContext: LLMClassificationContext
     ): String {
-        val availableUi = SkillRegistry.availableUiSkills(llmContext.detectedTaskType)
-        val availableFunction = SkillRegistry.availableFunctionSkills(llmContext.detectedTaskType)
-
         return buildString {
-            appendLine("You are AURA's local task composer.")
-            appendLine("Build the best ready-to-use task UI in a single pass.")
-            appendLine("All user-facing text MUST stay in the same language as the user's input.")
-            appendLine("Choose the minimum set of UI skills that fully solves the task.")
-            appendLine("Prefer a useful first version over clarification whenever possible.")
-            appendLine("If the user asks for a concrete artifact, deliver it now through the right UI.")
-            appendLine("Concrete named items must become atomic visible items.")
-            appendLine("Known bundles, ingredient sets, recipes, kits, or supply groups should be expanded into atomic items when commonly knowable.")
-            appendLine("If the task mixes concrete items with written instructions or narrative content, use checklist for the concrete items and notes for the written content.")
-            appendLine("Function skills improve content; they do not replace UI.")
-            appendLine("Return only the final task JSON. No markdown fences. No explanations.")
-            appendLine()
-            appendLine("Final task JSON schema:")
-            appendLine(
-                """{
-  "title": "required",
-  "type": "GENERAL|TRAVEL|HABIT|HEALTH|PROJECT|FINANCE|EVENT|GOAL",
-  "priority": 0,
-  "targetDateMs": 0,
-  "skills": [
-    {
-      "skill": "ui-skill-id",
-      "sortOrder": 0,
-      "populatedFromInput": false,
-      "needsClarification": false,
-      "config": {}
-    }
-  ],
-  "functionSkills": [
-    {
-      "skill": "function-skill-id",
-      "enabled": true,
-      "config": {}
-    }
-  ],
-  "reminders": [],
-  "fetchers": []
-}"""
-            )
-            appendLine()
-            appendLine("Available UI skill cards:")
-            appendLine(SkillPromptCards.renderUiSkillCards(availableUi, PromptProfile.LOCAL_COMPACT))
-            appendLine()
-            appendLine("Available function skill cards:")
-            appendLine(SkillPromptCards.renderFunctionSkillCards(availableFunction, PromptProfile.LOCAL_COMPACT))
+            appendLine(SkillPromptCards.buildCompactFinalTaskPrompt(llmContext.detectedTaskType))
             appendLine()
             appendLine("User input:")
             appendLine(input)
@@ -332,9 +285,7 @@ class TaskAgentOrchestrator @Inject constructor() {
         val raw = runCatching { service.complete(prompt) }.getOrNull()?.trim().orEmpty()
         if (raw.isBlank()) return null
 
-        return runCatching {
-            auraJson.decodeFromString<TaskDSLOutput>(raw.normalizeTaskDslJson())
-        }.getOrNull()
+        return raw.decodeTaskDslOrNull()
     }
 
     private suspend fun completeLocalSkillPlan(
@@ -416,7 +367,7 @@ class TaskAgentOrchestrator @Inject constructor() {
         val raw = runCatching {
             service.complete(buildLocalChecklistPrompt(input, llmContext, plan))
         }.getOrNull()?.trim().orEmpty()
-        val primaryItems = parseChecklistSkillItemsFromRaw(raw)
+        val primaryItems = parseChecklistSkillItemsFromRaw(raw, plan.title)
         val items = primaryItems
             .takeIf { checklistItemsLookUsable(it, plan.title) }
             ?: notesMarkdown.takeIf { it.isNotBlank() }?.let { notes ->
@@ -425,7 +376,7 @@ class TaskAgentOrchestrator @Inject constructor() {
                 }.getOrNull()
                     ?.trim()
                     .orEmpty()
-                    .let(::parseChecklistSkillItemsFromRaw)
+                    .let { fallbackRaw -> parseChecklistSkillItemsFromRaw(fallbackRaw, plan.title) }
                     .takeIf { fallbackItems -> checklistItemsLookUsable(fallbackItems, plan.title) }
             }
             ?: return null
@@ -557,6 +508,8 @@ class TaskAgentOrchestrator @Inject constructor() {
             appendLine("All user-facing text MUST stay in the same language as the user's input.")
             appendLine("Return only markdown. No JSON. No markdown fences. No explanations.")
             appendLine("Write the real user-facing narrative content now.")
+            appendLine("Never repeat a line, bullet, ingredient, or section heading.")
+            appendLine("Stop once the useful note is complete. Do not pad with repeated text.")
             if (hasChecklist) {
                 appendLine("Another skill will cover the checklist. Do not include a shopping list or ingredients list here.")
                 appendLine("Focus this note on the written instructions, recipe steps, and useful tips.")
@@ -637,79 +590,47 @@ class TaskAgentOrchestrator @Inject constructor() {
         }.distinctBy { item -> item.label.lowercase() }
     }
 
-    private fun parseChecklistSkillItemsFromRaw(raw: String): List<ChecklistItemDSL> {
+    private fun parseChecklistSkillItemsFromRaw(
+        raw: String,
+        taskTitle: String
+    ): List<ChecklistItemDSL> {
         parseLocalSkillObject(raw)
             ?.let { root ->
                 val configRoot = extractSkillConfigObject(root, skillId = "checklist") ?: root
-                parseChecklistSkillItems(configRoot["items"])
+                ChecklistContentQuality.sanitizeDslItems(
+                    items = parseChecklistSkillItems(configRoot["items"]),
+                    taskTitle = taskTitle
+                )
                     .takeIf { it.isNotEmpty() }
                     ?.let { return it }
             }
 
-        return raw.stripCodeFences()
-            .lineSequence()
-            .map(::normalizeChecklistLine)
-            .filter(::looksLikeChecklistLine)
-            .map(::ChecklistItemDSL)
-            .distinctBy { item -> item.label.lowercase() }
-            .toList()
+        return ChecklistContentQuality.sanitizeItems(
+            items = raw.stripCodeFences().lineSequence().toList(),
+            taskTitle = taskTitle
+        ).map(::ChecklistItemDSL)
     }
 
     private fun normalizeChecklistLine(line: String): String {
-        return line
-            .trim()
-            .replace(Regex("""^\s*(?:[-*•]|\d+[.)])\s+"""), "")
-            .replace(Regex("""\s+"""), " ")
-            .trim(' ', '.', ':')
+        return ChecklistContentQuality.normalizeCandidate(line)
     }
 
     private fun looksLikeChecklistLine(line: String): Boolean {
-        if (line.isBlank()) return false
-        val normalized = line.lowercase()
-        if (normalized in setOf("true", "false", "null")) return false
-        if (normalized.endsWith("skill filler")) return false
-        if (normalized in setOf("shopping list", "recipe", "ingredients", "shopping list & recipe")) return false
-        if (line.contains('?')) return false
-        if (line.split(Regex("\\s+")).size > 8) return false
-        return true
+        return ChecklistContentQuality.looksLikeConcreteItem(line)
     }
 
     private fun checklistItemsLookUsable(
         items: List<ChecklistItemDSL>,
         taskTitle: String
     ): Boolean {
-        if (items.isEmpty()) return false
-        val labels = items.map { it.label.trim() }.filter { it.isNotBlank() }
-        if (labels.isEmpty()) return false
-        if (labels.any { label -> label.lowercase() in setOf("true", "false", "null") }) return false
-
-        val titleTokens = tokenizeChecklistText(taskTitle)
-        val informativeCount = labels.count { label ->
-            val itemTokens = tokenizeChecklistText(label)
-            val concreteTokens = itemTokens - titleTokens - ABSTRACT_CONTAINER_TOKENS
-            concreteTokens.isNotEmpty()
-        }
-        if (informativeCount == 0) return false
-
-        val genericOverlapRatio = labels.count { label ->
-            val itemTokens = tokenizeChecklistText(label)
-            itemTokens.isNotEmpty() &&
-                titleTokens.isNotEmpty() &&
-                itemTokens.count { token -> token in titleTokens }.toFloat() / itemTokens.size.toFloat() >= 0.67f
-        }.toFloat() / labels.size.toFloat()
-
-        return !(labels.size <= 3 && genericOverlapRatio >= 0.67f)
+        return ChecklistContentQuality.itemsLookUsable(
+            items = items.map { it.label },
+            taskTitle = taskTitle
+        )
     }
 
     private fun tokenizeChecklistText(text: String): Set<String> {
-        return text.lowercase()
-            .split(Regex("""[^\p{L}\p{N}]+"""))
-            .mapNotNull { token ->
-                token.trim()
-                    .takeIf { it.length >= 3 }
-                    ?.removeSuffix("s")
-            }
-            .toSet()
+        return ChecklistContentQuality.tokenizeText(text)
     }
 
     private fun extractNotesMarkdown(raw: String): String? {
@@ -776,13 +697,6 @@ class TaskAgentOrchestrator @Inject constructor() {
 
     private companion object {
         val LOCAL_SKILL_FILLERS = setOf("checklist", "notes")
-        val ABSTRACT_CONTAINER_TOKENS = setOf(
-            "ingredient", "ingredients", "ingrediente", "ingredientes",
-            "item", "items", "step", "steps", "paso", "pasos",
-            "recipe", "recipes", "receta", "recetas",
-            "shopping", "compras", "compra", "list", "lista", "listas",
-            "mix", "mixture", "mezcla", "bundle", "kit", "set", "supply", "supplies"
-        )
     }
 }
 

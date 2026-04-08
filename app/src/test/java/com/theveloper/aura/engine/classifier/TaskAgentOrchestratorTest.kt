@@ -181,4 +181,218 @@ class TaskAgentOrchestratorTest {
             ChecklistDslItems.parse(dsl!!.components.first { it.type == ComponentType.CHECKLIST }.config).map { it.label }
         )
     }
+
+    @Test
+    fun `orchestrate local strips repeated malformed checklist fragments before rendering`() = kotlinx.coroutines.test.runTest {
+        val subject = TaskAgentOrchestrator()
+        var extractionFallbackCalls = 0
+        val service = object : LLMService {
+            override val tier = LLMTier.GEMMA_4_E2B
+
+            override fun isAvailable() = true
+
+            override suspend fun classify(input: String, context: LLMClassificationContext): TaskDSLOutput {
+                error("unused")
+            }
+
+            override suspend fun complete(prompt: String): String {
+                return when {
+                    prompt.contains("task orchestration agent") -> """
+                        {
+                          "title": "Argentinian Flan Shopping List and Recipe",
+                          "type": "GENERAL",
+                          "uiSkills": ["checklist", "notes"],
+                          "functionSkills": []
+                        }
+                    """.trimIndent()
+
+                    prompt.contains("checklist skill filler") -> """
+                        Flour
+                        Sugar
+                        Eggs
+                        Milk
+                        Vanilla Extract
+                        Fl Flan Mold
+                        Caramel Ingredients
+                        Butter
+                        Fl Fl Flan Mold
+                        Fl Mold
+                        Mold
+                        Fl Mold Mold Mold Mold
+                        Fl Flan
+                    """.trimIndent()
+
+                    prompt.contains("checklist extraction agent") -> {
+                        extractionFallbackCalls++
+                        error("should not need notes fallback for this checklist")
+                    }
+
+                    prompt.contains("notes skill filler") -> """
+                        ## Recipe
+                        1. Make caramel.
+                        2. Mix the eggs, milk, sugar, and vanilla.
+                        3. Bake in a water bath until set.
+                    """.trimIndent()
+
+                    else -> error("Unexpected prompt: $prompt")
+                }
+            }
+        }
+
+        val dsl = subject.orchestrate(
+            service = service,
+            input = "I need a shopping list + recipe for making an Argentinian flan",
+            llmContext = LLMClassificationContext(detectedTaskType = TaskType.GENERAL)
+        )
+
+        assertNotNull(dsl)
+        assertEquals(0, extractionFallbackCalls)
+        assertEquals(
+            listOf("Flour", "Sugar", "Eggs", "Milk", "Vanilla Extract", "Flan Mold", "Butter"),
+            ChecklistDslItems.parse(dsl!!.components.first { it.type == ComponentType.CHECKLIST }.config).map { it.label }
+        )
+    }
+
+    @Test
+    fun `orchestrate local sanitizes repeated lines inside notes output`() = kotlinx.coroutines.test.runTest {
+        val subject = TaskAgentOrchestrator()
+        val service = object : LLMService {
+            override val tier = LLMTier.GEMMA_4_E2B
+
+            override fun isAvailable() = true
+
+            override suspend fun classify(input: String, context: LLMClassificationContext): TaskDSLOutput {
+                error("unused")
+            }
+
+            override suspend fun complete(prompt: String): String {
+                return when {
+                    prompt.contains("task orchestration agent") -> """
+                        {
+                          "title": "Argentinian Flan Shopping List and Recipe",
+                          "type": "GENERAL",
+                          "uiSkills": ["checklist", "notes"],
+                          "functionSkills": []
+                        }
+                    """.trimIndent()
+
+                    prompt.contains("checklist skill filler") -> """
+                        Eggs
+                        Milk
+                        Sugar
+                        Vanilla extract
+                    """.trimIndent()
+
+                    prompt.contains("notes skill filler") -> """
+                        ## Tips
+                        - Use vanilla extract.
+                        - 100 grams cinnamon
+                        - 100 grams cinnamon
+                        - 100 grams cinnamon
+                        Chill before serving.
+                    """.trimIndent()
+
+                    else -> error("Unexpected prompt: $prompt")
+                }
+            }
+        }
+
+        val dsl = subject.orchestrate(
+            service = service,
+            input = "I need a shopping list + recipe for making an Argentinian flan",
+            llmContext = LLMClassificationContext(detectedTaskType = TaskType.GENERAL)
+        )
+
+        val notesText = dsl!!.components.first { it.type == ComponentType.NOTES }.config["text"].toString()
+        assertEquals(1, "100 grams cinnamon".toRegex().findAll(notesText).count())
+        assertTrue(notesText.contains("Chill before serving."))
+    }
+
+    @Test
+    fun `orchestrate local rejects planner-only compose fallback and uses direct composer`() = kotlinx.coroutines.test.runTest {
+        val subject = TaskAgentOrchestrator()
+        val plannerOnlyJson = """
+            {
+              "title": "Argentinian Flan Shopping List and Recipe",
+              "type": "GENERAL",
+              "uiSkills": ["checklist", "notes"],
+              "functionSkills": ["structured-brief"]
+            }
+        """.trimIndent()
+        val service = object : LLMService {
+            override val tier = LLMTier.GEMMA_4_E2B
+
+            override fun isAvailable() = true
+
+            override suspend fun classify(input: String, context: LLMClassificationContext): TaskDSLOutput {
+                error("unused")
+            }
+
+            override suspend fun complete(prompt: String): String {
+                return when {
+                    prompt.contains("task orchestration agent") -> plannerOnlyJson
+
+                    prompt.contains("notes skill filler") -> """
+                        Notes
+
+                        I need a shopping list for Argentinian flan and the recipe.
+                    """.trimIndent()
+
+                    prompt.contains("checklist skill filler") -> """
+                        Flan ingredients
+                        Flan recipe steps
+                    """.trimIndent()
+
+                    prompt.contains("task composition agent") -> plannerOnlyJson
+
+                    prompt.contains("local task composer") -> """
+                        {
+                          "title": "Argentinian Flan Shopping List and Recipe",
+                          "type": "GENERAL",
+                          "priority": 0,
+                          "targetDateMs": 0,
+                          "skills": [
+                            {
+                              "skill": "checklist",
+                              "sortOrder": 0,
+                              "config": {
+                                "label": "Shopping list",
+                                "allowAddItems": true,
+                                "items": ["Eggs", "Milk", "Sugar", "Vanilla extract"]
+                              }
+                            },
+                            {
+                              "skill": "notes",
+                              "sortOrder": 1,
+                              "config": {
+                                "text": "## Recipe\n1. Make the caramel.\n2. Mix eggs, milk, sugar, and vanilla.\n3. Bake in a water bath until set.\n4. Chill before unmolding.",
+                                "isMarkdown": true
+                              }
+                            }
+                          ],
+                          "functionSkills": [],
+                          "reminders": [],
+                          "fetchers": []
+                        }
+                    """.trimIndent()
+
+                    else -> error("Unexpected prompt: $prompt")
+                }
+            }
+        }
+
+        val dsl = subject.orchestrate(
+            service = service,
+            input = "I need a shopping list + recipe for making an Argentinian flan",
+            llmContext = LLMClassificationContext(detectedTaskType = TaskType.GENERAL)
+        )
+
+        assertNotNull(dsl)
+        assertEquals(listOf(ComponentType.CHECKLIST, ComponentType.NOTES), dsl!!.components.map { it.type })
+        assertEquals(
+            listOf("Eggs", "Milk", "Sugar", "Vanilla extract"),
+            ChecklistDslItems.parse(dsl.components.first { it.type == ComponentType.CHECKLIST }.config).map { it.label }
+        )
+        assertTrue(dsl.components.first { it.type == ComponentType.NOTES }.config["text"].toString().contains("water bath"))
+    }
 }

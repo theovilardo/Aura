@@ -200,6 +200,82 @@ object SkillPromptCards {
         }.trim()
     }
 
+    fun buildCompactFinalTaskPrompt(taskTypeHint: TaskType?): String {
+        return buildString {
+            appendLine("You are AURA's local task composer.")
+            appendLine("Build the best ready-to-use task UI in a single pass.")
+            appendLine("All user-facing text MUST stay in the same language as the user's input.")
+            appendLine("Choose the minimum set of UI skills that fully solves the task.")
+            appendLine("Prefer a useful first version over clarification whenever possible.")
+            appendLine("If the user asks for a concrete artifact, deliver it now through the right UI.")
+            appendLine("Concrete named items must become atomic visible items.")
+            appendLine("Known bundles, ingredient sets, recipes, kits, or supply groups should be expanded into atomic items when commonly knowable.")
+            appendLine("If the task mixes concrete items with written instructions or narrative content, use checklist for the concrete items and notes for the written content.")
+            appendLine("Function skills improve content; they do not replace UI.")
+            appendLine("Never return a planner-only payload with uiSkills/functionSkills arrays and no real task components.")
+            appendLine("Return only the final task JSON. No markdown fences. No explanations.")
+            appendLine()
+            append(buildCompactFinalTaskContract(taskTypeHint))
+        }.trim()
+    }
+
+    fun buildCompactFinalTaskContract(taskTypeHint: TaskType?): String {
+        val availableUi = SkillRegistry.availableUiSkills(taskTypeHint)
+        val availableFunction = SkillRegistry.availableFunctionSkills(taskTypeHint)
+
+        return buildString {
+            appendLine("Final task JSON schema:")
+            appendLine(
+                """{
+  "title": "required",
+  "type": "GENERAL|TRAVEL|HABIT|HEALTH|PROJECT|FINANCE|EVENT|GOAL",
+  "priority": 0,
+  "targetDateMs": 0,
+  "skills": [
+    {
+      "skill": "ui-skill-id",
+      "sortOrder": 0,
+      "populatedFromInput": false,
+      "needsClarification": false,
+      "config": {}
+    }
+  ],
+  "functionSkills": [
+    {
+      "skill": "function-skill-id",
+      "enabled": true,
+      "config": {}
+    }
+  ],
+  "reminders": [],
+  "fetchers": []
+}"""
+            )
+            appendLine()
+            appendLine("Type mapping:")
+            appendLine("- future event or deadline -> EVENT")
+            appendLine("- recurring routine -> HABIT")
+            appendLine("- health/body/workout/nutrition tracking -> HEALTH")
+            appendLine("- trip or travel planning -> TRAVEL")
+            appendLine("- money or budget tracking -> FINANCE")
+            appendLine("- multi-phase deliverable -> PROJECT")
+            appendLine("- learning or skill growth -> GOAL")
+            appendLine("- everything else -> GENERAL")
+            appendLine()
+            appendLine("Available UI skill cards:")
+            appendLine(renderUiSkillCards(availableUi, PromptProfile.LOCAL_COMPACT))
+            appendLine()
+            appendLine("Available function skill cards:")
+            appendLine(renderFunctionSkillCards(availableFunction, PromptProfile.LOCAL_COMPACT))
+            appendLine()
+            appendLine("Quality rules:")
+            appendLine("- never leave selected skills hollow or with placeholder content")
+            appendLine("- checklist items must be atomic visible items, not umbrella labels")
+            appendLine("- notes must contain the actual narrative content, not a teaser or promise")
+            appendLine("- if a skill cannot be fully configured with real content, omit it")
+        }.trim()
+    }
+
     fun renderUiSkillCards(
         definitions: List<UiSkillDefinition>,
         profile: PromptProfile = PromptProfile.DEFAULT

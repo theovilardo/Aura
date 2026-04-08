@@ -8,15 +8,14 @@ import com.theveloper.aura.engine.dsl.ChecklistItemDSL
 import com.theveloper.aura.engine.dsl.ComponentDSL
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
 import com.theveloper.aura.engine.llm.LLMService
+import com.theveloper.aura.engine.llm.decodeTaskDslOrNull
 import com.theveloper.aura.engine.llm.extractLikelyJsonBlock
 import com.theveloper.aura.engine.llm.stripCodeFences
-import com.theveloper.aura.engine.llm.normalizeTaskDslJson
-import com.theveloper.aura.engine.skill.PromptProfile
+import com.theveloper.aura.engine.skill.SkillPromptCards
 import com.theveloper.aura.engine.skill.UiSkillRegistry
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -52,16 +51,22 @@ class TaskDraftRescueService @Inject constructor(
 
         val firstAttempt = completeRescuePrompt(
             service = service,
-            prompt = buildPrompt(input, llmContext, baselineDraft)
+            prompt = buildPrompt(input, llmContext, baselineDraft),
+            input = input,
+            llmContext = llmContext,
+            fallbackDraft = baselineDraft
         )
-        if (firstAttempt != null && !needsRescue(firstAttempt)) {
+        if (firstAttempt != null && !needsFurtherRepair(firstAttempt, input)) {
             return firstAttempt
         }
 
         val focusedBaseDraft = firstAttempt ?: baselineDraft
         val focusedAttempt = completeRescuePrompt(
             service = service,
-            prompt = buildFocusedRepairPrompt(input, llmContext, focusedBaseDraft)
+            prompt = buildFocusedRepairPrompt(input, llmContext, focusedBaseDraft),
+            input = input,
+            llmContext = llmContext,
+            fallbackDraft = focusedBaseDraft
         )
 
         val bestStructuredAttempt = focusedAttempt ?: firstAttempt ?: refinedInitialChecklist
@@ -74,7 +79,7 @@ class TaskDraftRescueService @Inject constructor(
             )
         }
         val bestChecklistAwareAttempt = refinedStructuredChecklist ?: bestStructuredAttempt
-        if (bestChecklistAwareAttempt != null && !needsRescue(bestChecklistAwareAttempt)) {
+        if (bestChecklistAwareAttempt != null && !needsFurtherRepair(bestChecklistAwareAttempt, input)) {
             return bestChecklistAwareAttempt
         }
 
@@ -84,7 +89,7 @@ class TaskDraftRescueService @Inject constructor(
             llmContext = llmContext,
             draft = bestChecklistAwareAttempt ?: baselineDraft
         )
-        if (checklistPatched != null && !needsRescue(checklistPatched)) {
+        if (checklistPatched != null && !needsFurtherRepair(checklistPatched, input)) {
             return checklistPatched
         }
 
@@ -100,8 +105,15 @@ class TaskDraftRescueService @Inject constructor(
 
     fun needsRescue(draft: TaskDSLOutput): Boolean {
         if (draft.components.isEmpty()) return true
+        if (draftLikelyNeedsChecklist(draft.title) &&
+            draft.components.none { component ->
+                component.type == ComponentType.CHECKLIST && isMeaningfulChecklist(component, draft.title)
+            }
+        ) {
+            return true
+        }
 
-        return draft.components.none(::isMeaningfulComponent)
+        return draft.components.none { component -> isMeaningfulComponent(component, draft.title) }
     }
 
     private fun buildPrompt(
@@ -109,14 +121,8 @@ class TaskDraftRescueService @Inject constructor(
         llmContext: LLMClassificationContext,
         draft: TaskDSLOutput
     ): String {
-        val plannerPrompt = UiSkillRegistry.buildSystemPrompt(
-            context = context,
-            taskTypeHint = llmContext.detectedTaskType,
-            profile = PromptProfile.LOCAL_COMPACT
-        )
-
         return buildString {
-            appendLine(plannerPrompt)
+            appendLine(SkillPromptCards.buildCompactFinalTaskPrompt(llmContext.detectedTaskType))
             appendLine()
             appendLine("--- RESCUE TASK ---")
             appendLine("The current task draft is structurally valid but low quality.")
@@ -159,6 +165,9 @@ class TaskDraftRescueService @Inject constructor(
             appendLine("If the request asks for a concrete artifact, the artifact itself must appear in the UI now.")
             appendLine("You may add, remove, or replace UI skills if that improves the result.")
             appendLine("Do not leave any remaining component hollow.")
+            appendLine("Do not return a planner-only payload with uiSkills/functionSkills arrays and no real task components.")
+            appendLine()
+            appendLine(SkillPromptCards.buildCompactFinalTaskContract(llmContext.detectedTaskType))
             appendLine()
             if (currentUiSkills.isNotEmpty()) {
                 appendLine("Current UI skill guidance:")
@@ -181,16 +190,29 @@ class TaskDraftRescueService @Inject constructor(
 
     private suspend fun completeRescuePrompt(
         service: LLMService,
-        prompt: String
+        prompt: String,
+        input: String,
+        llmContext: LLMClassificationContext,
+        fallbackDraft: TaskDSLOutput
     ): TaskDSLOutput? {
         val raw = runCatching {
             service.complete(prompt)
         }.getOrNull()?.trim().orEmpty()
         if (raw.isBlank()) return null
 
-        return runCatching {
-            auraJson.decodeFromString<TaskDSLOutput>(raw.normalizeTaskDslJson())
-        }.getOrNull()
+        val decoded = raw.decodeTaskDslOrNull()
+        val salvaged = salvageTaskDslFromRaw(
+                raw = raw,
+                input = input,
+                llmContext = llmContext,
+                fallbackDraft = decoded ?: fallbackDraft
+            )
+
+        return chooseBetterRescueDraft(
+            decoded = decoded,
+            salvaged = salvaged,
+            input = input
+        )
     }
 
     private suspend fun repairHollowNotesWithMarkdown(
@@ -239,7 +261,8 @@ class TaskDraftRescueService @Inject constructor(
         val checklistIndex = draft.components.indexOfFirst { component ->
             component.type == ComponentType.CHECKLIST && ChecklistDslItems.parse(component.config).isEmpty()
         }
-        if (checklistIndex == -1) return null
+        val shouldCreateChecklist = checklistIndex == -1 && draftLikelyNeedsChecklist(draft.title)
+        if (checklistIndex == -1 && !shouldCreateChecklist) return null
 
         val items = runCatching {
             service.complete(buildChecklistRepairPrompt(input, llmContext, draft))
@@ -248,15 +271,23 @@ class TaskDraftRescueService @Inject constructor(
             ?.takeIf { it.isNotEmpty() }
             ?: return null
 
-        val updatedComponents = draft.components.mapIndexed { index, component ->
-            if (index != checklistIndex) {
-                component
-            } else {
-                component.withChecklistItems(
-                    items = items,
-                    label = draft.title.ifBlank { component.config["label"]?.jsonPrimitive?.contentOrNull.orEmpty() }
-                )
+        val updatedComponents = if (checklistIndex >= 0) {
+            draft.components.mapIndexed { index, component ->
+                if (index != checklistIndex) {
+                    component
+                } else {
+                    component.withChecklistItems(
+                        items = items,
+                        label = draft.title.ifBlank { component.config["label"]?.jsonPrimitive?.contentOrNull.orEmpty() }
+                    )
+                }
             }
+        } else {
+            draft.components + createChecklistComponent(
+                sortOrder = draft.components.size,
+                label = draft.title.ifBlank { "Checklist" },
+                items = items
+            )
         }
         val repairedDraft = draft.copy(components = updatedComponents)
         return repairedDraft.takeUnless(::needsRescue)
@@ -310,7 +341,10 @@ class TaskDraftRescueService @Inject constructor(
 
         val rebalanced = completeRescuePrompt(
             service = service,
-            prompt = buildNarrativeRebalancePrompt(input, llmContext, draft)
+            prompt = buildNarrativeRebalancePrompt(input, llmContext, draft),
+            input = input,
+            llmContext = llmContext,
+            fallbackDraft = draft
         ) ?: return null
 
         return rebalanced.takeIf { isNarrativeRebalanceBetter(draft, it) }
@@ -425,13 +459,12 @@ class TaskDraftRescueService @Inject constructor(
         }
     }
 
-    private fun isMeaningfulComponent(component: ComponentDSL): Boolean {
+    private fun isMeaningfulComponent(
+        component: ComponentDSL,
+        taskTitle: String
+    ): Boolean {
         return when (component.type) {
-            ComponentType.CHECKLIST -> {
-                val items = ChecklistDslItems.parse(component.config)
-                items.isNotEmpty() ||
-                    component.needsClarification
-            }
+            ComponentType.CHECKLIST -> isMeaningfulChecklist(component, taskTitle) || component.needsClarification
 
             ComponentType.NOTES ->
                 !DraftContentQuality.isThinNotes(component.noteText())
@@ -442,6 +475,17 @@ class TaskDraftRescueService @Inject constructor(
 
             else -> true
         }
+    }
+
+    private fun isMeaningfulChecklist(
+        component: ComponentDSL,
+        taskTitle: String
+    ): Boolean {
+        val items = ChecklistContentQuality.sanitizeItems(
+            items = ChecklistDslItems.parse(component.config).map { it.label },
+            taskTitle = taskTitle
+        )
+        return ChecklistContentQuality.itemsLookUsable(items, taskTitle)
     }
 
     private fun ComponentDSL.withNotesText(markdown: String): ComponentDSL {
@@ -499,6 +543,30 @@ class TaskDraftRescueService @Inject constructor(
         )
     }
 
+    private fun createChecklistComponent(
+        sortOrder: Int,
+        label: String,
+        items: List<String>
+    ): ComponentDSL {
+        return ComponentDSL(
+            skillId = "checklist",
+            type = ComponentType.CHECKLIST,
+            sortOrder = sortOrder,
+            config = ChecklistDslItems.withItems(
+                config = JsonObject(
+                    mapOf(
+                        "config_type" to JsonPrimitive(ComponentType.CHECKLIST.name),
+                        "label" to JsonPrimitive(label.ifBlank { "Checklist" }),
+                        "allowAddItems" to JsonPrimitive(true)
+                    )
+                ),
+                items = items.map(::ChecklistItemDSL)
+            ),
+            populatedFromInput = true,
+            needsClarification = false
+        )
+    }
+
     private fun ComponentDSL.noteText(): String {
         return config["text"]?.jsonPrimitive?.contentOrNull.orEmpty()
     }
@@ -511,46 +579,69 @@ class TaskDraftRescueService @Inject constructor(
         val sanitized = raw.stripCodeFences().trim()
         if (sanitized.isBlank()) return emptyList()
 
-        parseChecklistItemsFromJson(sanitized).takeIf { it.isNotEmpty() }?.let { return it }
-        ChecklistInputExtraction.extract(sanitized).takeIf { it.isNotEmpty() }?.let { return it }
+        parseChecklistItemsFromJson(sanitized, title).takeIf { it.isNotEmpty() }?.let { return it }
+        ChecklistContentQuality.sanitizeItems(
+            items = ChecklistInputExtraction.extract(sanitized),
+            taskTitle = title
+        ).takeIf { it.isNotEmpty() }?.let { return it }
 
         val titleLower = title.trim().lowercase()
         val inputLower = input.trim().lowercase()
 
-        return sanitized.lineSequence()
-            .map(::normalizeChecklistCandidate)
-            .filter { candidate ->
-                candidate.isNotBlank() &&
-                    candidate != "..." &&
-                    !candidate.equals(titleLower, ignoreCase = true) &&
-                    !candidate.equals(inputLower, ignoreCase = true) &&
-                    !candidate.equals("final output", ignoreCase = true) &&
-                    looksLikeChecklistCandidate(candidate)
-            }
-            .distinct()
-            .toList()
+        return ChecklistContentQuality.sanitizeItems(
+            items = sanitized.lineSequence().toList(),
+            taskTitle = title
+        ).filter { candidate ->
+            candidate.isNotBlank() &&
+                candidate != "..." &&
+                !candidate.equals(titleLower, ignoreCase = true) &&
+                !candidate.equals(inputLower, ignoreCase = true) &&
+                !candidate.equals("final output", ignoreCase = true)
+        }
     }
 
-    private fun parseChecklistItemsFromJson(raw: String): List<String> {
+    private fun parseChecklistItemsFromJson(
+        raw: String,
+        taskTitle: String
+    ): List<String> {
         val element = runCatching {
             auraJson.parseToJsonElement(raw.extractLikelyJsonBlock())
-        }.getOrNull() ?: return emptyList()
+        }.getOrNull()
+        val jsonishFallbackItems = extractChecklistItemLabelsFromJsonish(raw, taskTitle)
 
-        return extractChecklistItemLabels(element)
+        if (element != null) {
+            val parsedItems = extractChecklistItemLabels(element, taskTitle)
+            return when {
+                parsedItems.isEmpty() -> jsonishFallbackItems
+                jsonishFallbackItems.size > parsedItems.size -> jsonishFallbackItems
+                else -> parsedItems
+            }
+        }
+
+        return jsonishFallbackItems
     }
 
-    private fun extractChecklistItemLabels(element: JsonElement): List<String> {
+    private fun extractChecklistItemLabels(
+        element: JsonElement,
+        taskTitle: String
+    ): List<String> {
         return when (element) {
-            is JsonArray -> element.mapNotNull(::extractChecklistItemLabel).distinct()
+            is JsonArray -> element
+                .flatMap { child -> extractChecklistItemLabels(child, taskTitle) }
+                .distinct()
 
             is JsonObject -> {
-                extractChecklistItemLabels(element["items"] ?: JsonArray(emptyList())).takeIf { it.isNotEmpty() }
+                extractChecklistItemLabels(element["items"] ?: JsonArray(emptyList()), taskTitle).takeIf { it.isNotEmpty() }
                     ?: ((element["components"] as? JsonArray)
-                        ?.firstOrNull()
-                        ?.let(::extractChecklistItemLabels))
+                        ?.let { children -> extractChecklistItemLabels(children, taskTitle) }
+                        ?.takeIf { items -> items.isNotEmpty() })
+                    ?: ((element["skills"] as? JsonArray)
+                        ?.let { children -> extractChecklistItemLabels(children, taskTitle) }
+                        ?.takeIf { items -> items.isNotEmpty() })
                     ?: ((element["config"] as? JsonObject)
-                        ?.get("items")
-                        ?.let(::extractChecklistItemLabels))
+                        ?.let { config -> extractChecklistItemLabels(config, taskTitle) }
+                        ?.takeIf { items -> items.isNotEmpty() })
+                    ?: extractChecklistItemLabel(element, taskTitle)?.let(::listOf)
                     ?: emptyList()
             }
 
@@ -558,31 +649,22 @@ class TaskDraftRescueService @Inject constructor(
         }
     }
 
-    private fun extractChecklistItemLabel(element: JsonElement): String? {
+    private fun extractChecklistItemLabel(
+        element: JsonElement,
+        taskTitle: String
+    ): String? {
         return when (element) {
-            is JsonPrimitive -> normalizeChecklistCandidate(element.contentOrNull.orEmpty()).takeIf(::looksLikeChecklistCandidate)
+            is JsonPrimitive -> ChecklistContentQuality
+                .normalizeCandidate(element.contentOrNull.orEmpty())
+                .takeIf { candidate -> ChecklistContentQuality.looksLikeConcreteItem(candidate, taskTitle) }
+
             is JsonObject -> {
                 element["label"]?.jsonPrimitive?.contentOrNull
-                    ?.let(::normalizeChecklistCandidate)
-                    ?.takeIf(::looksLikeChecklistCandidate)
+                    ?.let(ChecklistContentQuality::normalizeCandidate)
+                    ?.takeIf { candidate -> ChecklistContentQuality.looksLikeConcreteItem(candidate, taskTitle) }
             }
             else -> null
         }
-    }
-
-    private fun normalizeChecklistCandidate(raw: String): String {
-        return raw
-            .trim()
-            .replace(Regex("""^\[\s*[xX ]?\s*]\s+"""), "")
-            .replace(Regex("""^(?:[-*•]\s+|\d+[.)]\s+)"""), "")
-            .replace(Regex("\\s+"), " ")
-            .trim(' ', '.', ':')
-    }
-
-    private fun looksLikeChecklistCandidate(candidate: String): Boolean {
-        val tokens = candidate.split(Regex("\\s+")).filter { it.isNotBlank() }
-        if (tokens.size !in 1..5) return false
-        return candidate.none { it == '?' || it == '!' || it == ':' }
     }
 
     private fun checklistNeedsExpansion(
@@ -598,18 +680,28 @@ class TaskDraftRescueService @Inject constructor(
         refinedItems: List<String>,
         taskTitle: String
     ): Boolean {
-        val normalizedCurrent = currentItems.map(::normalizeChecklistCandidate).filter(String::isNotBlank).distinct()
-        val normalizedRefined = refinedItems.map(::normalizeChecklistCandidate).filter(String::isNotBlank).distinct()
-        val currentKeys = normalizedCurrent.map(::checklistComparisonKey)
-        val refinedKeys = normalizedRefined.map(::checklistComparisonKey)
+        val normalizedCurrent = currentItems
+            .map(ChecklistContentQuality::normalizeCandidate)
+            .filter(String::isNotBlank)
+            .distinct()
+        val normalizedRefined = ChecklistContentQuality.sanitizeItems(refinedItems, taskTitle)
+        val currentKeys = normalizedCurrent.map(ChecklistContentQuality::comparisonKey)
+        val refinedKeys = normalizedRefined.map(ChecklistContentQuality::comparisonKey)
         if (refinedKeys.isEmpty() || refinedKeys == currentKeys) return false
 
         val expandableCurrent = normalizedCurrent.filter { item -> looksExpandableChecklistItem(item, taskTitle) }
         if (expandableCurrent.isEmpty()) return false
 
-        val expandableKeys = expandableCurrent.map(::checklistComparisonKey).toSet()
+        val expandableKeys = expandableCurrent.map(ChecklistContentQuality::comparisonKey).toSet()
         val preservedConcreteKeys = currentKeys.filterNot { it in expandableKeys }
-        if (!preservedConcreteKeys.all { it in refinedKeys }) return false
+        if (!preservedConcreteKeys.all { key ->
+                refinedKeys.any { refinedKey ->
+                    ChecklistContentQuality.areRelatedItems(key, refinedKey)
+                }
+            }
+        ) {
+            return false
+        }
 
         val expandableRefinedCount = normalizedRefined.count { item -> looksExpandableChecklistItem(item, taskTitle) }
         return refinedKeys.size > currentKeys.size || expandableRefinedCount < expandableCurrent.size
@@ -631,10 +723,10 @@ class TaskDraftRescueService @Inject constructor(
         item: String,
         taskTitle: String
     ): Boolean {
-        val itemTokens = tokenizeChecklistText(item)
+        val itemTokens = ChecklistContentQuality.tokenizeText(item)
         if (itemTokens.size !in 2..6) return false
 
-        val titleTokens = tokenizeChecklistText(taskTitle)
+        val titleTokens = ChecklistContentQuality.tokenizeText(taskTitle)
         if (titleTokens.isEmpty()) return false
 
         val overlapCount = itemTokens.count { token -> token in titleTokens }
@@ -642,19 +734,224 @@ class TaskDraftRescueService @Inject constructor(
         return overlapCount >= 1 && overlapRatio >= 0.34f
     }
 
-    private fun tokenizeChecklistText(text: String): Set<String> {
-        return text.lowercase()
-            .split(Regex("""[^\p{L}\p{N}]+"""))
-            .mapNotNull { token ->
-                token.trim()
-                    .takeIf { it.length >= 3 }
-                    ?.removeSuffix("s")
-            }
-            .toSet()
+    private fun draftLikelyNeedsChecklist(title: String): Boolean {
+        val tokens = ChecklistContentQuality.tokenizeText(title)
+        return tokens.any { token ->
+            token in setOf(
+                "shopping",
+                "compra",
+                "compras",
+                "list",
+                "lista",
+                "ingredient",
+                "ingredients",
+                "ingrediente",
+                "ingredientes",
+                "packing",
+                "pack",
+                "checklist"
+            )
+        }
     }
 
-    private fun checklistComparisonKey(item: String): String {
-        return normalizeChecklistCandidate(item).lowercase()
+    private fun needsFurtherRepair(
+        draft: TaskDSLOutput,
+        input: String
+    ): Boolean {
+        return needsRescue(draft) || needsNarrativeRepair(draft, input)
+    }
+
+    private fun needsNarrativeRepair(
+        draft: TaskDSLOutput,
+        input: String
+    ): Boolean {
+        if (!requestLikelyNeedsNarrative(input, draft.title)) return false
+
+        return draft.components.none { component ->
+            component.type == ComponentType.NOTES && !DraftContentQuality.isThinNotes(component.noteText())
+        }
+    }
+
+    private fun requestLikelyNeedsNarrative(
+        input: String,
+        title: String
+    ): Boolean {
+        val tokens = ChecklistContentQuality.tokenizeText("$title $input")
+        return tokens.any { token ->
+            token in setOf(
+                "recipe",
+                "receta",
+                "guide",
+                "guides",
+                "instruction",
+                "instructions",
+                "instruccion",
+                "instrucciones",
+                "roadmap",
+                "summary",
+                "resumen",
+                "agenda",
+                "outline",
+                "tutorial"
+            )
+        }
+    }
+
+    private fun chooseBetterRescueDraft(
+        decoded: TaskDSLOutput?,
+        salvaged: TaskDSLOutput?,
+        input: String
+    ): TaskDSLOutput? {
+        decoded ?: return salvaged
+        salvaged ?: return decoded
+
+        val decodedNeedsRepair = needsFurtherRepair(decoded, input)
+        val salvagedNeedsRepair = needsFurtherRepair(salvaged, input)
+        if (decodedNeedsRepair != salvagedNeedsRepair) {
+            return if (salvagedNeedsRepair) decoded else salvaged
+        }
+
+        val decodedMeaningful = decoded.components.count { component ->
+            isMeaningfulComponent(component, decoded.title)
+        }
+        val salvagedMeaningful = salvaged.components.count { component ->
+            isMeaningfulComponent(component, salvaged.title)
+        }
+        if (decodedMeaningful != salvagedMeaningful) {
+            return if (salvagedMeaningful > decodedMeaningful) salvaged else decoded
+        }
+
+        return when {
+            salvaged.components.size > decoded.components.size -> salvaged
+            decoded.components.size > salvaged.components.size -> decoded
+            else -> decoded
+        }
+    }
+
+    private fun salvageTaskDslFromRaw(
+        raw: String,
+        input: String,
+        llmContext: LLMClassificationContext,
+        fallbackDraft: TaskDSLOutput
+    ): TaskDSLOutput? {
+        val stripped = raw.stripCodeFences().trim()
+        if (stripped.isBlank()) return null
+
+        val title = extractJsonishStringField(stripped, "title")
+            ?.let(DraftContentQuality::sanitizeGeneratedText)
+            ?.takeIf { it.isNotBlank() }
+            ?: fallbackDraft.title
+
+        val checklistItems = parseChecklistItemsFromJson(stripped, title)
+        val markdown = salvageNotesMarkdownFromRaw(stripped)
+        if (checklistItems.isEmpty() && markdown == null) return null
+
+        val components = mutableListOf<ComponentDSL>()
+
+        if (checklistItems.isNotEmpty()) {
+            val checklist = fallbackDraft.components.firstOrNull { it.type == ComponentType.CHECKLIST }
+            components += (checklist ?: createChecklistComponent(0, title, checklistItems))
+                .withChecklistItems(
+                    items = checklistItems,
+                    label = title.ifBlank { checklist?.config?.get("label")?.jsonPrimitive?.contentOrNull.orEmpty() }
+                )
+                .copy(sortOrder = components.size)
+        }
+
+        if (markdown != null) {
+            val notes = fallbackDraft.components.firstOrNull { it.type == ComponentType.NOTES }
+            components += (notes ?: createNotesComponent(components.size, markdown))
+                .withNotesText(markdown)
+                .copy(sortOrder = components.size)
+        }
+
+        fallbackDraft.components
+            .filter { component ->
+                component.type != ComponentType.CHECKLIST &&
+                    component.type != ComponentType.NOTES &&
+                    isMeaningfulComponent(component, title)
+            }
+            .forEach { component ->
+                components += component.copy(sortOrder = components.size)
+            }
+
+        if (components.isEmpty()) return null
+
+        return fallbackDraft.copy(
+            title = title.ifBlank { fallbackDraft.title },
+            type = extractTaskTypeFromRaw(stripped) ?: llmContext.detectedTaskType ?: fallbackDraft.type,
+            components = components
+        )
+    }
+
+    private fun salvageNotesMarkdownFromRaw(raw: String): String? {
+        extractJsonishStringField(raw, "text")
+            ?.let(::decodeJsonishString)
+            ?.let(DraftContentQuality::sanitizeGeneratedText)
+            ?.takeIf { markdown -> !DraftContentQuality.isThinNotes(markdown) }
+            ?.let { return it }
+
+        if (raw.contains("\"title\"") || raw.contains("\"components\"") || raw.contains("\"skills\"")) {
+            return null
+        }
+
+        val cleaned = DraftContentQuality.sanitizeGeneratedText(raw)
+        return cleaned.takeUnless(DraftContentQuality::isThinNotes)
+    }
+
+    private fun extractChecklistItemLabelsFromJsonish(
+        raw: String,
+        taskTitle: String
+    ): List<String> {
+        val labelMatches = JSONISH_LABEL_REGEX.findAll(raw)
+            .map { match -> decodeJsonishString(match.groupValues[1]) }
+            .toList()
+        ChecklistContentQuality.sanitizeItems(labelMatches, taskTitle)
+            .takeIf { items -> items.isNotEmpty() }
+            ?.let { return it }
+
+        val primitiveItems = JSONISH_ITEMS_ARRAY_REGEX.findAll(raw)
+            .map { match -> match.groupValues[1] }
+            .filterNot { segment -> '{' in segment }
+            .flatMap { segment ->
+                JSONISH_STRING_REGEX.findAll(segment).map { match ->
+                    decodeJsonishString(match.groupValues[1])
+                }
+            }
+            .toList()
+
+        return ChecklistContentQuality.sanitizeItems(primitiveItems, taskTitle)
+    }
+
+    private fun extractJsonishStringField(
+        raw: String,
+        fieldName: String
+    ): String? {
+        val regex = Regex(
+            "[\"']${Regex.escape(fieldName)}[\"']\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"",
+            setOf(RegexOption.DOT_MATCHES_ALL)
+        )
+        return regex.find(raw)?.groupValues?.getOrNull(1)
+    }
+
+    private fun decodeJsonishString(raw: String): String {
+        return raw
+            .replace("\\r", "\r")
+            .replace("\\n", "\n")
+            .replace("\\t", "\t")
+            .replace("\\\"", "\"")
+            .replace("\\\\", "\\")
+            .trim()
+    }
+
+    private fun extractTaskTypeFromRaw(raw: String): com.theveloper.aura.domain.model.TaskType? {
+        val rawType = Regex("""["']type["']\s*:\s*["']([A-Z_]+)["']""")
+            .find(raw)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?: return null
+
+        return runCatching { com.theveloper.aura.domain.model.TaskType.valueOf(rawType) }.getOrNull()
     }
 
     private fun StringBuilder.appendContextHints(
@@ -676,5 +973,20 @@ class TaskDraftRescueService @Inject constructor(
             appendLine("Relevant memory:")
             appendLine(it.trim().take(600))
         }
+    }
+
+    private companion object {
+        val JSONISH_LABEL_REGEX = Regex(
+            "\"label\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"",
+            setOf(RegexOption.DOT_MATCHES_ALL)
+        )
+        val JSONISH_ITEMS_ARRAY_REGEX = Regex(
+            "\"items\"\\s*:\\s*\\[(.*?)]",
+            setOf(RegexOption.DOT_MATCHES_ALL)
+        )
+        val JSONISH_STRING_REGEX = Regex(
+            "\"((?:\\\\.|[^\"\\\\])*)\"",
+            setOf(RegexOption.DOT_MATCHES_ALL)
+        )
     }
 }

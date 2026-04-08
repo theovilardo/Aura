@@ -87,6 +87,51 @@ class LLMParsingTest {
     }
 
     @Test
+    fun `extractLikelyJsonBlock prefers full task object over earlier inner config object`() {
+        val raw = """
+            title: Argentinian Flan Making
+            config: {
+              "config_type": "CHECKLIST",
+              "label": "Flan Ingredients",
+              "allowAddItems": true
+            }
+
+            {
+              "title": "Argentinian Flan Shopping List and Recipe",
+              "type": "GENERAL",
+              "skills": [
+                {
+                  "skill": "checklist",
+                  "sortOrder": 0,
+                  "config": {
+                    "label": "Shopping list",
+                    "allowAddItems": true,
+                    "items": ["Eggs", "Milk", "Sugar", "Vanilla extract"]
+                  }
+                },
+                {
+                  "skill": "notes",
+                  "sortOrder": 1,
+                  "config": {
+                    "text": "## Recipe\n1. Make the caramel.\n2. Bake in a water bath.",
+                    "isMarkdown": true
+                  }
+                }
+              ],
+              "functionSkills": [],
+              "reminders": [],
+              "fetchers": []
+            }
+        """.trimIndent()
+
+        val extracted = raw.extractLikelyJsonBlock()
+        val dsl = auraJson.decodeFromString<TaskDSLOutput>(extracted.normalizeTaskDslJson())
+
+        assertTrue(extracted.contains("\"title\": \"Argentinian Flan Shopping List and Recipe\""))
+        assertEquals(listOf(ComponentType.CHECKLIST, ComponentType.NOTES), dsl.components.map { it.type })
+    }
+
+    @Test
     fun `normalizeTaskDslJson repairs near miss local model output`() {
         val raw = """
             ```json
@@ -144,6 +189,20 @@ class LLMParsingTest {
                 .atZone(ZoneId.systemDefault())
                 .toLocalDate()
         )
+    }
+
+    @Test
+    fun `decodeTaskDslOrNull rejects compact planner json with no renderable components`() {
+        val raw = """
+            {
+              "title": "Argentinian Flan Shopping List and Recipe",
+              "type": "GENERAL",
+              "uiSkills": ["checklist", "notes"],
+              "functionSkills": ["structured-brief"]
+            }
+        """.trimIndent()
+
+        assertNull(raw.decodeTaskDslOrNull())
     }
 
     @Test

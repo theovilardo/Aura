@@ -99,11 +99,17 @@ class CompletenessValidator @Inject constructor() {
         input: String,
         missingFields: MutableList<MissingField>
     ): ComponentDSL {
-        val currentItems = ChecklistDslItems.parse(component.config)
+        val currentItems = ChecklistContentQuality.sanitizeDslItems(
+            items = ChecklistDslItems.parse(component.config),
+            taskTitle = input
+        )
 
         // Semantic layer already populated items — nothing to do
         if (component.populatedFromInput && currentItems.isNotEmpty()) {
-            return component.copy(needsClarification = false)
+            return component.copy(
+                config = ChecklistDslItems.withItems(component.config, currentItems),
+                needsClarification = false
+            )
         }
 
         val explicitItems = extractExplicitChecklistItems(input)
@@ -190,20 +196,6 @@ class CompletenessValidator @Inject constructor() {
     }
 
     private fun shouldReplaceGenericItems(items: List<ChecklistItemDSL>): Boolean {
-        return items.isNotEmpty() && items.all { item ->
-            item.label.trim().lowercase() in GENERIC_PLACEHOLDER_LABELS
-        }
-    }
-
-    private companion object {
-        /**
-         * Generic placeholder labels that were formerly injected by the catalog as scaffolding.
-         * If a checklist consists entirely of these, it should be replaced.
-         */
-        val GENERIC_PLACEHOLDER_LABELS = setOf(
-            "define next step",
-            "execute",
-            "review result"
-        )
+        return ChecklistContentQuality.sanitizeDslItems(items).isEmpty()
     }
 }

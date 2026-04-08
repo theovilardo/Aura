@@ -9,8 +9,7 @@ import com.theveloper.aura.core.json.auraJson
 import com.theveloper.aura.engine.classifier.LLMClassificationContext
 import com.theveloper.aura.engine.classifier.MissingField
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
-import com.theveloper.aura.engine.skill.PromptProfile
-import com.theveloper.aura.engine.skill.UiSkillRegistry
+import com.theveloper.aura.engine.skill.SkillPromptCards
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.text.SimpleDateFormat
@@ -349,17 +348,25 @@ abstract class LiteRtLocalLLMService constructor(
         if (normalized != candidate) {
             debugLog("normalized-json=${normalized.take(LOG_PREVIEW_LIMIT)}")
         }
-        return runCatching {
-            auraJson.decodeFromString<TaskDSLOutput>(normalized)
-        }.getOrElse {
-            debugError("Could not parse local model output.", it)
-            null
+        val decoded = rawResponse.decodeTaskDslOrNull()
+        if (candidate.contains("uiSkills")) {
+            if (decoded == null) {
+                debugLog("Rejected planner-only local output that did not contain renderable task content.")
+            }
+            return decoded
         }
+        if (decoded != null) return decoded
+
+        return runCatching { auraJson.decodeFromString<TaskDSLOutput>(normalized) }
+            .getOrElse {
+                debugError("Could not parse local model output.", it)
+                null
+            }
     }
 
     private fun buildRepairPrompt(rawResponse: String): String {
         return """
-            Convert the following output into a single valid JSON object matching AURA's task planner schema.
+            Convert the following output into a single valid JSON object matching AURA's final task schema.
             No extra text, no markdown, no explanations.
             Original output:
             $rawResponse
@@ -391,11 +398,7 @@ abstract class LiteRtLocalLLMService constructor(
     }
 
     protected open fun localClassifierSystemPrompt(context: LLMClassificationContext): String {
-        return UiSkillRegistry.buildSystemPrompt(
-            context = this.context,
-            taskTypeHint = context.detectedTaskType,
-            profile = PromptProfile.LOCAL_COMPACT
-        )
+        return SkillPromptCards.buildCompactFinalTaskPrompt(context.detectedTaskType)
     }
 
     // ── Reflection helpers ────────────────────────────────────────────────────

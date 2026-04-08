@@ -89,6 +89,26 @@ class TaskDraftRescueServiceTest {
     }
 
     @Test
+    fun `needsRescue flags shopping list draft without checklist component`() {
+        val draft = TaskDSLOutput(
+            title = "Argentinian Flan Shopping List and Recipe",
+            type = TaskType.GENERAL,
+            components = listOf(
+                notesComponent(
+                    """
+                    ## Flan argentino
+                    1. Hacer el caramelo.
+                    2. Batir los huevos con leche y azucar.
+                    3. Cocinar a bano maria.
+                    """.trimIndent()
+                )
+            )
+        )
+
+        assertTrue(subject.needsRescue(draft))
+    }
+
+    @Test
     fun `rescue repairs hollow notes with markdown-only fallback`() = kotlinx.coroutines.test.runTest {
         val service = object : LLMService {
             override val tier = LLMTier.GEMMA_4_E4B
@@ -231,6 +251,56 @@ class TaskDraftRescueServiceTest {
     }
 
     @Test
+    fun `rescue sanitizes malformed repeated checklist repair output`() = kotlinx.coroutines.test.runTest {
+        val service = object : LLMService {
+            override val tier = LLMTier.GEMMA_4_E4B
+            override fun isAvailable() = true
+            override suspend fun classify(input: String, context: LLMClassificationContext): TaskDSLOutput {
+                error("unused")
+            }
+            override suspend fun complete(prompt: String): String {
+                return when {
+                    prompt.contains("checklist item repair agent") -> """
+                        Flour
+                        Sugar
+                        Eggs
+                        Milk
+                        Vanilla Extract
+                        Fl Flan Mold
+                        Caramel Ingredients
+                        Butter
+                        Fl Fl Flan Mold
+                        Fl Mold
+                        Mold
+                        Fl Mold Mold Mold Mold
+                        Fl Flan
+                    """.trimIndent()
+                    else -> ""
+                }
+            }
+        }
+        val draft = TaskDSLOutput(
+            title = "Argentinian Flan Shopping List and Recipe",
+            type = TaskType.GENERAL,
+            components = listOf(checklistComponent())
+        )
+
+        val rescued = subject.rescue(
+            service = service,
+            input = "I need a shopping list + recipe for making an Argentinian flan",
+            llmContext = LLMClassificationContext(detectedTaskType = TaskType.GENERAL),
+            draft = draft
+        )
+
+        assertNotNull(rescued)
+        val checklist = rescued!!.components.first { it.type == ComponentType.CHECKLIST }
+        assertEquals(
+            listOf("Flour", "Sugar", "Eggs", "Milk", "Vanilla Extract", "Flan Mold", "Butter"),
+            ChecklistDslItems.parse(checklist.config).map { it.label }
+        )
+    }
+
+    @Test
     fun `rescue expands umbrella checklist item into atomic items`() = kotlinx.coroutines.test.runTest {
         val service = object : LLMService {
             override val tier = LLMTier.GEMMA_4_E4B
@@ -363,6 +433,136 @@ class TaskDraftRescueServiceTest {
         assertNotNull(rescued)
         assertEquals(listOf(ComponentType.CHECKLIST, ComponentType.NOTES), rescued!!.components.map { it.type })
         assertTrue(rescued.components.last().config["text"]?.toString()?.contains("Cook in the waffle iron") == true)
+    }
+
+    @Test
+    fun `rescue rejects planner-only json and prompts for final task schema`() = kotlinx.coroutines.test.runTest {
+        val prompts = mutableListOf<String>()
+        val plannerOnlyJson = """
+            {
+              "title": "Argentinian Flan Shopping List and Recipe",
+              "type": "GENERAL",
+              "uiSkills": ["checklist", "notes"],
+              "functionSkills": ["structured-brief"]
+            }
+        """.trimIndent()
+        val service = object : LLMService {
+            override val tier = LLMTier.GEMMA_4_E4B
+            override fun isAvailable() = true
+            override suspend fun classify(input: String, context: LLMClassificationContext): TaskDSLOutput {
+                error("unused")
+            }
+            override suspend fun complete(prompt: String): String {
+                prompts += prompt
+                return when {
+                    prompt.contains("--- RESCUE TASK ---") -> plannerOnlyJson
+                    prompt.contains("focused draft repair agent") -> plannerOnlyJson
+                    prompt.contains("checklist item repair agent") -> """
+                        Eggs
+                        Milk
+                        Sugar
+                        Vanilla extract
+                    """.trimIndent()
+                    prompt.contains("notes content repair agent") -> """
+                        ## Flan argentino
+                        1. Hacer un caramelo.
+                        2. Mezclar huevos, leche, azucar y vainilla.
+                        3. Cocinar a bano maria hasta que cuaje.
+                        4. Enfriar antes de desmoldar.
+                    """.trimIndent()
+                    else -> ""
+                }
+            }
+        }
+
+        val rescued = subject.rescue(
+            service = service,
+            input = "I need a shopping list+ recipe for making an Argentinian flan",
+            llmContext = LLMClassificationContext(detectedTaskType = TaskType.GENERAL),
+            draft = TaskDSLOutput(
+                title = "Argentinian Flan Shopping List and Recipe",
+                type = TaskType.GENERAL,
+                components = emptyList()
+            )
+        )
+
+        assertNotNull(rescued)
+        assertTrue(rescued!!.components.any { it.type == ComponentType.CHECKLIST })
+        assertTrue(rescued.components.any { it.type == ComponentType.NOTES })
+        assertFalse(subject.needsRescue(rescued))
+        assertTrue(
+            prompts.any { prompt ->
+                prompt.contains("--- RESCUE TASK ---") &&
+                    prompt.contains("Final task JSON schema:") &&
+                    !prompt.contains("Plan JSON schema:")
+            }
+        )
+    }
+
+    @Test
+    fun `rescue salvages malformed final task json and still repairs missing notes`() = kotlinx.coroutines.test.runTest {
+        val malformedRescueJson = """
+            ```json
+            {
+              "title": "Argentinian Flan Shopping List and Recipe",
+              "type": "GENERAL",
+              "skills": [
+                {
+                  "skill": "checklist",
+                  "sortOrder": 0,
+                  "config": {
+                    "config_type": "CHECKLIST",
+                    "label": "Shopping list",
+                    "allowAddItems": true,
+                    "items": [
+                      {"label": "Eggs", "isSuggested": false},
+                      {"label": "Milk", "isSuggested": false},
+                      {"label": "Sugar", "isSuggested": false},
+                      {"label": "Vanilla extract", "isSuggested": true}
+                    ],
+                    "quality_rules": "expand known bundles, recipes, recipes, recipes
+            """.trimIndent()
+
+        val service = object : LLMService {
+            override val tier = LLMTier.GEMMA_4_E4B
+            override fun isAvailable() = true
+            override suspend fun classify(input: String, context: LLMClassificationContext): TaskDSLOutput {
+                error("unused")
+            }
+            override suspend fun complete(prompt: String): String {
+                return when {
+                    prompt.contains("--- RESCUE TASK ---") -> malformedRescueJson
+                    prompt.contains("notes content repair agent") -> """
+                        ## Flan argentino
+                        1. Preparar un caramelo con azucar.
+                        2. Mezclar huevos, leche y vainilla.
+                        3. Cocinar a bano maria hasta que cuaje.
+                        4. Enfriar y desmoldar.
+                    """.trimIndent()
+                    else -> ""
+                }
+            }
+        }
+
+        val rescued = subject.rescue(
+            service = service,
+            input = "I need a shopping list+ recipe for making an Argentinian flan",
+            llmContext = LLMClassificationContext(detectedTaskType = TaskType.GENERAL),
+            draft = TaskDSLOutput(
+                title = "Argentinian Flan Shopping List and Recipe",
+                type = TaskType.GENERAL,
+                components = emptyList()
+            )
+        )
+
+        assertNotNull(rescued)
+        val checklist = rescued!!.components.first { it.type == ComponentType.CHECKLIST }
+        assertEquals(
+            listOf("Eggs", "Milk", "Sugar", "Vanilla extract"),
+            ChecklistDslItems.parse(checklist.config).map { it.label }
+        )
+        assertTrue(rescued.components.any { it.type == ComponentType.NOTES })
+        assertFalse(subject.needsRescue(rescued))
     }
 
     private fun notesComponent(text: String) = ComponentDSL(

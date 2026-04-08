@@ -4,7 +4,11 @@ internal object DraftContentQuality {
 
     fun sanitizeGeneratedText(text: String): String {
         val trimmed = text.trim()
-        return if (looksLikePromptSchemaPlaceholder(trimmed)) "" else trimmed
+        return if (looksLikePromptSchemaPlaceholder(trimmed)) {
+            ""
+        } else {
+            collapseExcessiveLineRepetition(trimmed)
+        }
     }
 
     fun isThinNotes(text: String): Boolean {
@@ -59,10 +63,69 @@ internal object DraftContentQuality {
         return bracketedRatio >= 0.5f
     }
 
+    private fun collapseExcessiveLineRepetition(text: String): String {
+        if (text.isBlank()) return ""
+
+        val keptLines = mutableListOf<String>()
+        val seenCounts = linkedMapOf<String, Int>()
+        var previousKey: String? = null
+        var pendingBlankLine = false
+
+        text.lines().forEach { rawLine ->
+            val line = rawLine.trimEnd()
+            val normalized = normalizeLineForRepetition(line)
+
+            if (normalized.isBlank()) {
+                if (keptLines.isNotEmpty()) pendingBlankLine = true
+                previousKey = null
+                return@forEach
+            }
+
+            if (DANGLING_LINE_REGEX.matches(line)) return@forEach
+            if (normalized == previousKey) return@forEach
+
+            val nextCount = seenCounts.getOrDefault(normalized, 0) + 1
+            if (nextCount > allowedOccurrencesForLine(line, normalized)) {
+                previousKey = normalized
+                return@forEach
+            }
+
+            if (pendingBlankLine && keptLines.isNotEmpty()) {
+                keptLines += ""
+                pendingBlankLine = false
+            }
+
+            keptLines += line
+            seenCounts[normalized] = nextCount
+            previousKey = normalized
+        }
+
+        return keptLines.joinToString("\n").trim()
+    }
+
+    private fun normalizeLineForRepetition(line: String): String {
+        return line
+            .trim()
+            .replace(Regex("""^\s*(?:[-*•]|\d+[.)])\s+"""), "")
+            .replace(Regex("""\s+"""), " ")
+            .trim(' ', '.', ':', ';', ',')
+            .lowercase()
+    }
+
+    private fun allowedOccurrencesForLine(line: String, normalized: String): Int {
+        return when {
+            MARKDOWN_HEADING_REGEX.containsMatchIn(line) -> 1
+            BULLET_LINE_REGEX.containsMatchIn(line) -> 1
+            normalized.split(Regex("""\s+""")).size <= 4 -> 1
+            else -> 2
+        }
+    }
+
     private val WORD_REGEX = Regex("""[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)?""")
     private val SENTENCE_END_REGEX = Regex("""[.!?]+""")
     private val MARKDOWN_HEADING_REGEX = Regex("""^\s*#{1,6}\s+\S""")
     private val BULLET_LINE_REGEX = Regex("""^\s*(?:[-*•]|\d+[.)])\s+\S""")
+    private val DANGLING_LINE_REGEX = Regex("""^\s*(?:[-*•]+|[:;,.\-]+)\s*$""")
     private val TABLE_ROW_REGEX = Regex("""^\s*\|.+\|\s*$""")
     private val CODE_FENCE_REGEX = Regex("""^\s*```""")
     private val BRACKET_PLACEHOLDER_REGEX = Regex("""^\s*(?:[-*•]|\d+[.)])?\s*\[[^]]{6,}]$""")

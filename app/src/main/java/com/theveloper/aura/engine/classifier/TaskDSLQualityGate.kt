@@ -52,7 +52,8 @@ class TaskDSLQualityGate @Inject constructor() {
 
         val (patchedComponents, hollowRepairs) = patchHollowComponents(
             components = patched.components,
-            explicitItems = explicitItems
+            explicitItems = explicitItems,
+            taskTitle = patched.title.ifBlank { input }
         )
         if (hollowRepairs.isNotEmpty()) {
             patched = patched.copy(components = patchedComponents)
@@ -143,18 +144,22 @@ class TaskDSLQualityGate @Inject constructor() {
 
     private fun patchHollowComponents(
         components: List<ComponentDSL>,
-        explicitItems: List<String>
+        explicitItems: List<String>,
+        taskTitle: String
     ): Pair<List<ComponentDSL>, List<String>> {
         val repairs = mutableListOf<String>()
 
         val patched = components.map { component ->
             when (component.type) {
-                ComponentType.CHECKLIST -> patchChecklist(component, explicitItems)?.also {
-                    repairs += when {
-                        explicitItems.isNotEmpty() -> "Filled CHECKLIST from explicit items already present in input"
-                        else -> "Marked empty CHECKLIST for clarification"
+                ComponentType.CHECKLIST -> {
+                    val patch = patchChecklist(component, explicitItems, taskTitle)
+                    if (patch != null) {
+                        repairs += patch.second
+                        patch.first
+                    } else {
+                        component
                     }
-                } ?: component
+                }
 
                 else -> component
             }
@@ -165,11 +170,21 @@ class TaskDSLQualityGate @Inject constructor() {
 
     private fun patchChecklist(
         component: ComponentDSL,
-        explicitItems: List<String>
-    ): ComponentDSL? {
+        explicitItems: List<String>,
+        taskTitle: String
+    ): Pair<ComponentDSL, String>? {
         val currentItems = ChecklistDslItems.parse(component.config)
-        if (currentItems.isNotEmpty() && currentItems.any { it.label.trim().lowercase() !in GENERIC_PLACEHOLDER_LABELS }) {
-            return null
+        val sanitizedCurrentItems = ChecklistContentQuality.sanitizeDslItems(currentItems, taskTitle)
+
+        if (sanitizedCurrentItems.isNotEmpty()) {
+            return if (sanitizedCurrentItems == currentItems) {
+                null
+            } else {
+                component.copy(
+                    config = ChecklistDslItems.withItems(component.config, sanitizedCurrentItems),
+                    needsClarification = false
+                ) to "Sanitized noisy CHECKLIST items"
+            }
         }
 
         return if (explicitItems.isNotEmpty()) {
@@ -180,9 +195,12 @@ class TaskDSLQualityGate @Inject constructor() {
                 ),
                 populatedFromInput = true,
                 needsClarification = false
-            )
+            ) to "Filled CHECKLIST from explicit items already present in input"
         } else {
-            component.copy(needsClarification = true)
+            component.copy(
+                config = ChecklistDslItems.withItems(component.config, emptyList()),
+                needsClarification = true
+            ) to "Marked empty CHECKLIST for clarification"
         }
     }
 
@@ -249,10 +267,13 @@ class TaskDSLQualityGate @Inject constructor() {
     }
 
     private fun isChecklistLowValue(component: ComponentDSL): Boolean {
-        val items = ChecklistDslItems.parse(component.config)
-        return items.isEmpty() || items.all { item ->
-            item.label.trim().lowercase() in GENERIC_PLACEHOLDER_LABELS
-        }
+        val rawItems = ChecklistDslItems.parse(component.config)
+        if (rawItems.isEmpty()) return true
+        val sanitizedItems = ChecklistContentQuality.sanitizeDslItems(
+            items = rawItems,
+            taskTitle = ""
+        )
+        return sanitizedItems.isEmpty()
     }
 
     private fun isStrongNonNotesComponent(component: ComponentDSL): Boolean {
@@ -291,13 +312,5 @@ class TaskDSLQualityGate @Inject constructor() {
         ) : GateResult()
 
         data class Rejected(val reason: String) : GateResult()
-    }
-
-    private companion object {
-        val GENERIC_PLACEHOLDER_LABELS = setOf(
-            "define next step",
-            "execute",
-            "review result"
-        )
     }
 }

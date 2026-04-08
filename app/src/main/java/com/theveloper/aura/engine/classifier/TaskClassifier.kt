@@ -248,21 +248,9 @@ class TaskClassifier @Inject constructor(
             )
         }
 
-        // Quality gate on heuristic output too — ensures no empty tasks slip through.
-        val gatedFallback = when (val gate = qualityGate.enforce(onDeviceResult.dsl, input, extractedEntities)) {
-            is TaskDSLQualityGate.GateResult.Passed -> {
-                warnings += gate.repairs
-                gate.dsl
-            }
-            is TaskDSLQualityGate.GateResult.Rejected -> {
-                warnings += gate.reason
-                TaskDSLBuilder.buildDeterministic(input, intentResult, extractedEntities)
-            }
-        }
-
-        val fallbackDsl = when (TaskDSLValidator.validate(gatedFallback)) {
+        val fallbackDsl = when (TaskDSLValidator.validate(onDeviceResult.dsl)) {
             TaskDSLValidator.ValidationResult.Valid -> {
-                gatedFallback
+                onDeviceResult.dsl
             }
 
             is TaskDSLValidator.ValidationResult.Invalid -> {
@@ -272,7 +260,7 @@ class TaskClassifier @Inject constructor(
         }
 
         val fallbackRepairService = resolveClarificationService(executionMode)
-        val fallbackCandidateDsl = if (
+        val repairedFallbackCandidate = if (
             fallbackRepairService != null &&
             taskDraftRescueService.needsRescue(fallbackDsl)
         ) {
@@ -307,7 +295,7 @@ class TaskClassifier @Inject constructor(
             fallbackDsl
         }
 
-        val finalizedFallbackDsl = when (val gate = qualityGate.enforce(fallbackCandidateDsl, input, extractedEntities)) {
+        val finalizedFallbackDsl = when (val gate = qualityGate.enforce(repairedFallbackCandidate, input, extractedEntities)) {
             is TaskDSLQualityGate.GateResult.Passed -> {
                 warnings += gate.repairs
                 gate.dsl
@@ -315,7 +303,7 @@ class TaskClassifier @Inject constructor(
 
             is TaskDSLQualityGate.GateResult.Rejected -> {
                 warnings += gate.reason
-                fallbackCandidateDsl
+                repairedFallbackCandidate
             }
         }
 

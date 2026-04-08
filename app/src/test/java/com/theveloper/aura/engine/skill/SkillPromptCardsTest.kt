@@ -28,4 +28,14 @@ class SkillPromptCardsTest {
         assertTrue(prompt.contains("resource-curator"))
         assertTrue(prompt.contains("use_when: The user explicitly asks for links, references, docs, or sources."))
     }
+
+    @Test
+    fun `compact final task prompt uses final schema instead of planner schema`() {
+        val prompt = SkillPromptCards.buildCompactFinalTaskPrompt(TaskType.GENERAL)
+
+        assertTrue(prompt.contains("Final task JSON schema:"))
+        assertTrue(prompt.contains("Never return a planner-only payload"))
+        assertTrue(prompt.contains("\"skills\": ["))
+        assertTrue(!prompt.contains("Plan JSON schema:"))
+    }
 }
