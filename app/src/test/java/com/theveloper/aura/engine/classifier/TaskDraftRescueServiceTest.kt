@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.AssetManager
 import com.theveloper.aura.domain.model.ComponentType
 import com.theveloper.aura.domain.model.TaskType
+import com.theveloper.aura.engine.dsl.ChecklistDslItems
 import com.theveloper.aura.engine.dsl.ComponentDSL
 import com.theveloper.aura.engine.dsl.TaskDSLOutput
 import com.theveloper.aura.engine.llm.LLMService
@@ -179,6 +180,113 @@ class TaskDraftRescueServiceTest {
         assertFalse(subject.needsRescue(rescued))
     }
 
+    @Test
+    fun `rescue repairs hollow checklist with concrete item-only fallback`() = kotlinx.coroutines.test.runTest {
+        val service = object : LLMService {
+            override val tier = LLMTier.GEMMA_4_E4B
+            override fun isAvailable() = true
+            override suspend fun classify(input: String, context: LLMClassificationContext): TaskDSLOutput {
+                error("unused")
+            }
+            override suspend fun complete(prompt: String): String {
+                return when {
+                    prompt.contains("checklist item repair agent") -> """
+                        Cranberries
+                        Chocolate
+                        Milk
+                        Cheese
+                        Mascarpone cheese
+                        Eggs
+                        Sugar
+                        Coffee
+                        Cocoa powder
+                        Ladyfingers
+                    """.trimIndent()
+                    else -> ""
+                }
+            }
+        }
+        val draft = TaskDSLOutput(
+            title = "Tiramisu Shopping List",
+            type = TaskType.GENERAL,
+            components = listOf(checklistComponent())
+        )
+
+        val rescued = subject.rescue(
+            service = service,
+            input = "I need a shopping list for cranberries, chocolate, milk, cheese and all the ingredients for a tiramisu as well",
+            llmContext = LLMClassificationContext(detectedTaskType = TaskType.GENERAL),
+            draft = draft
+        )
+
+        assertNotNull(rescued)
+        assertFalse(subject.needsRescue(rescued!!))
+        val checklist = rescued.components.first { it.type == ComponentType.CHECKLIST }
+        val items = ChecklistDslItems.parse(checklist.config).map { it.label }
+        assertTrue(items.contains("Cranberries"))
+        assertTrue(items.contains("Chocolate"))
+        assertTrue(items.contains("Mascarpone cheese"))
+        assertTrue(items.contains("Ladyfingers"))
+    }
+
+    @Test
+    fun `rescue expands umbrella checklist item into atomic items`() = kotlinx.coroutines.test.runTest {
+        val service = object : LLMService {
+            override val tier = LLMTier.GEMMA_4_E4B
+            override fun isAvailable() = true
+            override suspend fun classify(input: String, context: LLMClassificationContext): TaskDSLOutput {
+                error("unused")
+            }
+            override suspend fun complete(prompt: String): String {
+                return when {
+                    prompt.contains("checklist refinement agent") -> """
+                        Cranberries
+                        Chocolate
+                        Milk
+                        Cheese
+                        Mascarpone cheese
+                        Eggs
+                        Sugar
+                        Coffee
+                        Cocoa powder
+                        Ladyfingers
+                    """.trimIndent()
+                    else -> ""
+                }
+            }
+        }
+        val draft = TaskDSLOutput(
+            title = "Tiramisu Shopping List",
+            type = TaskType.GENERAL,
+            components = listOf(
+                checklistComponent(
+                    items = listOf(
+                        "Cranberries",
+                        "Chocolate",
+                        "Milk",
+                        "Cheese",
+                        "Tiramisu ingredients"
+                    )
+                )
+            )
+        )
+
+        val rescued = subject.rescue(
+            service = service,
+            input = "I need a shopping list for cranberries, chocolate, milk, cheese and all the ingredients for a tiramisu as well",
+            llmContext = LLMClassificationContext(detectedTaskType = TaskType.GENERAL),
+            draft = draft
+        )
+
+        assertNotNull(rescued)
+        val checklist = rescued!!.components.first { it.type == ComponentType.CHECKLIST }
+        val items = ChecklistDslItems.parse(checklist.config).map { it.label }
+        assertTrue(items.contains("Cranberries"))
+        assertTrue(items.contains("Mascarpone cheese"))
+        assertTrue(items.contains("Ladyfingers"))
+        assertFalse(items.contains("Tiramisu ingredients"))
+    }
+
     private fun notesComponent(text: String) = ComponentDSL(
         type = ComponentType.NOTES,
         sortOrder = 0,
@@ -191,15 +299,18 @@ class TaskDraftRescueServiceTest {
         )
     )
 
-    private fun checklistComponent() = ComponentDSL(
+    private fun checklistComponent(items: List<String> = emptyList()) = ComponentDSL(
         type = ComponentType.CHECKLIST,
         sortOrder = 1,
-        config = JsonObject(
-            mapOf(
-                "config_type" to JsonPrimitive("CHECKLIST"),
-                "label" to JsonPrimitive("Ingredients"),
-                "allowAddItems" to JsonPrimitive(true)
-            )
+        config = ChecklistDslItems.withItems(
+            JsonObject(
+                mapOf(
+                    "config_type" to JsonPrimitive("CHECKLIST"),
+                    "label" to JsonPrimitive("Ingredients"),
+                    "allowAddItems" to JsonPrimitive(true)
+                )
+            ),
+            items.map { com.theveloper.aura.engine.dsl.ChecklistItemDSL(it) }
         )
     )
 }

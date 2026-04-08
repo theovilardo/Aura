@@ -433,6 +433,57 @@ class LLMParsingTest {
     }
 
     @Test
+    fun `normalizeTaskDslJson salvages misplaced checklist skill and semantic string items`() {
+        val raw = """
+            {
+              "analysis": {
+                "intent": "create shopping list",
+                "constraints": ["include tiramisu ingredients"],
+                "ui_skills_needed": ["checklist"],
+                "function_skills_needed": []
+              },
+              "semantic": {
+                "action": "create shopping list",
+                "items": "cranberries, chocolate, milk, cheese, tiramisu ingredients",
+                "subject": "tiramisu",
+                "goal": "shopping list",
+                "frequency": ""
+              },
+              "task": {
+                "title": "Tiramisu Shopping List",
+                "type": "GENERAL",
+                "priority": 0,
+                "targetDateMs": 0,
+                "skills": [],
+                "functionSkills": [],
+                "reminders": [],
+                "fetchers": [
+                  {
+                    "skill": "checklist",
+                    "config": {
+                      "config_type": "CHECKLIST",
+                      "label": "Tiramisu Shopping List",
+                      "allowAddItems": true
+                    }
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+
+        val normalized = raw.normalizeTaskDslJson()
+        val dsl = auraJson.decodeFromString<TaskDSLOutput>(normalized)
+        val checklist = dsl.components.first()
+        val items = ChecklistDslItems.parse(checklist.config).map { it.label }
+
+        assertEquals(listOf(ComponentType.CHECKLIST), dsl.components.map { it.type })
+        assertEquals(
+            listOf("cranberries", "chocolate", "milk", "cheese", "tiramisu ingredients"),
+            items
+        )
+    }
+
+    @Test
     fun `normalizeTaskDslJson does not turn abstract roadmap semantics into visible checklist items`() {
         val raw = """
             {

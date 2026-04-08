@@ -191,13 +191,17 @@ private fun normalizeTaskDslObject(root: JsonObject): JsonObject {
         skills = (taskRoot["skills"] as? JsonArray) ?: (root["skills"] as? JsonArray),
         rootTargetDateMs = targetDateMs
     )
+    val misplacedUiComponents = normalizeMisplacedUiComponents(
+        candidates = (taskRoot["fetchers"] as? JsonArray) ?: (root["fetchers"] as? JsonArray),
+        rootTargetDateMs = targetDateMs
+    )
     val functionSkills = normalizeFunctionSkills(
         skills = (taskRoot["functionSkills"] as? JsonArray) ?: (root["functionSkills"] as? JsonArray)
     )
 
     val semanticFrame = extractSemanticFrame(root, taskRoot)
     val enrichedComponents = applySemanticToComponents(
-        components = if (skillComponents.isNotEmpty()) skillComponents else components,
+        components = mergeNormalizedComponents(components, skillComponents, misplacedUiComponents),
         frame = semanticFrame
     )
 
@@ -216,6 +220,30 @@ private fun normalizeTaskDslObject(root: JsonObject): JsonObject {
             "fetchers" to normalizeFetchers(taskRoot["fetchers"] as? JsonArray)
         )
     )
+}
+
+private fun mergeNormalizedComponents(vararg arrays: JsonArray): JsonArray {
+    val merged = arrays
+        .flatMap { it }
+        .mapNotNull { it as? JsonObject }
+        .distinctBy { component ->
+            buildString {
+                append(component["skillId"])
+                append('|')
+                append(component["type"])
+                append('|')
+                append(component["config"])
+                append('|')
+                append(component["populatedFromInput"])
+                append('|')
+                append(component["needsClarification"])
+            }
+        }
+        .mapIndexed { index, component ->
+            JsonObject(component + ("sortOrder" to JsonPrimitive(index)))
+        }
+
+    return JsonArray(merged)
 }
 
 private fun normalizeComponents(
@@ -253,6 +281,40 @@ private fun normalizeSkillComponents(
 
     val normalized = skills
         .mapNotNull { normalizeSkillComponent(it as? JsonObject, rootTargetDateMs) }
+        .distinctBy { component ->
+            buildString {
+                append(component["skillId"])
+                append('|')
+                append(component["type"])
+                append('|')
+                append(component["config"])
+                append('|')
+                append(component["populatedFromInput"])
+                append('|')
+                append(component["needsClarification"])
+            }
+        }
+        .mapIndexed { index, component ->
+            JsonObject(component + ("sortOrder" to JsonPrimitive(index)))
+        }
+
+    return JsonArray(normalized)
+}
+
+private fun normalizeMisplacedUiComponents(
+    candidates: JsonArray?,
+    rootTargetDateMs: Long?
+): JsonArray {
+    if (candidates == null) return JsonArray(emptyList())
+
+    val normalized = candidates
+        .mapNotNull { candidate ->
+            val obj = candidate as? JsonObject ?: return@mapNotNull null
+            if ("cronExpression" in obj || "params" in obj) return@mapNotNull null
+
+            normalizeSkillComponent(obj, rootTargetDateMs)
+                ?: normalizeComponent(obj, rootTargetDateMs)
+        }
         .distinctBy { component ->
             buildString {
                 append(component["skillId"])
@@ -698,20 +760,43 @@ internal fun extractSemanticFrame(
     val subject = semantic["subject"].stringValue()
     val goal = semantic["goal"].stringValue()
     val frequency = semantic["frequency"].stringValue()
-    val items = (semantic["items"] as? JsonArray)
-        ?.mapNotNull { element ->
-            element.stringValue()
-                .trim()
-                .takeIf { it.isNotBlank() && it.length <= MAX_SEMANTIC_ITEM_LENGTH }
-        }
-        ?.distinct()
-        .orEmpty()
+    val items = extractSemanticItems(semantic["items"])
 
     if (action.isBlank() && items.isEmpty() && subject.isBlank() && goal.isBlank() && frequency.isBlank()) {
         return SemanticFrame.EMPTY
     }
 
     return SemanticFrame(action = action, items = items, subject = subject, goal = goal, frequency = frequency)
+}
+
+private fun extractSemanticItems(element: JsonElement?): List<String> {
+    return when (element) {
+        is JsonArray -> element.mapNotNull { item ->
+            item.stringValue()
+                .trim()
+                .takeIf { it.isNotBlank() && it.length <= MAX_SEMANTIC_ITEM_LENGTH }
+        }.distinct()
+
+        is JsonPrimitive -> {
+            val raw = element.contentOrNull?.trim().orEmpty()
+            if (raw.isBlank()) {
+                emptyList()
+            } else {
+                ChecklistInputExtraction.extract(raw)
+                    .ifEmpty {
+                        raw.split(Regex("[,;\\n]+"))
+                            .map { it.trim() }
+                            .filter { it.isNotBlank() && looksLikeAtomicSemanticItem(it) }
+                            .distinct()
+                    }
+                    .ifEmpty {
+                        listOf(raw).filter { it.length <= MAX_SEMANTIC_ITEM_LENGTH && looksLikeAtomicSemanticItem(it) }
+                    }
+            }
+        }
+
+        else -> emptyList()
+    }
 }
 
 internal fun applySemanticToComponents(

@@ -86,6 +86,7 @@ When the user already asked for a concrete artifact, deliver a strong first vers
 - If the user asks for a concrete artifact that can be authored from model knowledge, provide the artifact itself now instead of turning it into a research plan.
 - Do not leave selected skills hollow. Empty `notes` or empty `checklist` items are low-quality outputs.
 - Use `checklist` for concrete items such as ingredients, purchases, steps, or supplies.
+- Checklist items should be atomic. If the user references a known recipe, bundle, set, or ingredient group, expand that reference into separate concrete items instead of leaving it as one umbrella label.
 - Use `notes` for useful markdown content such as instructions, recipe steps, context, or explanations.
 - Prefer concrete UI over function skills. Function skills should improve content, not replace it.
 - Use `resource-curator` only when the user explicitly asks for links, references, docs, or sources.
